@@ -1,51 +1,78 @@
-
 services:
   postgres:
     image: postgres:16-alpine
     container_name: tripsignal-postgres
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
       POSTGRES_DB: ${POSTGRES_DB:-tripsignal}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+    - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test:
+      - CMD-SHELL
+      - pg_isready -U ${POSTGRES_USER:-postgres}
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
-      - tripsignal-network
-
+    - tripsignal-network
+    expose:
+    - '5432'
+    restart: unless-stopped
   api:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: tripsignal-api
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
       POSTGRES_DB: ${POSTGRES_DB:-tripsignal}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       DEBUG: ${DEBUG:-false}
-    ports:
-      - "${API_PORT:-8000}:8000"
+      ENV: ${ENV:-production}
     working_dir: /app/backend
     volumes:
-      - ./backend:/app/backend
+    - ./backend:/app/backend
     depends_on:
       postgres:
         condition: service_healthy
     networks:
-      - tripsignal-network
-    command: ["uvicorn", "app.main:app", "--app-dir", "/app/backend", "--host", "0.0.0.0", "--port", "8000"]
-
+    - tripsignal-network
+    command:
+    - uvicorn
+    - app.main:app
+    - --app-dir
+    - /app/backend
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8000'
+    - --proxy-headers
+    expose:
+    - '8000'
+    restart: unless-stopped
+  caddy:
+    image: caddy:2
+    container_name: tripsignal-caddy
+    ports:
+    - 80:80
+    - 443:443
+    volumes:
+    - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+    - caddy_data:/data
+    - caddy_config:/config
+    depends_on:
+    - api
+    networks:
+    - tripsignal-network
+    restart: unless-stopped
 volumes:
-  postgres_data:
-
+  postgres_data: null
+  caddy_data: {}
+  caddy_config: {}
 networks:
   tripsignal-network:
     driver: bridge

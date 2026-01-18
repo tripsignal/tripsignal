@@ -2,9 +2,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.core.config import settings
 from app.core.logging import setup_logging
 from app.api.routes import health
+from app.api.signals import router as signals_router
 
 # Setup logging
 setup_logging()
@@ -27,6 +27,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(health.router, tags=["health"])
+app.include_router(signals_router)
 
 
 @app.get("/")

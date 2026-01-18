@@ -1,0 +1,29 @@
+
+{
+  admin off
+  email hello@tripsignal.ca
+}
+
+tripsignal.ca {
+  encode zstd gzip
+
+  # Basic security headers (safe defaults)
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "no-referrer"
+  }
+
+  handle {
+    reverse_proxy api:8000
+  }
+}
+
+www.tripsignal.ca {
+  redir https://tripsignal.ca{uri} permanent
+}
+
+localhost {
+  reverse_proxy api:8000
+}
