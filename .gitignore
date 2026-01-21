@@ -19,3 +19,4 @@ node_modules/
 
 # logs
 *.log
+deal_matches.py

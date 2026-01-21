@@ -4,8 +4,10 @@ from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.db.models.deal_match import DealMatch
 from app.db.models.signal import Signal
 from app.db.session import get_db
 from app.schemas.signals import (
@@ -14,6 +16,7 @@ from app.schemas.signals import (
     SignalStatus,
     SignalUpdate,
 )
+
 
 router = APIRouter(prefix="/api/signals", tags=["signals"])
 
@@ -81,9 +84,27 @@ async def create_signal(
 async def list_signals(
     db: Session = Depends(get_db),
 ) -> List[SignalOut]:
-    """List all signals."""
-    signals = db.query(Signal).all()
-    return [_signal_to_out(signal) for signal in signals]
+    """List all signals (with match counts)."""
+    stmt = (
+        select(
+            Signal,
+            func.count(DealMatch.id).label("match_count"),
+        )
+        .outerjoin(DealMatch, DealMatch.signal_id == Signal.id)
+        .group_by(Signal.id)
+        .order_by(Signal.created_at.desc())
+    )
+
+    rows = db.execute(stmt).all()
+
+    out: List[SignalOut] = []
+    for signal, match_count in rows:
+        s_out = _signal_to_out(signal)
+        out.append(
+            s_out.model_copy(update={"match_count": int(match_count)})
+        )
+
+    return out
 
 
 @router.get("/{signal_id}", response_model=SignalOut)

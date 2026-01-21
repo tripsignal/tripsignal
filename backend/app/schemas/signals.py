@@ -205,5 +205,5 @@ class SignalOut(BaseModel):
     preferences: Preferences
     created_at: datetime
     updated_at: datetime
-
+    match_count: int = 0  # ✅ NEW (default for safety)
     model_config = {"from_attributes": True}
