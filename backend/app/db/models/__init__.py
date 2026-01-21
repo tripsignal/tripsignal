@@ -1,4 +1,3 @@
-"""Database models."""
-from app.db.models.signal import Signal
-
-__all__ = ["Signal"]
+from .signal import Signal  # noqa: F401
+from .deal import Deal  # noqa: F401
+from .deal_match import DealMatch  # noqa: F401

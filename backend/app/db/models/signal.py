@@ -1,8 +1,10 @@
 """Signal database model."""
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ARRAY, JSON, String, Text, TIMESTAMP, text
+from sqlalchemy import ARRAY, TIMESTAMP, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -32,15 +34,22 @@ class Signal(Base):
     config: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()"), onupdate=text("now()")
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+        onupdate=text("now()"),
     )
 
+    # Relationships
     deal_matches: Mapped[list["DealMatch"]] = relationship(
         "DealMatch",
         back_populates="signal",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+

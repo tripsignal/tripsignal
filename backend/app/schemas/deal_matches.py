@@ -63,3 +63,12 @@ class DealMatchBatchResponse(BaseModel):
     matches: list[DealMatchOut]
 
     model_config = ConfigDict(from_attributes=True)
+
+class SignalMatchesOut(BaseModel):
+    """Response schema for matches for a signal."""
+
+    signal_id: UUID
+    count: int
+    matches: list[DealMatchOut]
+
+    model_config = ConfigDict(from_attributes=True)

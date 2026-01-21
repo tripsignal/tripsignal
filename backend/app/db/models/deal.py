@@ -26,7 +26,8 @@ class Deal(Base):
     depart_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     return_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     price_cents: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    currency: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'CAD'"))
+    currency: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'CAD'"),
+    )
     deeplink_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     airline: Mapped[str | None] = mapped_column(Text, nullable=True)
     cabin: Mapped[str | None] = mapped_column(Text, nullable=True)
