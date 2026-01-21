@@ -3,14 +3,13 @@
 from uuid import UUID
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.db.models.deal_match import DealMatch
 from app.db.models.deal import Deal
 from app.schemas.deal_matches import DealMatchOut
-
 
 router = APIRouter(prefix="/signals", tags=["matches"])
 
@@ -20,12 +19,10 @@ def list_signal_matches(
     signal_id: UUID,
     db: Session = Depends(get_db),
 ):
-    """
-    Return all deals matched to a given signal.
-    """
+    """Return all deals matched to a given signal."""
     matches = (
         db.query(DealMatch)
-        .join(Deal)
+        .join(Deal)  # optional if relationship exists; safe to keep
         .filter(DealMatch.signal_id == signal_id)
         .order_by(DealMatch.matched_at.desc())
         .all()
@@ -39,4 +36,3 @@ def list_signal_matches(
         )
         for match in matches
     ]
- 
