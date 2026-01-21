@@ -29,8 +29,7 @@ app.add_middleware(
 # Include routers
 app.include_router(health.router, tags=["health"])
 app.include_router(signals_router)
-app.include_router(deal_matches_router)
-
+app.include_router(deal_matches_router, prefix="/api")
 
 @app.get("/")
 async def root():
