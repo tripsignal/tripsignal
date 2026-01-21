@@ -3,14 +3,9 @@ import uuid
 from datetime import date
 from datetime import datetime
 
-from sqlalchemy import Date
-from sqlalchemy import Integer
-from sqlalchemy import Text
-from sqlalchemy import TIMESTAMP
-from sqlalchemy import text
+from sqlalchemy import Date, Integer, Text, TIMESTAMP, text
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped
-from sqlalchemy.orm import mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -41,6 +36,13 @@ class Deal(Base):
     )
     dedupe_key: Mapped[str] = mapped_column(
         Text, nullable=False, unique=True, index=True
+    )
+
+    deal_matches: Mapped[list["DealMatch"]] = relationship(
+        "DealMatch",
+        back_populates="deal",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
     def __repr__(self) -> str:
