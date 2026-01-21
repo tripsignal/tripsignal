@@ -52,3 +52,10 @@ class DealMatchResponse(BaseModel):
     deal: DealResponse
 
     model_config = {"from_attributes": True}
+
+
+from uuid import UUID
+from pydantic import BaseModel
+
+class DealMatchCreate(BaseModel):
+    deal_id: UUID

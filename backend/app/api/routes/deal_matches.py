@@ -5,11 +5,13 @@ from typing import List
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.db.session import get_db
 from app.db.models.deal_match import DealMatch
 from app.db.models.deal import Deal
 from app.schemas.deal_matches import DealMatchOut
+from app.schemas.deals import DealMatchCreate  # expects {"deal_id": "..."} payload
 
 router = APIRouter(prefix="/signals", tags=["matches"])
 
@@ -36,3 +38,35 @@ def list_signal_matches(
         )
         for match in matches
     ]
+
+
+@router.post("/{signal_id}/matches", response_model=DealMatchOut, status_code=201)
+def create_signal_match(
+    signal_id: UUID,
+    payload: DealMatchCreate,
+    db: Session = Depends(get_db),
+):
+    """Create a match between a signal and a deal (idempotent)."""
+    match = DealMatch(signal_id=signal_id, deal_id=payload.deal_id)
+    db.add(match)
+
+    try:
+        db.commit()
+        db.refresh(match)
+    except IntegrityError:
+        db.rollback()
+        match = (
+            db.query(DealMatch)
+            .filter(
+                DealMatch.signal_id == signal_id,
+                DealMatch.deal_id == payload.deal_id,
+            )
+            .first()
+        )
+
+    return DealMatchOut(
+        id=match.id,
+        matched_at=match.matched_at,
+        deal=match.deal,
+    )
+
