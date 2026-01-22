@@ -1,6 +1,7 @@
 """DealMatch database model."""
 import uuid
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import ForeignKey, TIMESTAMP, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
@@ -34,6 +35,14 @@ class DealMatch(Base):
         index=True,
     )
 
+    # NEW: link to the run that created this match
+    run_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("signal_runs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     matched_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
@@ -44,14 +53,17 @@ class DealMatch(Base):
     # Relationships
     deal: Mapped["Deal"] = relationship("Deal", back_populates="deal_matches")
     signal: Mapped["Signal"] = relationship("Signal", back_populates="deal_matches")
+    run: Mapped[Optional["SignalRun"]] = relationship(
+        "SignalRun",
+        back_populates="deal_matches",
+    )
 
     __table_args__ = (
         UniqueConstraint("signal_id", "deal_id", name="uq_deal_matches_signal_deal"),
     )
 
     def __repr__(self) -> str:
-        """String representation of DealMatch."""
         return (
             f"<DealMatch(id={self.id}, signal_id={self.signal_id}, "
-            f"deal_id={self.deal_id}, matched_at={self.matched_at})>"
+            f"deal_id={self.deal_id}, run_id={self.run_id}, matched_at={self.matched_at})>"
         )

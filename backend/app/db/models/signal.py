@@ -53,3 +53,8 @@ class Signal(Base):
         passive_deletes=True,
     )
 
+    runs: Mapped[list["SignalRun"]] = relationship(
+        "SignalRun",
+        back_populates="signal",
+        cascade="all, delete-orphan",
+    )
