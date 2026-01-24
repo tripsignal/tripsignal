@@ -16,7 +16,7 @@ tripsignal.ca {
   }
 
   handle {
-    reverse_proxy tripsignal-api:8000
+    reverse_proxy api:8000
   }
 }
 
@@ -25,5 +25,5 @@ www.tripsignal.ca {
 }
 
 localhost {
-  reverse_proxy tripsignal-api:8000
+  reverse_proxy api:8000
 }
