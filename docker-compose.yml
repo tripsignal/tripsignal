@@ -65,6 +65,8 @@ services:
       PYTHONPATH: /app/backend
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
+    volumes:
+      - ./backend:/app/backend
     command: ["python", "-m", "app.workers.notifications_log_worker"]
     depends_on:
       postgres:
