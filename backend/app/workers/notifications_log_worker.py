@@ -54,8 +54,9 @@ def claim_batch(db: Session, batch_size: int = BATCH_SIZE) -> List[NotificationO
 
 def mark_sent(db: Session, row: NotificationOutbox) -> None:
     row.status = "sent"
+    row.sent_at = datetime.now(timezone.utc)
     row.last_error = None
-    row.next_attempt_at = datetime.now(timezone.utc)  # keep NOT NULL happy
+    row.next_attempt_at = None
     row.updated_at = datetime.now(timezone.utc)
     db.flush()
 

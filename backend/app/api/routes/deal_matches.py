@@ -2,15 +2,17 @@
 
 from uuid import UUID
 from typing import List
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from datetime import datetime, timezone
+
 from app.db.session import get_db
 from app.db.models.signal_run import SignalRun
 from app.db.models.deal_match import DealMatch
 from app.db.models.deal import Deal
+from app.db.models.notification_outbox import NotificationOutbox
 from app.schemas.deal_matches import DealMatchOut
 from app.schemas.deals import DealMatchCreate  # expects {"deal_id": "..."} payload
 
@@ -25,7 +27,7 @@ def list_signal_matches(
     """Return all deals matched to a given signal."""
     matches = (
         db.query(DealMatch)
-        .join(Deal)  # optional if relationship exists; safe to keep
+        .join(Deal)
         .filter(DealMatch.signal_id == signal_id)
         .order_by(DealMatch.matched_at.desc())
         .all()
@@ -40,6 +42,7 @@ def list_signal_matches(
         for match in matches
     ]
 
+
 @router.post("/{signal_id}/matches", response_model=DealMatchOut, status_code=201)
 def create_signal_match(
     signal_id: UUID,
@@ -48,16 +51,14 @@ def create_signal_match(
 ):
     """Create a match between a signal and a deal (idempotent)."""
 
-    # Step 3: start a signal run
-    # NOTE: run_type is REQUIRED (NOT NULL) in your DB schema
     run = SignalRun(
         signal_id=signal_id,
-        run_type="manual",  # pick something simple for now
+        run_type="manual",
         status="running",
         started_at=datetime.now(timezone.utc),
     )
     db.add(run)
-    db.commit()
+    db.flush()
     db.refresh(run)
 
     try:
@@ -71,12 +72,12 @@ def create_signal_match(
         created_new = True
 
         try:
-            db.commit()
+            db.flush()
             db.refresh(match)
         except IntegrityError:
-            # Match already exists (idempotent); fetch it and stamp run_id
             db.rollback()
             created_new = False
+
             match = (
                 db.query(DealMatch)
                 .filter(
@@ -87,18 +88,47 @@ def create_signal_match(
             )
 
             if match is None:
-                raise Exception("IntegrityError occurred but existing DealMatch not found.")
+                raise Exception("IntegrityError but DealMatch not found")
 
             match.run_id = run.id
             db.add(match)
-            db.commit()
+            db.flush()
             db.refresh(match)
 
-        # Step 3: mark run success (use your actual column name: completed_at)
+        # Enqueue outbox row ONLY if this is a new match (same transaction)
+        if created_new:
+            deal = match.deal  # should exist
+
+            subject = f"TripSignal match: {deal.origin}->{deal.destination} ${deal.price_cents/100:.2f} {deal.currency}"
+            body = (
+                f"New deal match\n"
+                f"signal_id: {signal_id}\n"
+                f"match_id: {match.id}\n"
+                f"deal_id: {deal.id}\n"
+                f"route: {deal.origin} -> {deal.destination}\n"
+                f"dates: {deal.depart_date} to {deal.return_date}\n"
+                f"price: {deal.price_cents} {deal.currency}\n"
+                f"provider: {deal.provider}\n"
+                f"link: {deal.deeplink_url}\n"
+                f"created_at: {datetime.now(timezone.utc).isoformat()}\n"
+            )
+
+            db.add(
+                NotificationOutbox(
+                    status="pending",
+                    channel="log",
+                    signal_id=signal_id,
+                    match_id=match.id,
+                    to_email="log",  # required NOT NULL in schema
+                    subject=subject,
+                    body_text=body,
+                    next_attempt_at=datetime.now(timezone.utc),
+                )
+            )
+
+
         run.status = "success"
         run.completed_at = datetime.now(timezone.utc)
-
-        # Optional: if you want run stats to be meaningful
         run.matches_created_count = 1 if created_new else 0
 
         db.add(run)
@@ -111,11 +141,9 @@ def create_signal_match(
         )
 
     except Exception as e:
-        # Step 3: mark run failed
         run.status = "failed"
         run.completed_at = datetime.now(timezone.utc)
         run.error_message = str(e)
         db.add(run)
         db.commit()
         raise
-
