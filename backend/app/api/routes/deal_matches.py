@@ -1,12 +1,13 @@
 """Deal match endpoints."""
 
-from uuid import UUID
+from uuid import UUID, uuid4
 from typing import List
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert
 
 from app.db.session import get_db
 from app.db.models.signal_run import SignalRun
@@ -15,6 +16,7 @@ from app.db.models.deal import Deal
 from app.db.models.notification_outbox import NotificationOutbox
 from app.schemas.deal_matches import DealMatchOut
 from app.schemas.deals import DealMatchCreate  # expects {"deal_id": "..."} payload
+
 
 router = APIRouter(prefix="/signals", tags=["matches"])
 
@@ -51,55 +53,80 @@ def create_signal_match(
 ):
     """Create a match between a signal and a deal (idempotent)."""
 
+    # --- Create run (must exist before writing deal_matches.run_id) ---
     run = SignalRun(
+        id=uuid4(),
         signal_id=signal_id,
         run_type="manual",
         status="running",
         started_at=datetime.now(timezone.utc),
     )
     db.add(run)
-    db.flush()
-    db.refresh(run)
+    db.flush()  # guarantees run.id exists for FK usage
 
     try:
-        match = DealMatch(
-            signal_id=signal_id,
-            deal_id=payload.deal_id,
-            run_id=run.id,
+        # --- Detect whether this match already existed (BEFORE upsert) ---
+        created_new = (
+            db.query(DealMatch.id)
+            .filter(
+                DealMatch.signal_id == signal_id,
+                DealMatch.deal_id == payload.deal_id,
+            )
+            .limit(1)
+            .scalar()
+        ) is None
+
+        # --- UPSERT deal match (no uniqueness errors, ever) ---
+        stmt = (
+            insert(DealMatch)
+            .values(
+                signal_id=signal_id,
+                deal_id=payload.deal_id,
+                run_id=run.id,
+            )
+            .on_conflict_do_update(
+                constraint="uq_deal_matches_signal_deal",
+                set_={"run_id": run.id},
+            )
+            .returning(DealMatch.id)
         )
-        db.add(match)
 
-        created_new = True
+        match_id = db.execute(stmt).scalar_one()
 
-        try:
-            db.flush()
-            db.refresh(match)
-        except IntegrityError:
-            db.rollback()
-            created_new = False
+        match = (
+            db.query(DealMatch)
+            .filter(DealMatch.id == match_id)
+            .first()
+        )
+        if match is None:
+            raise Exception("DealMatch not found after upsert")
 
-            match = (
-                db.query(DealMatch)
-                .filter(
-                    DealMatch.signal_id == signal_id,
-                    DealMatch.deal_id == payload.deal_id,
-                )
-                .first()
+        # --- Notification cooldown enforcement (MVP) ---
+        COOLDOWN_HOURS = 24
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=COOLDOWN_HOURS)
+
+        recent_sent_count = (
+            db.query(func.count(NotificationOutbox.id))
+            .filter(
+                NotificationOutbox.signal_id == signal_id,
+                NotificationOutbox.sent_at.isnot(None),
+                NotificationOutbox.sent_at >= cutoff,
+            )
+            .scalar()
+        )
+
+        can_notify = (recent_sent_count or 0) == 0
+
+        # --- Enqueue notification ONLY if newly created AND cooldown allows ---
+        if created_new and can_notify:
+            deal = match.deal  # relationship should be present
+
+            subject = (
+                f"TripSignal match: "
+                f"{deal.origin}->{deal.destination} "
+                f"${deal.price_cents / 100:.2f} {deal.currency}"
             )
 
-            if match is None:
-                raise Exception("IntegrityError but DealMatch not found")
-
-            match.run_id = run.id
-            db.add(match)
-            db.flush()
-            db.refresh(match)
-
-        # Enqueue outbox row ONLY if this is a new match (same transaction)
-        if created_new:
-            deal = match.deal  # should exist
-
-            subject = f"TripSignal match: {deal.origin}->{deal.destination} ${deal.price_cents/100:.2f} {deal.currency}"
             body = (
                 f"New deal match\n"
                 f"signal_id: {signal_id}\n"
@@ -116,22 +143,21 @@ def create_signal_match(
             db.add(
                 NotificationOutbox(
                     status="pending",
-                    channel="log",
                     signal_id=signal_id,
                     match_id=match.id,
-                    to_email="log",  # required NOT NULL in schema
+                    to_email="log",  # NOT NULL placeholder
                     subject=subject,
                     body_text=body,
                     next_attempt_at=datetime.now(timezone.utc),
                 )
             )
 
-
+        # --- Finalize run ---
         run.status = "success"
         run.completed_at = datetime.now(timezone.utc)
         run.matches_created_count = 1 if created_new else 0
-
         db.add(run)
+
         db.commit()
 
         return DealMatchOut(
@@ -141,9 +167,16 @@ def create_signal_match(
         )
 
     except Exception as e:
-        run.status = "failed"
-        run.completed_at = datetime.now(timezone.utc)
-        run.error_message = str(e)
-        db.add(run)
-        db.commit()
+        # IMPORTANT: session is poisoned after flush/execute failure
+        db.rollback()
+
+        try:
+            run.status = "failed"
+            run.completed_at = datetime.now(timezone.utc)
+            run.error_message = str(e)
+            db.add(run)
+            db.commit()
+        except Exception:
+            db.rollback()
+
         raise
