@@ -64,10 +64,10 @@ def mark_sent(db: Session, row: NotificationOutbox) -> None:
 
 
 def mark_failed(db: Session, row: NotificationOutbox, reason: str) -> None:
-    # Use "dead" so it won't be retried, and keep next_attempt_at NOT NULL happy.
+    # Terminal state: DB requires next_attempt_at = NULL for dead/sent.
     row.status = "dead"
     row.last_error = reason[:2000]
-    row.next_attempt_at = datetime.now(timezone.utc)
+    row.next_attempt_at = None
     row.updated_at = datetime.now(timezone.utc)
     db.flush()
 
@@ -78,7 +78,7 @@ def mark_retry(db: Session, row: NotificationOutbox, err: Exception) -> None:
 
     if (row.attempts or 0) >= MAX_ATTEMPTS:
         row.status = "dead"
-        row.next_attempt_at = datetime.now(timezone.utc)  # keep NOT NULL happy
+        row.next_attempt_at = None  # terminal state
         db.flush()
         return
 
