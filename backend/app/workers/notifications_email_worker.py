@@ -124,11 +124,28 @@ def main(once: bool = False) -> None:
                         db.commit()
                         logger.info("sent email outbox row id=%s to=%s", row_id, row.to_email)
                     except EmailSendError as e:
-                        # If email is disabled, we do NOT want infinite retries.
                         db.rollback()
-                        logger.warning("email permanently blocked: id=%s err=%s", row_id, str(e))
-                        mark_failed(db, row, str(e))
+                        msg = str(e)
+
+                        if "Email disabled by feature flag" in msg:
+                            # Permanent block when feature flag is off
+                            logger.warning(
+                                "email permanently blocked: id=%s err=%s",
+                                row_id,
+                                msg,
+                            )
+                            mark_failed(db, row, msg)
+                        else:
+                            # SMTP / network / config errors should be retryable
+                            logger.warning(
+                                "email send failed (will retry): id=%s err=%s",
+                                row_id,
+                                msg,
+                            )
+                            mark_retry(db, row, e)
+
                         db.commit()
+
                     except Exception as e:
                         db.rollback()
                         logger.exception("row processing failed: id=%s", row_id)
