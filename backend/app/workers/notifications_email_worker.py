@@ -11,6 +11,44 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.db.models.notification_outbox import NotificationOutbox
 from app.notifications.email_sender import send_email, EmailSendError
+def enqueue_admin_alert(db: Session, failed_row: NotificationOutbox):
+    """
+    Enqueue a log-only admin alert when a notification becomes terminal-failed.
+    """
+    try:
+        # Prevent infinite loops (never alert on admin alerts)
+        if failed_row.to == "admin":
+            return
+
+        admin_email = settings.admin_email or "ADMIN_EMAIL_NOT_SET"
+
+        subject = f"ADMIN ALERT: notification failed ({failed_row.id})"
+        body = (
+            f"ADMIN_EMAIL: {admin_email}\n\n"
+            f"id: {failed_row.id}\n"
+            f"channel: {failed_row.channel}\n"
+            f"to: {failed_row.to}\n"
+            f"subject: {failed_row.subject}\n"
+            f"attempts: {failed_row.attempts}\n"
+            f"last_error: {failed_row.last_error}\n"
+        )
+
+        alert_row = NotificationOutbox(
+            status="pending",
+            channel="log",
+            to="admin",
+            subject=subject,
+            body=body,
+            signal_id=failed_row.signal_id,
+            match_id=failed_row.match_id,
+        )
+
+        db.add(alert_row)
+        db.flush()
+
+    except Exception as e:
+        logger.error(f"[ADMIN ALERT FAILED] {e}")
+
 
 logger = logging.getLogger("notifications_email_worker")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -66,6 +104,7 @@ def mark_sent(db: Session, row: NotificationOutbox) -> None:
 def mark_failed(db: Session, row: NotificationOutbox, reason: str) -> None:
     # Terminal state: DB requires next_attempt_at = NULL for dead/sent.
     row.status = "dead"
+    enqueue_admin_alert(db, row)
     row.last_error = reason[:2000]
     row.next_attempt_at = None
     row.updated_at = datetime.now(timezone.utc)
