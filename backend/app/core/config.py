@@ -17,6 +17,17 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str = "postgres"
     POSTGRES_PORT: int = 5432
 
+    # Notifications / Email (MVP)
+    ENABLE_EMAIL_NOTIFICATIONS: bool = False
+
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_USE_TLS: bool = True  # STARTTLS
+    SMTP_FROM_EMAIL: str | None = None
+    SMTP_FROM_NAME: str = "TripSignal"
+
     @property
     def database_url(self) -> str:
         """Construct database URL from components."""
