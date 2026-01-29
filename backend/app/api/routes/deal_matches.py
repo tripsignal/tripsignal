@@ -3,7 +3,7 @@
 from uuid import UUID, uuid4
 from typing import List
 from datetime import datetime, timezone, timedelta
-
+import os
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -140,17 +140,32 @@ def create_signal_match(
                 f"created_at: {datetime.now(timezone.utc).isoformat()}\n"
             )
 
+            email_enabled = os.getenv("ENABLE_EMAIL_NOTIFICATIONS", "false").lower() == "true"
+            channel = "email" if email_enabled else "log"
+
+            to_email = "log"
+            if email_enabled:
+                # Temporary: until user emails are wired, send to a single test recipient from env
+                to_email = os.getenv("NOTIFICATIONS_TEST_TO_EMAIL", "").strip()
+                if not to_email:
+                    # Email enabled but no recipient → safely fall back to log
+                    channel = "log"
+                    to_email = "log"
+
             db.add(
                 NotificationOutbox(
                     status="pending",
+                    channel=channel,
                     signal_id=signal_id,
                     match_id=match.id,
-                    to_email="log",  # NOT NULL placeholder
+                    to_email=to_email,
                     subject=subject,
                     body_text=body,
                     next_attempt_at=datetime.now(timezone.utc),
                 )
             )
+
+
 
         # --- Finalize run ---
         run.status = "success"
