@@ -71,7 +71,7 @@ services:
       POSTGRES_PORT: "5432"
     volumes:
       - ./backend:/app/backend
-    command: ["python", "-m", "app.workers.notifications_email_worker"]
+    command: ["python", "-m", "app.workers.notifications_worker_runner"]
     depends_on:
       postgres:
         condition: service_healthy

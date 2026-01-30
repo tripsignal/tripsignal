@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, EmailStr
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -53,3 +54,39 @@ def enqueue_test_email(
     db.commit()
 
     return {"id": str(row.id), "channel": channel, "to_email": to_email}
+@router.get("/debug/outbox")
+def debug_outbox(
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    admin_token = os.getenv("ADMIN_TOKEN", "").strip()
+    if not admin_token:
+        raise HTTPException(status_code=500, detail="ADMIN_TOKEN not configured")
+
+    if not x_admin_token or x_admin_token != admin_token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    limit = max(1, min(limit, 100))
+
+    rows = db.execute(
+        select(NotificationOutbox).order_by(NotificationOutbox.created_at.desc()).limit(limit)
+    ).scalars().all()
+
+    return [
+        {
+            "id": str(r.id),
+            "channel": r.channel,
+            "status": r.status,
+            "attempts": r.attempts,
+            "to_email": r.to_email,
+            "subject": r.subject,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "sent_at": r.sent_at.isoformat() if r.sent_at else None,
+            "next_attempt_at": r.next_attempt_at.isoformat() if r.next_attempt_at else None,
+            "last_error": r.last_error,
+            "signal_id": str(r.signal_id) if r.signal_id else None,
+            "match_id": str(r.match_id) if r.match_id else None,
+        }
+        for r in rows
+    ]

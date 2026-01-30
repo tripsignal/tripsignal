@@ -144,6 +144,7 @@ def process_row(row: NotificationOutbox) -> None:
     subject = (row.subject or "").strip()
     body = row.body_text or ""
 
+
     # SAFE MODE (default): don't touch SMTP
     if not settings.ENABLE_EMAIL_NOTIFICATIONS:
         logger.info(
@@ -197,8 +198,8 @@ def main(once: bool = False) -> None:
 
                     except Exception as e:
                         db.rollback()
-                        logger.exception("row processing failed: id=%s", row_id)
-                        mark_retry(db, row, e)
+                        logger.exception("row processing failed (hard fail): id=%s", row_id)
+                        mark_failed(db, row, str(e))
                         db.commit()
 
         except Exception:
