@@ -1,7 +1,7 @@
 """add user_id to signals
 
 Revision ID: 7320e9169655
-Revises: 80a71fa9e1aa
+Revises: cf2b18c43f3b
 Create Date: 2026-01-30
 
 This migration intentionally ONLY adds signals.user_id (FK to users.id) + index.
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "7320e9169655"
-down_revision: Union[str, None] = "80a71fa9e1aa"
+down_revision: Union[str, None] = "cf2b18c43f3b"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

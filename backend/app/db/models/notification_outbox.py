@@ -20,7 +20,7 @@ class NotificationOutbox(Base):
     last_error = Column(Text, nullable=True)
 
     signal_id = Column(UUID(as_uuid=True), nullable=False)
-    match_id = Column(UUID(as_uuid=True), nullable=False)
+    match_id = Column(UUID(as_uuid=True), nullable=True)
 
     channel = Column(String(20), nullable=False, server_default="log")
 
