@@ -8,7 +8,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models.deal_match import DealMatch
+from app.db.models.plan import Plan
 from app.db.models.signal import Signal
+from app.db.models.subscription import Subscription
 from app.db.session import get_db
 from app.schemas.signals import (
     SignalCreate,
@@ -16,6 +18,10 @@ from app.schemas.signals import (
     SignalStatus,
     SignalUpdate,
 )
+
+# NOTE: This assumes your project has an auth dependency that provides the current user.
+# If your app names this differently, we’ll adjust after you paste the traceback.
+from app.api.deps import get_current_user  # <-- if this import fails, we'll fix in the next step
 
 
 router = APIRouter(prefix="/api/signals", tags=["signals"])
@@ -55,8 +61,39 @@ def _signal_to_out(signal: Signal) -> SignalOut:
 async def create_signal(
     signal_data: SignalCreate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ) -> SignalOut:
     """Create a new signal."""
+
+    # --- Plan enforcement: max signals per plan ---
+    sub = db.execute(
+        select(Subscription).where(
+            Subscription.user_id == current_user.id,
+            Subscription.status == "active",
+        )
+    ).scalar_one_or_none()
+
+    if not sub:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No active subscription. Upgrade required to create signals.",
+        )
+
+    plan = db.get(Plan, sub.plan_id)
+    max_signals = plan.max_active_signals
+
+    current_count = db.execute(
+    	select(func.count()).select_from(Signal).where(Signal.user_id == current_user.id)
+    ).scalar_one()
+
+    if current_count >= max_signals:
+    	raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"Plan limit reached: max {max_signals} active signals.",
+    	)
+
+    # --- End plan enforcement ---
+
     # Convert Pydantic models to dict for JSONB storage
     config_dict = signal_data.model_dump()
 
@@ -66,6 +103,7 @@ async def create_signal(
 
     # Create database record
     signal = Signal(
+        user_id=current_user.id,  # required for plan enforcement + ownership
         name=signal_data.name,
         status="active",
         departure_airports=departure_airports,
@@ -100,9 +138,7 @@ async def list_signals(
     out: List[SignalOut] = []
     for signal, match_count in rows:
         s_out = _signal_to_out(signal)
-        out.append(
-            s_out.model_copy(update={"match_count": int(match_count)})
-        )
+        out.append(s_out.model_copy(update={"match_count": int(match_count)}))
 
     return out
 
