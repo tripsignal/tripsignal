@@ -1,5 +1,13 @@
 """Application configuration from environment variables."""
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator
+
+def _clean_str(value: str | None) -> str | None:
+    if value is None:
+        return None
+    # Replace non-breaking spaces with normal spaces
+    return value.replace("\u00a0", " ")
+
 
 
 class Settings(BaseSettings):
@@ -22,11 +30,28 @@ class Settings(BaseSettings):
 
     SMTP_HOST: str | None = None
     SMTP_PORT: int = 587
-    SMTP_USERNAME: str | None = None
-    SMTP_PASSWORD: str | None = None
+
+    SMTP_USERNAME: str | None = Field(default=None, alias="SMTP_USERNAME")
+    SMTP_PASSWORD: str | None = Field(default=None, alias="SMTP_PASSWORD")
+
     SMTP_USE_TLS: bool = True  # STARTTLS
-    SMTP_FROM_EMAIL: str | None = None
-    SMTP_FROM_NAME: str = "TripSignal"
+
+    SMTP_FROM_EMAIL: str | None = Field(default=None, alias="SMTP_FROM_EMAIL")
+    SMTP_FROM_NAME: str = Field(default="TripSignal", alias="SMTP_FROM_NAME")
+    admin_email: str | None = None
+
+    @field_validator(
+    	"SMTP_USERNAME",
+    	"SMTP_PASSWORD",
+    	"SMTP_FROM_EMAIL",
+    	"SMTP_FROM_NAME",
+    	mode="before",
+    )
+    @classmethod
+    def clean_smtp_strings(cls, v):
+    	return _clean_str(v)
+
+
 
     @property
     def database_url(self) -> str:
