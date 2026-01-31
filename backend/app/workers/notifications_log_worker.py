@@ -22,7 +22,7 @@ def claim_log_ids(db: Session, limit: int) -> list:
         text("""
         SELECT id
         FROM notifications_outbox
-        WHERE status = 'queued'
+        WHERE status = 'pending'
           AND channel = 'log'
           AND next_attempt_at <= now()
         ORDER BY created_at

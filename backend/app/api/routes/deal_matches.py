@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 from typing import List
 from datetime import datetime, timezone, timedelta
 import os
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert
@@ -63,6 +63,16 @@ def create_signal_match(
     )
     db.add(run)
     db.flush()  # guarantees run.id exists for FK usage
+
+    # --- Validate deal_id exists (avoid FK 500; return clean 400) ---
+    deal_exists = (
+        db.query(Deal.id)
+        .filter(Deal.id == payload.deal_id)
+        .scalar()
+    )
+    if deal_exists is None:
+        raise HTTPException(status_code=400, detail=f"deal_id does not exist: {payload.deal_id}")
+
 
     try:
         # --- Detect whether this match already existed (BEFORE upsert) ---
