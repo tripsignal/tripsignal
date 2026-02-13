@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_current_user
 from app.db.models.deal_match import DealMatch
 from app.db.models.plan import Plan
 from app.db.models.signal import Signal
@@ -18,11 +19,6 @@ from app.schemas.signals import (
     SignalStatus,
     SignalUpdate,
 )
-
-# NOTE: This assumes your project has an auth dependency that provides the current user.
-# If your app names this differently, we’ll adjust after you paste the traceback.
-from app.api.deps import get_current_user  # <-- if this import fails, we'll fix in the next step
-
 
 router = APIRouter(prefix="/api/signals", tags=["signals"])
 
@@ -40,7 +36,46 @@ def _deep_merge_dict(base: dict, update: dict) -> dict:
 
 def _signal_to_out(signal: Signal) -> SignalOut:
     """Convert Signal model to SignalOut schema."""
-    config = signal.config
+    config = signal.config or {}
+
+    # --- Departure (required: mode) ---
+    dep = config.get("departure") or {}
+    dep.setdefault("mode", "multiple")  # enum: single | multiple | any
+    dep.setdefault("airports", [])
+    config["departure"] = dep
+
+    # --- Destination (required: mode + regions enum list) ---
+    dest = config.get("destination") or {}
+    dest.setdefault("mode", "multiple")  # enum: single | multiple | any
+    dest.setdefault("regions", ["mexico"])  # enum values: mexico, dominican_republic, cuba, jamaica
+    config["destination"] = dest
+
+    # --- Travel window (required: start_month, end_month) ---
+    tw = config.get("travel_window") or {}
+    tw.setdefault("start_month", "2026-02")  # must be YYYY-MM
+    tw.setdefault("end_month", "2026-04")    # must be YYYY-MM
+    config["travel_window"] = tw
+
+    # --- Travellers ---
+    trav = config.get("travellers") or {}
+    trav.setdefault("adults", 2)
+    trav.setdefault("children", 0)
+    config["travellers"] = trav
+
+    # --- Budget (required: target_pp) ---
+    bud = config.get("budget") or {}
+    bud.setdefault("target_pp", 2000)
+    config["budget"] = bud
+
+    # --- Notifications ---
+    notif = config.get("notifications") or {}
+    notif.setdefault("channel", "log")
+    config["notifications"] = notif
+
+    # --- Preferences ---
+    prefs = config.get("preferences") or {}
+    config["preferences"] = prefs
+
     return SignalOut(
         id=signal.id,
         name=signal.name,
@@ -83,14 +118,20 @@ async def create_signal(
     max_signals = plan.max_active_signals
 
     current_count = db.execute(
-    	select(func.count()).select_from(Signal).where(Signal.user_id == current_user.id)
-    ).scalar_one()
+    select(func.count())
+    .select_from(Signal)
+    .where(
+        Signal.user_id == current_user.id,
+        Signal.status == "active",
+    )
+).scalar_one()
+
 
     if current_count >= max_signals:
-    	raise HTTPException(
+        raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=f"Plan limit reached: max {max_signals} active signals.",
-    	)
+        )
 
     # --- End plan enforcement ---
 
@@ -103,7 +144,7 @@ async def create_signal(
 
     # Create database record
     signal = Signal(
-        user_id=current_user.id,  # required for plan enforcement + ownership
+        user_id=current_user.id,
         name=signal_data.name,
         status="active",
         departure_airports=departure_airports,
@@ -116,19 +157,22 @@ async def create_signal(
     db.refresh(signal)
 
     return _signal_to_out(signal)
-
-
 @router.get("", response_model=List[SignalOut])
 async def list_signals(
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ) -> List[SignalOut]:
-    """List all signals (with match counts)."""
+    """List current user's signals (with match counts)."""
+    print(f"[LIST_SIGNALS DEBUG] Current user ID: {current_user.id}")
+    print(f"[LIST_SIGNALS DEBUG] Current user clerk_id: {current_user.clerk_id}")
+    
     stmt = (
         select(
             Signal,
             func.count(DealMatch.id).label("match_count"),
         )
         .outerjoin(DealMatch, DealMatch.signal_id == Signal.id)
+        .where(Signal.user_id == current_user.id)
         .group_by(Signal.id)
         .order_by(Signal.created_at.desc())
     )
@@ -142,14 +186,21 @@ async def list_signals(
 
     return out
 
+    return out
+
 
 @router.get("/{signal_id}", response_model=SignalOut)
 async def get_signal(
     signal_id: UUID,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ) -> SignalOut:
-    """Get a signal by ID."""
-    signal = db.query(Signal).filter(Signal.id == signal_id).first()
+    """Get a signal by ID (must belong to current user)."""
+    signal = (
+        db.query(Signal)
+        .filter(Signal.id == signal_id, Signal.user_id == current_user.id)
+        .first()
+    )
     if not signal:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -163,9 +214,14 @@ async def update_signal(
     signal_id: UUID,
     signal_update: SignalUpdate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ) -> SignalOut:
-    """Update a signal."""
-    signal = db.query(Signal).filter(Signal.id == signal_id).first()
+    """Update a signal (must belong to current user)."""
+    signal = (
+        db.query(Signal)
+        .filter(Signal.id == signal_id, Signal.user_id == current_user.id)
+        .first()
+    )
     if not signal:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -181,18 +237,16 @@ async def update_signal(
     # Deep merge config
     update_dict = signal_update.model_dump(exclude_unset=True, exclude={"name", "status"})
     if update_dict:
-        signal.config = _deep_merge_dict(signal.config, update_dict)
+        signal.config = _deep_merge_dict(signal.config or {}, update_dict)
 
         # Update mirrored columns if departure/destination changed
-        # Use merged config to get final values
         if "departure" in update_dict:
-            merged_departure = signal.config["departure"]
+            merged_departure = (signal.config or {}).get("departure") or {}
             departure_airports = [code.upper() for code in merged_departure.get("airports", [])]
             signal.departure_airports = departure_airports
 
         if "destination" in update_dict:
-            merged_destination = signal.config["destination"]
-            # Extract region values from the merged config
+            merged_destination = (signal.config or {}).get("destination") or {}
             destination_regions = []
             for region in merged_destination.get("regions", []):
                 if isinstance(region, str):

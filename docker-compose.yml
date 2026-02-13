@@ -41,6 +41,20 @@ services:
     restart: unless-stopped
     command: ["uvicorn", "app.main:app", "--app-dir", "/app/backend", "--host", "0.0.0.0", "--port", "8000"]
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    container_name: tripsignal-frontend
+    env_file:
+      - ./frontend/.env.production
+    networks:
+      - tripsignal-network
+    restart: unless-stopped
+    expose:
+      - "3000"
+    depends_on:
+      - api
 
   caddy:
     image: caddy:2

@@ -9,3 +9,4 @@ class User(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True)
     email = Column(String, nullable=True)
+    clerk_id = Column(String, unique=True, nullable=True, index=True)

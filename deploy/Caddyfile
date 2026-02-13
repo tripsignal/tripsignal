@@ -1,4 +1,3 @@
-
 {
   admin off
   email hello@tripsignal.ca
@@ -7,7 +6,7 @@
 tripsignal.ca {
   encode zstd gzip
 
-  # Basic security headers (safe defaults)
+  # Basic security headers
   header {
     Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
     X-Content-Type-Options "nosniff"
@@ -15,15 +14,17 @@ tripsignal.ca {
     Referrer-Policy "no-referrer"
   }
 
-  handle {
+  # API routes go to backend
+  handle /api/* {
     reverse_proxy api:8000
+  }
+
+  # Everything else goes to frontend
+  handle {
+    reverse_proxy frontend:3000
   }
 }
 
 www.tripsignal.ca {
   redir https://tripsignal.ca{uri} permanent
-}
-
-localhost {
-  reverse_proxy api:8000
 }

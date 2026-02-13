@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     PROJECT_NAME: str = "TripSignal"
     DEBUG: bool = False
+    DEV_API_TOKEN: str | None = None
+
 
     # Database Settings
     POSTGRES_USER: str = "postgres"
