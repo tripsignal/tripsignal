@@ -5,6 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.logging import setup_logging
 from app.api.routes import health
 from app.api.routes.deal_matches import router as deal_matches_router
+from app.api.routes.billing import router as billing_router
+from app.api.routes.admin import router as admin_router
 from app.api.signals import router as signals_router
 
 # Setup logging
@@ -17,10 +19,10 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS middleware (configure as needed)
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -30,6 +32,8 @@ app.add_middleware(
 app.include_router(health.router, tags=["health"])
 app.include_router(signals_router)
 app.include_router(deal_matches_router, prefix="/api")
+app.include_router(billing_router)
+app.include_router(admin_router)
 
 @app.get("/")
 async def root():
