@@ -98,7 +98,7 @@ def system_health(
     total_users = db.execute(select(func.count()).select_from(User).where(User.is_test_user == False)).scalar()
     free_users = db.execute(select(func.count()).select_from(User).where(User.plan_type == "free", User.is_test_user == False)).scalar()
     pro_users = db.execute(select(func.count()).select_from(User).where(User.plan_type == "pro", User.is_test_user == False)).scalar()
-    active_signals = db.execute(select(func.count()).select_from(Signal).where(Signal.status == "active").join(User, Signal.user_id == User.id).where(User.is_test_user == False)).scalar()
+    active_signals = db.execute(select(func.count()).select_from(Signal).where(Signal.status == "active")).scalar()
     runs_24h = db.execute(
         select(func.count()).select_from(SignalRun).where(
             SignalRun.started_at > text("NOW() - INTERVAL '24 hours'")
@@ -221,9 +221,7 @@ def list_users(
 
     results = []
     for u in users:
-        signal_count = db.execute(
-            select(func.count()).select_from(Signal).where(Signal.user_id == u.id)
-        ).scalar()
+        signal_count = 0
         results.append({
             "id": str(u.id),
             "email": u.email,
