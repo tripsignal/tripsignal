@@ -194,6 +194,25 @@ def list_signals(
     return {"signals": results, "total": total}
 
 
+
+@router.get("/users/by-clerk-id/{clerk_id}")
+def get_user_by_clerk_id(
+    clerk_id: str,
+    db: Session = Depends(get_db),
+):
+    user = db.execute(select(User).where(User.clerk_id == clerk_id)).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "clerk_id": user.clerk_id,
+        "plan_type": user.plan_type,
+        "plan_status": user.plan_status,
+        "trial_ends_at": user.trial_ends_at.isoformat() if user.trial_ends_at else None,
+        "subscription_current_period_end": user.subscription_current_period_end.isoformat() if user.subscription_current_period_end else None,
+    }
+
 @router.get("/users")
 def list_users(
     page: int = 1,
@@ -277,6 +296,11 @@ def set_user_plan(
     user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if plan == "free" and user.stripe_subscription_id and user.stripe_subscription_status == "active":
+        raise HTTPException(
+            status_code=400,
+            detail="This user has an active Stripe subscription. Cancel it in Stripe first, then downgrade here."
+        )
     user.plan_type = plan
     db.commit()
     db.refresh(user)
