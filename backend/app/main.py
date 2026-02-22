@@ -7,6 +7,7 @@ from app.api.routes import health
 from app.api.routes.deal_matches import router as deal_matches_router
 from app.api.routes.billing import router as billing_router
 from app.api.routes.admin import router as admin_router
+from app.api.routes.users import router as users_router
 from app.api.signals import router as signals_router
 
 # Setup logging
@@ -34,6 +35,7 @@ app.include_router(signals_router)
 app.include_router(deal_matches_router, prefix="/api")
 app.include_router(billing_router)
 app.include_router(admin_router)
+app.include_router(users_router)
 
 @app.get("/")
 async def root():
