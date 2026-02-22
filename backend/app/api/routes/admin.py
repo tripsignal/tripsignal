@@ -263,6 +263,46 @@ def toggle_test_user(
     }
 
 
+
+@router.patch("/users/{user_id}/set-plan")
+def set_user_plan(
+    user_id: str,
+    plan: str,
+    db: Session = Depends(get_db),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    verify_admin(x_admin_token)
+    if plan not in ("free", "pro"):
+        raise HTTPException(status_code=400, detail="Invalid plan")
+    user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.plan_type = plan
+    db.commit()
+    db.refresh(user)
+    print(f"[ADMIN] set_plan: {user.email} → plan_type={user.plan_type}")
+    return {"id": str(user.id), "email": user.email, "plan_type": user.plan_type, "plan_status": user.plan_status}
+
+
+@router.patch("/users/{user_id}/set-status")
+def set_user_status(
+    user_id: str,
+    status: str,
+    db: Session = Depends(get_db),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    verify_admin(x_admin_token)
+    if status not in ("active", "disabled"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.plan_status = status
+    db.commit()
+    db.refresh(user)
+    print(f"[ADMIN] set_status: {user.email} → plan_status={user.plan_status}")
+    return {"id": str(user.id), "email": user.email, "plan_type": user.plan_type, "plan_status": user.plan_status}
+
 @router.get("/notifications")
 def list_notifications(
     page: int = 1,
