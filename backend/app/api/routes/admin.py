@@ -160,7 +160,7 @@ def list_signals(
 
     rows = db.execute(
         select(Signal, User.email, User.plan_type)
-        .join(User, Signal.user_id == User.id)
+        
         .order_by(Signal.created_at.desc())
         .limit(limit)
         .offset(offset)
@@ -343,13 +343,13 @@ def list_notifications(
     query = (
         select(NotificationOutbox, User.email)
         .join(Signal, NotificationOutbox.signal_id == Signal.id)
-        .join(User, Signal.user_id == User.id)
+        
     )
     count_query = (
         select(func.count())
         .select_from(NotificationOutbox)
         .join(Signal, NotificationOutbox.signal_id == Signal.id)
-        .join(User, Signal.user_id == User.id)
+        
     )
 
     if status:
