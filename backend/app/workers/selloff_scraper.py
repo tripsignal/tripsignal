@@ -318,17 +318,27 @@ def match_deal_to_signals(db: Session, deal: Deal, deal_meta: dict) -> list[Sign
     return matches
 
 
-def send_alert_email(user_email: str, signal: Signal, deal: Deal, deal_meta: dict) -> None:
+def send_digest_email(user_email: str, signal: Signal, new_deals: list) -> None:
+    """Send a single digest email for a signal with all new matches."""
     if not RESEND_API_KEY:
         logger.warning("No RESEND_API_KEY set, skipping email")
         return
 
-    config = signal.config
-    adults = config.get("travellers", {}).get("adults", 2)
-    price_pp = deal.price_cents // 100 // adults
-    total_price = deal.price_cents // 100
+    if not new_deals:
+        return
 
-    subject = f"Deal alert: {deal_meta['destination_str']} from ${total_price} — {deal_meta['hotel_name']}"
+    count = len(new_deals)
+    best_price = min(d.price_cents for d in new_deals) // 100
+    price_drops = [d for d in new_deals if getattr(d, "_price_dropped", False)]
+
+    if count == 1:
+        subject = f"New deal found for your {signal.name} signal — from ${best_price:,}"
+    else:
+        subject = f"{count} new deals found for your {signal.name} signal — from ${best_price:,}"
+
+    drop_line = ""
+    if price_drops:
+        drop_line = f'<p style="margin: 0 0 16px; font-size: 14px; color: #15803d;">&#8595; {len(price_drops)} deal{"s" if len(price_drops) > 1 else ""} dropped in price since your last check.</p>'
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -340,45 +350,25 @@ def send_alert_email(user_email: str, signal: Signal, deal: Deal, deal_meta: dic
   </div>
 
   <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px;">
-    <p style="margin: 0; font-size: 13px; color: #15803d; font-weight: 500;">Deal match found for signal: {signal.name}</p>
+    <p style="margin: 0; font-size: 13px; color: #15803d; font-weight: 500;">
+      {count} new deal{"s" if count > 1 else ""} found for your signal: {signal.name}
+    </p>
   </div>
 
-  <h1 style="font-size: 22px; font-weight: 600; margin: 0 0 4px;">{deal_meta['hotel_name']}</h1>
-  <p style="font-size: 15px; color: #666; margin: 0 0 24px;">{deal_meta['destination_str']}</p>
+  <h1 style="font-size: 22px; font-weight: 600; margin: 0 0 8px;">Best price found</h1>
+  <p style="font-size: 32px; font-weight: 700; margin: 0 0 8px; color: #111;">${best_price:,} <span style="font-size: 16px; font-weight: 400; color: #666;">CAD</span></p>
+  <p style="font-size: 14px; color: #666; margin: 0 0 24px;">Across {count} new matching deal{"s" if count > 1 else ""}.</p>
 
-  <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
-    <tr>
-      <td style="padding: 10px 0; border-bottom: 1px solid #eee; font-size: 14px; color: #666;">Departure</td>
-      <td style="padding: 10px 0; border-bottom: 1px solid #eee; font-size: 14px; font-weight: 500; text-align: right;">{deal.depart_date.strftime('%B %d, %Y')}</td>
-    </tr>
-    <tr>
-      <td style="padding: 10px 0; border-bottom: 1px solid #eee; font-size: 14px; color: #666;">Duration</td>
-      <td style="padding: 10px 0; border-bottom: 1px solid #eee; font-size: 14px; font-weight: 500; text-align: right;">{deal_meta['duration_days']} nights</td>
-    </tr>
-    <tr>
-      <td style="padding: 10px 0; border-bottom: 1px solid #eee; font-size: 14px; color: #666;">Travellers</td>
-      <td style="padding: 10px 0; border-bottom: 1px solid #eee; font-size: 14px; font-weight: 500; text-align: right;">{adults} adults</td>
-    </tr>
-    <tr>
-      <td style="padding: 10px 0; border-bottom: 1px solid #eee; font-size: 14px; color: #666;">Price per person</td>
-      <td style="padding: 10px 0; border-bottom: 1px solid #eee; font-size: 14px; font-weight: 500; text-align: right;">${price_pp:,} CAD</td>
-    </tr>
-    <tr>
-      <td style="padding: 10px 0; font-size: 16px; font-weight: 600;">Total price</td>
-      <td style="padding: 10px 0; font-size: 20px; font-weight: 700; text-align: right; color: #111;">${total_price:,} CAD</td>
-    </tr>
-  </table>
+  {drop_line}
 
-  {f'<div style="margin-bottom: 24px;"><span style="background: #bef564; border-radius: 20px; padding: 4px 10px; font-size: 13px; font-weight: 600; color: #0f2541;">Save up to {deal_meta["discount_pct"]}%</span></div>' if deal_meta.get('discount_pct') else ''}
-
-  <a href="{deal.deeplink_url}" style="display: inline-block; background: #111; color: #fff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-size: 14px; font-weight: 500; margin-bottom: 32px;">
-    View this deal →
+  <a href="https://tripsignal.ca/signals" style="display: inline-block; background: #111; color: #fff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-size: 14px; font-weight: 500; margin-bottom: 32px;">
+    Review your deals &rarr;
   </a>
 
   <hr style="border: none; border-top: 1px solid #eee; margin: 32px 0;">
 
   <p style="font-size: 12px; color: #999; margin: 0;">
-    You're receiving this because your Trip Signal signal "{signal.name}" matched a deal.<br>
+    You're receiving this because your Trip Signal signal "{signal.name}" found new matches.<br>
     Manage your signals at <a href="https://tripsignal.ca/signals" style="color: #999;">tripsignal.ca/signals</a>
   </p>
 
@@ -402,9 +392,9 @@ def send_alert_email(user_email: str, signal: Signal, deal: Deal, deal_meta: dic
             timeout=10,
         )
         resp.raise_for_status()
-        logger.info("Alert email sent to %s for deal %s", user_email, deal.id)
+        logger.info("Digest email sent to %s — %d deals for signal %s", user_email, count, signal.id)
     except Exception as e:
-        logger.error("Failed to send alert email to %s: %s", user_email, e)
+        logger.error("Failed to send digest email to %s: %s", user_email, e)
 
 
 def run_matching_only(db: Session) -> None:
@@ -466,6 +456,9 @@ def run_scraper(once: bool = True) -> None:
                 deals = fetch_deals_from_page(url)
                 logger.info("Found %d deals on %s", len(deals), url)
 
+                # Collect new matches per signal for digest emails
+                signal_new_deals: dict = {}
+
                 with next(get_db()) as db:
                     for deal_meta in deals:
                         try:
@@ -494,29 +487,53 @@ def run_scraper(once: bool = True) -> None:
                                 total_matches += 1
                                 logger.info("Match: %s → %s %s $%d", signal.name, deal.destination, deal.depart_date, deal.price_cents // 100)
 
-                                user_email = signal.config.get("notifications", {}).get("email", "")
-
-                                # Check plan — free users get at most 1 alert per signal per 24 hours
-                                user = db.execute(
-                                    select(User).where(User.email == user_email)
-                                ).scalar_one_or_none()
-                                is_pro = user and user.plan_type == "pro"
-
-                                if not is_pro:
-                                    recent = db.execute(
-                                        select(DealMatch).where(
-                                            DealMatch.signal_id == signal.id,
-                                            DealMatch.created_at >= datetime.now(timezone.utc) - timedelta(hours=24)
-                                        ).order_by(DealMatch.created_at.desc())
-                                    ).first()
-                                    if recent:
-                                        logger.info("Skipping alert for free user signal %s — already alerted in last 24h", signal.id)
-                                        continue
-
-                                send_alert_email(user_email, signal, deal, deal_meta)
+                                # Collect for digest
+                                key = signal.id
+                                if key not in signal_new_deals:
+                                    signal_new_deals[key] = {"signal": signal, "deals": [], "email": signal.config.get("notifications", {}).get("email", ""), "user": None}
+                                signal_new_deals[key]["deals"].append(deal)
 
                         except Exception as e:
                             logger.error("Error processing deal: %s", e)
+                            continue
+
+                    # Send one digest email per signal
+                    for key, data in signal_new_deals.items():
+                        try:
+                            user_email = data["email"]
+                            signal = data["signal"]
+                            new_deals = data["deals"]
+
+                            if not user_email:
+                                continue
+
+                            user = db.execute(
+                                select(User).where(User.email == user_email)
+                            ).scalar_one_or_none()
+
+                            is_pro = user and user.plan_type == "pro"
+                            is_trial_active = user and user.plan_status == "active" and user.plan_type == "free"
+
+                            if not is_pro and not is_trial_active:
+                                logger.info("Skipping digest for expired/inactive user %s", user_email)
+                                continue
+
+                            if not is_pro:
+                                # Free trial: max 1 digest per signal per 24 hours
+                                recent = db.execute(
+                                    select(DealMatch).where(
+                                        DealMatch.signal_id == signal.id,
+                                        DealMatch.matched_at >= datetime.now(timezone.utc) - timedelta(hours=24)
+                                    ).order_by(DealMatch.matched_at.desc())
+                                ).first()
+                                if recent and recent.matched_at < datetime.now(timezone.utc) - timedelta(minutes=5):
+                                    logger.info("Skipping digest for free user signal %s — already sent in last 24h", signal.id)
+                                    continue
+
+                            send_digest_email(user_email, signal, new_deals)
+
+                        except Exception as e:
+                            logger.error("Error sending digest for signal %s: %s", key, e)
                             continue
 
                 time.sleep(SCRAPE_DELAY_SECONDS)
