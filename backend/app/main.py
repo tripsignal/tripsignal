@@ -37,6 +37,21 @@ app.include_router(billing_router)
 app.include_router(admin_router)
 app.include_router(users_router)
 
+_next_scan_at: float | None = None
+
+@app.post("/api/system/next-scan")
+async def set_next_scan(payload: dict):
+    """Called by scraper to register next scan time."""
+    global _next_scan_at
+    _next_scan_at = payload.get("next_scan_at")
+    return {"ok": True}
+
+@app.get("/api/system/next-scan")
+async def next_scan():
+    """Return the next scheduled scrape time."""
+    return {"next_scan_at": _next_scan_at, "available": _next_scan_at is not None}
+
+
 @app.get("/")
 async def root():
     """Root endpoint."""

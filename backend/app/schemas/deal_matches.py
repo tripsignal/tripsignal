@@ -37,6 +37,7 @@ class DealOut(BaseModel):
 class DealMatchOut(BaseModel):
     id: UUID
     matched_at: datetime
+    is_favourite: bool = False
     deal: DealOut
 
     class Config:

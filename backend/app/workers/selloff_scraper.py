@@ -1,6 +1,8 @@
 """SellOff Vacations scraper and signal matcher."""
 import logging
 import os
+import random
+import json
 import re
 import time
 from datetime import date, datetime, timezone, timedelta
@@ -21,7 +23,7 @@ logger = logging.getLogger("selloff_scraper")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
-SCRAPE_DELAY_SECONDS = float(os.getenv("SCRAPE_DELAY_SECONDS", "10"))
+NEXT_SCAN_FILE = "/tmp/next_scan.json"
 
 CATEGORIES = [
     "luxury-vacations",
@@ -536,7 +538,7 @@ def run_scraper(once: bool = True) -> None:
                             logger.error("Error sending digest for signal %s: %s", key, e)
                             continue
 
-                time.sleep(SCRAPE_DELAY_SECONDS)
+                time.sleep(random.uniform(8, 20))
 
         # Mark deals inactive if not seen in this scrape run
         if seen_dedupe_keys:
@@ -557,7 +559,16 @@ def run_scraper(once: bool = True) -> None:
             return
 
         logger.info("Sleeping 6 hours before next scrape")
-        time.sleep(6 * 60 * 60)
+        jitter = random.randint(-1800, 1800)
+        sleep_seconds = 6 * 60 * 60 + jitter
+        next_scan_at = datetime.now(timezone.utc).timestamp() + sleep_seconds
+        try:
+            import requests as _req
+            _req.post("http://api:8000/api/system/next-scan", json={"next_scan_at": next_scan_at}, timeout=5)
+        except Exception as e:
+            logger.warning("Failed to post next_scan time: %s", e)
+        logger.info("Next scan in %.0f minutes", sleep_seconds / 60)
+        time.sleep(sleep_seconds)
 
 
 if __name__ == "__main__":
