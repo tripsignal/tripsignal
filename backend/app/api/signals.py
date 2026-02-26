@@ -3,12 +3,13 @@ import copy
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models.deal_match import DealMatch
 from app.db.models.signal import Signal
+from app.db.models.user import User
 from app.db.session import get_db
 from app.schemas.signals import (
     SignalCreate,
@@ -55,8 +56,16 @@ def _signal_to_out(signal: Signal) -> SignalOut:
 async def create_signal(
     signal_data: SignalCreate,
     db: Session = Depends(get_db),
+    x_user_id: str = Header(None),
 ) -> SignalOut:
     """Create a new signal."""
+    if not x_user_id:
+        raise HTTPException(status_code=401, detail="Missing user ID")
+
+    user = db.query(User).filter(User.clerk_id == x_user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
     # Convert Pydantic models to dict for JSONB storage
     config_dict = signal_data.model_dump()
 
@@ -71,6 +80,7 @@ async def create_signal(
         departure_airports=departure_airports,
         destination_regions=destination_regions,
         config=config_dict,
+        user_id=user.id,
     )
 
     db.add(signal)
@@ -83,14 +93,23 @@ async def create_signal(
 @router.get("", response_model=List[SignalOut])
 async def list_signals(
     db: Session = Depends(get_db),
+    x_user_id: str = Header(None),
 ) -> List[SignalOut]:
-    """List all signals (with match counts)."""
+    """List signals for the current user (with match counts)."""
+    if not x_user_id:
+        raise HTTPException(status_code=401, detail="Missing user ID")
+
+    user = db.query(User).filter(User.clerk_id == x_user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
     stmt = (
         select(
             Signal,
             func.count(DealMatch.id).label("match_count"),
         )
         .outerjoin(DealMatch, DealMatch.signal_id == Signal.id)
+        .where(Signal.user_id == user.id)
         .group_by(Signal.id)
         .order_by(Signal.created_at.desc())
     )

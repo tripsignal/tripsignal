@@ -167,6 +167,7 @@ def fetch_deals_from_page(url: str) -> list[dict]:
     prices = re.findall(r'adModuleDetailsAmount--\w+\">\$?(\d+)<', html)
     discounts = re.findall(r'Save up to (\d+)%', html)
     links = re.findall(r'href=\"(https://shopping\.selloffvacations\.com/cgi-bin/handler\.cgi\?[^\"]+)\"', html)
+    star_ratings = re.findall(r'StarRating-module--rating--\w+\" rating=\"([\d.]+)\"', html)
 
     deals = []
     for i in range(len(prices)):
@@ -193,6 +194,7 @@ def fetch_deals_from_page(url: str) -> list[dict]:
             price_cents = int(prices[i]) * 100
             destination_str = destinations[i].strip() if i < len(destinations) else ""
             hotel_name = hotels[i].replace("&amp;", "&").strip() if i < len(hotels) else ""
+            star_rating = float(star_ratings[i]) if i < len(star_ratings) else None
             region = map_destination_to_region(destination_str)
 
             deals.append({
@@ -207,6 +209,7 @@ def fetch_deals_from_page(url: str) -> list[dict]:
                 "discount_pct": int(discounts[i]) if i < len(discounts) else 0,
                 "deeplink_url": clean_link,
                 "hotel_id": hotel_id,
+                "star_rating": star_rating,
             })
         except Exception as e:
             logger.warning("Failed to parse deal %d: %s", i, e)
@@ -241,6 +244,11 @@ def upsert_deal(db: Session, deal: dict) -> Optional[Deal]:
         currency="CAD",
         deeplink_url=deal["deeplink_url"],
         dedupe_key=dedupe_key,
+        hotel_name=deal.get("hotel_name"),
+        hotel_id=deal.get("hotel_id"),
+        discount_pct=deal.get("discount_pct"),
+        destination_str=deal.get("destination_str"),
+        star_rating=deal.get("star_rating"),
     )
     db.add(new_deal)
     db.commit()
@@ -288,6 +296,12 @@ def match_deal_to_signals(db: Session, deal: Deal, deal_meta: dict) -> list[Sign
             if max_nights and deal_meta["duration_days"] > max_nights:
                 continue
 
+            preferences = config.get("preferences", {})
+            min_star_rating = preferences.get("min_star_rating")
+            if min_star_rating and deal.star_rating is not None:
+                if deal.star_rating < float(min_star_rating):
+                    continue
+
             target_pp = budget.get("target_pp")
             adults = travellers.get("adults", 2)
             strict = budget.get("strict", False)
@@ -322,7 +336,7 @@ def send_alert_email(user_email: str, signal: Signal, deal: Deal, deal_meta: dic
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; background: #fff; max-width: 560px; margin: 0 auto; padding: 40px 24px;">
 
   <div style="margin-bottom: 24px;">
-    <span style="font-size: 20px; font-weight: 600; letter-spacing: -0.3px;">TripSignal</span>
+    <span style="font-size: 20px; font-weight: 600; letter-spacing: -0.3px;">Trip Signal</span>
   </div>
 
   <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px;">
@@ -364,7 +378,7 @@ def send_alert_email(user_email: str, signal: Signal, deal: Deal, deal_meta: dic
   <hr style="border: none; border-top: 1px solid #eee; margin: 32px 0;">
 
   <p style="font-size: 12px; color: #999; margin: 0;">
-    You're receiving this because your TripSignal signal "{signal.name}" matched a deal.<br>
+    You're receiving this because your Trip Signal signal "{signal.name}" matched a deal.<br>
     Manage your signals at <a href="https://tripsignal.ca/signals" style="color: #999;">tripsignal.ca/signals</a>
   </p>
 
@@ -380,7 +394,7 @@ def send_alert_email(user_email: str, signal: Signal, deal: Deal, deal_meta: dic
                 "Content-Type": "application/json",
             },
             json={
-                "from": "TripSignal <hello@tripsignal.ca>",
+                "from": "Trip Signal <hello@tripsignal.ca>",
                 "to": user_email,
                 "subject": subject,
                 "html": html,

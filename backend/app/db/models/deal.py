@@ -41,6 +41,11 @@ class Deal(Base):
     is_active: Mapped[bool] = mapped_column(
         nullable=False, server_default=text("true"), index=True
     )
+    hotel_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hotel_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    discount_pct: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    destination_str: Mapped[str | None] = mapped_column(Text, nullable=True)
+    star_rating: Mapped[float | None] = mapped_column(nullable=True)
 
     price_history: Mapped[list["DealPriceHistory"]] = relationship(
         "DealPriceHistory",

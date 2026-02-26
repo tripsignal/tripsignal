@@ -81,6 +81,11 @@ def list_signal_matches(
             price_trend=trend,
             previous_price_cents=previous_price,
             is_active=match.deal.is_active,
+            hotel_name=match.deal.hotel_name,
+            hotel_id=match.deal.hotel_id,
+            discount_pct=match.deal.discount_pct,
+            destination_str=match.deal.destination_str,
+            star_rating=match.deal.star_rating,
         )
         result.append(DealMatchOut(
             id=match.id,
