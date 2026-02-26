@@ -141,6 +141,28 @@ async def get_signal(
     return _signal_to_out(signal)
 
 
+@router.delete("/{signal_id}", status_code=204)
+async def delete_signal(
+    signal_id: UUID,
+    db: Session = Depends(get_db),
+    x_user_id: str = Header(None),
+) -> None:
+    """Delete a signal."""
+    if not x_user_id:
+        raise HTTPException(status_code=401, detail="Missing user ID")
+
+    user = db.query(User).filter(User.clerk_id == x_user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    signal = db.query(Signal).filter(Signal.id == signal_id, Signal.user_id == user.id).first()
+    if not signal:
+        raise HTTPException(status_code=404, detail="Signal not found")
+
+    db.delete(signal)
+    db.commit()
+
+
 @router.patch("/{signal_id}", response_model=SignalOut)
 async def update_signal(
     signal_id: UUID,

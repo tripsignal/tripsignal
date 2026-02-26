@@ -77,6 +77,28 @@ services:
     healthcheck:
       disable: true
 
+  selloff_scraper:
+    build:
+      context: /opt/tripsignal
+      dockerfile: /opt/tripsignal/Dockerfile
+    container_name: tripsignal-selloff-scraper
+    working_dir: /app/backend
+    env_file:
+      - .env
+    environment:
+      PYTHONPATH: /app/backend
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      SCRAPE_DELAY_SECONDS: "10"
+    command: ["python", "-c", "import sys; sys.path.insert(0, '/app/backend'); from app.workers.selloff_scraper import run_scraper; run_scraper()"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - tripsignal-network
+    restart: unless-stopped
+    healthcheck:
+      disable: true
 
 volumes:
   postgres_data: null

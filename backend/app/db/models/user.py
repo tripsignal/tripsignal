@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import TIMESTAMP, Text, text
+from sqlalchemy import TIMESTAMP, Boolean, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -21,16 +21,21 @@ class User(Base):
     )
     clerk_id: Mapped[str] = mapped_column(Text, nullable=False, unique=True, index=True)
     email: Mapped[str] = mapped_column(Text, nullable=False)
-
+    role: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'user'"))
     plan_type: Mapped[str] = mapped_column(Text, nullable=False, server_default="free")
     plan_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
     trial_ends_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
-
     stripe_customer_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     stripe_subscription_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     stripe_subscription_status: Mapped[str | None] = mapped_column(Text, nullable=True)
     subscription_current_period_end: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
-
+    is_test_user: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
