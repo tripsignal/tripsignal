@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import ForeignKey, TIMESTAMP, UniqueConstraint, text
+from sqlalchemy import Boolean, ForeignKey, TIMESTAMP, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -48,6 +48,12 @@ class DealMatch(Base):
         nullable=False,
         server_default=text("now()"),
         index=True,
+    )
+
+    is_favourite: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
     )
 
     # Relationships

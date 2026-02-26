@@ -4,7 +4,7 @@ from uuid import UUID
 from typing import List
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -49,12 +49,15 @@ def list_signal_matches(
     signal_id: UUID,
     db: Session = Depends(get_db),
 ):
-    """Return all deals matched to a given signal, with price trend."""
+    """Return active deals matched to a given signal, favourites first."""
     matches = (
         db.query(DealMatch)
         .join(Deal)
-        .filter(DealMatch.signal_id == signal_id)
-        .order_by(DealMatch.matched_at.desc())
+        .filter(
+            DealMatch.signal_id == signal_id,
+            Deal.is_active == True,
+        )
+        .order_by(DealMatch.is_favourite.desc(), DealMatch.matched_at.desc())
         .all()
     )
 
@@ -77,10 +80,63 @@ def list_signal_matches(
             dedupe_key=match.deal.dedupe_key,
             price_trend=trend,
             previous_price_cents=previous_price,
+            is_active=match.deal.is_active,
         )
-        result.append(DealMatchOut(id=match.id, matched_at=match.matched_at, deal=deal_out))
+        result.append(DealMatchOut(
+            id=match.id,
+            matched_at=match.matched_at,
+            is_favourite=match.is_favourite,
+            deal=deal_out,
+        ))
 
     return result
+
+
+@router.patch("/{signal_id}/matches/{match_id}/favourite", response_model=DealMatchOut)
+def toggle_favourite(
+    signal_id: UUID,
+    match_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """Toggle the favourite status of a deal match."""
+    match = db.query(DealMatch).filter(
+        DealMatch.id == match_id,
+        DealMatch.signal_id == signal_id,
+    ).first()
+
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    match.is_favourite = not match.is_favourite
+    db.commit()
+    db.refresh(match)
+
+    trend, previous_price = get_price_trend(db, match.deal.id)
+    deal_out = DealOut(
+        id=match.deal.id,
+        provider=match.deal.provider,
+        origin=match.deal.origin,
+        destination=match.deal.destination,
+        depart_date=match.deal.depart_date,
+        return_date=match.deal.return_date,
+        price_cents=match.deal.price_cents,
+        currency=match.deal.currency,
+        deeplink_url=match.deal.deeplink_url,
+        airline=match.deal.airline,
+        cabin=match.deal.cabin,
+        stops=match.deal.stops,
+        dedupe_key=match.deal.dedupe_key,
+        price_trend=trend,
+        previous_price_cents=previous_price,
+        is_active=match.deal.is_active,
+    )
+
+    return DealMatchOut(
+        id=match.id,
+        matched_at=match.matched_at,
+        is_favourite=match.is_favourite,
+        deal=deal_out,
+    )
 
 
 @router.post("/{signal_id}/matches", response_model=DealMatchOut, status_code=201)
@@ -175,6 +231,7 @@ def create_signal_match(
         return DealMatchOut(
             id=match.id,
             matched_at=match.matched_at,
+            is_favourite=match.is_favourite,
             deal=match.deal,
         )
 

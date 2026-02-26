@@ -442,6 +442,7 @@ def run_scraper(once: bool = True) -> None:
     while True:
         total_deals = 0
         total_matches = 0
+        seen_dedupe_keys: set[str] = set()
 
         for category in CATEGORIES:
             for gateway_code, city_slug in GATEWAY_SLUGS.items():
@@ -458,6 +459,7 @@ def run_scraper(once: bool = True) -> None:
                             if not deal:
                                 continue
 
+                            seen_dedupe_keys.add(deal.dedupe_key)
                             total_deals += 1
                             matched_signals = match_deal_to_signals(db, deal, deal_meta)
 
@@ -504,6 +506,19 @@ def run_scraper(once: bool = True) -> None:
                             continue
 
                 time.sleep(SCRAPE_DELAY_SECONDS)
+
+        # Mark deals inactive if not seen in this scrape run
+        if seen_dedupe_keys:
+            with next(get_db()) as db:
+                stale = db.query(Deal).filter(
+                    Deal.is_active == True,
+                    Deal.dedupe_key.notin_(seen_dedupe_keys)
+                ).all()
+                for deal in stale:
+                    deal.is_active = False
+                db.commit()
+                if stale:
+                    logger.info("Marked %d deals inactive", len(stale))
 
         logger.info("Scrape complete. Deals: %d, Matches: %d", total_deals, total_matches)
 

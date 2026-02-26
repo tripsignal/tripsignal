@@ -38,6 +38,9 @@ class Deal(Base):
     dedupe_key: Mapped[str] = mapped_column(
         Text, nullable=False, unique=True, index=True
     )
+    is_active: Mapped[bool] = mapped_column(
+        nullable=False, server_default=text("true"), index=True
+    )
 
     price_history: Mapped[list["DealPriceHistory"]] = relationship(
         "DealPriceHistory",
