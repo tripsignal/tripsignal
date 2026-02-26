@@ -21,6 +21,8 @@ class DealOut(BaseModel):
     cabin: Optional[str] = None
     stops: Optional[int] = None
     dedupe_key: Optional[str] = None
+    price_trend: Optional[str] = None        # "up", "down", "stable", or None
+    previous_price_cents: Optional[int] = None
 
     class Config:
         from_attributes = True
