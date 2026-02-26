@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.deal import Deal
 from app.db.models.deal_match import DealMatch
+from app.db.models.deal_price_history import DealPriceHistory
 from app.db.models.signal import Signal
 from app.db.models.user import User
 from app.db.session import get_db
@@ -225,6 +226,9 @@ def upsert_deal(db: Session, deal: dict) -> Optional[Deal]:
         if existing.price_cents != deal["price_cents"]:
             existing.price_cents = deal["price_cents"]
             db.commit()
+        # Always record price history on every scrape
+        db.add(DealPriceHistory(deal_id=existing.id, price_cents=deal["price_cents"]))
+        db.commit()
         return existing
 
     new_deal = Deal(
@@ -241,6 +245,9 @@ def upsert_deal(db: Session, deal: dict) -> Optional[Deal]:
     db.add(new_deal)
     db.commit()
     db.refresh(new_deal)
+    # Record initial price history
+    db.add(DealPriceHistory(deal_id=new_deal.id, price_cents=new_deal.price_cents))
+    db.commit()
     return new_deal
 
 
@@ -472,6 +479,24 @@ def run_scraper(once: bool = True) -> None:
                                 logger.info("Match: %s → %s %s $%d", signal.name, deal.destination, deal.depart_date, deal.price_cents // 100)
 
                                 user_email = signal.config.get("notifications", {}).get("email", "")
+
+                                # Check plan — free users get at most 1 alert per signal per 24 hours
+                                user = db.execute(
+                                    select(User).where(User.email == user_email)
+                                ).scalar_one_or_none()
+                                is_pro = user and user.plan_type == "pro"
+
+                                if not is_pro:
+                                    recent = db.execute(
+                                        select(DealMatch).where(
+                                            DealMatch.signal_id == signal.id,
+                                            DealMatch.created_at >= datetime.now(timezone.utc) - timedelta(hours=24)
+                                        ).order_by(DealMatch.created_at.desc())
+                                    ).first()
+                                    if recent:
+                                        logger.info("Skipping alert for free user signal %s — already alerted in last 24h", signal.id)
+                                        continue
+
                                 send_alert_email(user_email, signal, deal, deal_meta)
 
                         except Exception as e:
@@ -485,8 +510,8 @@ def run_scraper(once: bool = True) -> None:
         if once:
             return
 
-        logger.info("Sleeping 4 hours before next scrape")
-        time.sleep(4 * 60 * 60)
+        logger.info("Sleeping 6 hours before next scrape")
+        time.sleep(6 * 60 * 60)
 
 
 if __name__ == "__main__":

@@ -39,6 +39,13 @@ class Deal(Base):
         Text, nullable=False, unique=True, index=True
     )
 
+    price_history: Mapped[list["DealPriceHistory"]] = relationship(
+        "DealPriceHistory",
+        back_populates="deal",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
     deal_matches: Mapped[list["DealMatch"]] = relationship(
         "DealMatch",
         back_populates="deal",
