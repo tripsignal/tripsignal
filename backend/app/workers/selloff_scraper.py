@@ -68,58 +68,108 @@ GATEWAY_SLUGS = {
     "YYG": "charlottetown",
     "YSB": "sudbury",
     "YAM": "sault-ste-marie",
-    "YQQ": "comox",
-    "YNB": "nanaimo",
 }
 
 DESTINATION_REGION_MAP = {
     "mexico": "mexico",
-    "riviera maya": "mexico",
-    "cancun": "mexico",
-    "puerto vallarta": "mexico",
-    "los cabos": "mexico",
-    "mazatlan": "mexico",
-    "mazatlán": "mexico",
-    "huatulco": "mexico",
-    "ixtapa": "mexico",
-    "puerto escondido": "mexico",
+    "riviera maya": "riviera_maya",
+    "cancun": "cancun",
+    "puerto vallarta": "puerto_vallarta",
+    "los cabos": "los_cabos",
+    "mazatlan": "mazatlan",
+    "huatulco": "huatulco",
+    "ixtapa": "ixtapa",
+    "puerto escondido": "puerto_escondido",
     "dominican republic": "dominican_republic",
-    "punta cana": "dominican_republic",
-    "puerto plata": "dominican_republic",
-    "la romana": "dominican_republic",
-    "samana": "dominican_republic",
-    "samaná": "dominican_republic",
+    "punta cana": "punta_cana",
+    "puerto plata": "puerto_plata",
+    "la romana": "la_romana",
+    "samana": "samana",
+    "santo domingo": "santo_domingo",
     "cuba": "cuba",
-    "varadero": "cuba",
-    "holguin": "cuba",
-    "holguín": "cuba",
-    "havana": "cuba",
-    "cayo coco": "cuba",
+    "varadero": "varadero",
+    "holguin": "holguin",
+    "havana": "havana",
+    "cayo coco": "cayo_coco",
     "santa clara": "cuba",
     "jamaica": "jamaica",
-    "montego bay": "jamaica",
+    "montego bay": "montego_bay",
+    "negril": "negril",
+    "ocho rios": "ocho_rios",
+    "aruba": "aruba",
+    "barbados": "barbados",
+    "curacao": "curacao",
+    "cayman islands": "cayman_islands",
+    "saint lucia": "saint_lucia",
+    "st. lucia": "saint_lucia",
+    "st maarten": "st_maarten",
+    "st. maarten": "st_maarten",
+    "turks and caicos": "turks_caicos",
+    "bahamas": "bahamas",
+    "nassau": "bahamas",
+    "antigua": "antigua",
+    "grenada": "grenada",
+    "costa rica": "costa_rica",
+    "liberia": "costa_rica",
+    "belize": "belize",
+    "panama": "panama",
+    "roatan": "roatan",
+    "honduras": "central_america",
+}
+
+PARENT_REGION_MAP = {
+    "cancun": "mexico",
+    "riviera_maya": "mexico",
+    "puerto_vallarta": "mexico",
+    "los_cabos": "mexico",
+    "mazatlan": "mexico",
+    "huatulco": "mexico",
+    "ixtapa": "mexico",
+    "puerto_escondido": "mexico",
+    "punta_cana": "dominican_republic",
+    "puerto_plata": "dominican_republic",
+    "la_romana": "dominican_republic",
+    "samana": "dominican_republic",
+    "santo_domingo": "dominican_republic",
+    "montego_bay": "jamaica",
     "negril": "jamaica",
-    "ocho rios": "jamaica",
+    "ocho_rios": "jamaica",
+    "varadero": "cuba",
+    "holguin": "cuba",
+    "havana": "cuba",
+    "cayo_coco": "cuba",
     "aruba": "caribbean",
     "barbados": "caribbean",
     "curacao": "caribbean",
-    "curaçao": "caribbean",
-    "cayman islands": "caribbean",
-    "saint lucia": "caribbean",
-    "st. lucia": "caribbean",
-    "st maarten": "caribbean",
-    "st. maarten": "caribbean",
-    "turks and caicos": "caribbean",
+    "cayman_islands": "caribbean",
+    "saint_lucia": "caribbean",
+    "st_maarten": "caribbean",
+    "turks_caicos": "caribbean",
     "bahamas": "caribbean",
-    "nassau": "caribbean",
-    "costa rica": "central_america",
-    "liberia": "central_america",
-    "belize": "central_america",
+    "antigua": "caribbean",
+    "grenada": "caribbean",
+    "costa_rica": "central_america",
     "panama": "central_america",
+    "belize": "central_america",
     "roatan": "central_america",
-    "roatán": "central_america",
-    "honduras": "central_america",
 }
+
+
+def deal_matches_signal_region(deal_region, signal_regions):
+    if not deal_region:
+        return False
+    # Exact match
+    if deal_region in signal_regions:
+        return True
+    # Parent match — deal is sub-region, signal has parent catch-all
+    parent = PARENT_REGION_MAP.get(deal_region)
+    if parent and parent in signal_regions:
+        return True
+    # Reverse match — deal is parent catch-all, signal has a sub-region of that parent
+    for sr in signal_regions:
+        if PARENT_REGION_MAP.get(sr) == deal_region:
+            return True
+    return False
 
 
 def map_destination_to_region(destination: str) -> Optional[str]:
@@ -166,7 +216,7 @@ def fetch_deals_from_page(url: str) -> list[dict]:
     destinations = re.findall(r'adModuleHeading--\w+\">([^<]+)</h2>', html)
     hotels = re.findall(r'adModuleSubheading--\w+\">([^<]+)</p>', html)
     dates = re.findall(r'adModuleDetailsDays--\w+\"><span>([^<]+)</span>', html)
-    prices = re.findall(r'adModuleDetailsAmount--\w+\">\$?(\d+)<', html)
+    prices = re.findall(r'adModuleDetailsAmount--\w+\">[$](\d+)<', html)
     discounts = re.findall(r'Save up to (\d+)%', html)
     links = re.findall(r'href=\"(https://shopping\.selloffvacations\.com/cgi-bin/handler\.cgi\?[^\"]+)\"', html)
     star_ratings = re.findall(r'StarRating-module--rating--\w+\" rating=\"([\d.]+)\"', html)
@@ -198,6 +248,9 @@ def fetch_deals_from_page(url: str) -> list[dict]:
             hotel_name = hotels[i].replace("&amp;", "&").strip() if i < len(hotels) else ""
             star_rating = float(star_ratings[i]) if i < len(star_ratings) else None
             region = map_destination_to_region(destination_str)
+
+            if not hotel_name or star_rating is None:
+                continue
 
             deals.append({
                 "gateway": gateway,
@@ -231,7 +284,6 @@ def upsert_deal(db: Session, deal: dict) -> Optional[Deal]:
         if existing.price_cents != deal["price_cents"]:
             existing.price_cents = deal["price_cents"]
             db.commit()
-        # Always record price history on every scrape
         db.add(DealPriceHistory(deal_id=existing.id, price_cents=deal["price_cents"]))
         db.commit()
         return existing
@@ -255,7 +307,6 @@ def upsert_deal(db: Session, deal: dict) -> Optional[Deal]:
     db.add(new_deal)
     db.commit()
     db.refresh(new_deal)
-    # Record initial price history
     db.add(DealPriceHistory(deal_id=new_deal.id, price_cents=new_deal.price_cents))
     db.commit()
     return new_deal
@@ -276,7 +327,7 @@ def match_deal_to_signals(db: Session, deal: Deal, deal_meta: dict) -> list[Sign
 
             if deal_meta["gateway"] not in signal.departure_airports:
                 continue
-            if deal_meta["region"] not in signal.destination_regions:
+            if not deal_matches_signal_region(deal_meta["region"], signal.destination_regions):
                 continue
 
             start_month_str = travel_window.get("start_month")
@@ -321,7 +372,6 @@ def match_deal_to_signals(db: Session, deal: Deal, deal_meta: dict) -> list[Sign
 
 
 def send_digest_email(user_email: str, signal: Signal, new_deals: list) -> None:
-    """Send a single digest email for a signal with all new matches."""
     if not RESEND_API_KEY:
         logger.warning("No RESEND_API_KEY set, skipping email")
         return
@@ -400,9 +450,7 @@ def send_digest_email(user_email: str, signal: Signal, new_deals: list) -> None:
 
 
 def run_matching_only(db: Session) -> None:
-    """Run signal matching against all existing deals without scraping."""
     logger.info("Running match-only mode against existing deals")
-
     deals = db.execute(select(Deal)).scalars().all()
     logger.info("Matching %d deals against active signals", len(deals))
 
@@ -434,10 +482,9 @@ def run_matching_only(db: Session) -> None:
             db.add(match)
             db.commit()
             total_matches += 1
-            logger.info("Match: %s → %s %s $%d", signal.name, deal.destination, deal.depart_date, deal.price_cents // 100)
 
             user_email = signal.config.get("notifications", {}).get("email", "")
-            send_alert_email(user_email, signal, deal, deal_meta)
+            send_digest_email(user_email, signal, [deal])
 
     logger.info("Match-only complete. New matches: %d", total_matches)
 
@@ -446,9 +493,20 @@ def run_scraper(once: bool = True) -> None:
     logger.info("SellOff scraper starting")
 
     while True:
+        cycle_errors: list = []
         total_deals = 0
         total_matches = 0
         seen_dedupe_keys: set[str] = set()
+        started_at = datetime.now(timezone.utc)
+
+        # Post cycle start to API
+        try:
+            import requests as _req
+            _req.post("http://api:8000/api/system/scrape-started", json={
+                "started_at": started_at.isoformat(),
+            }, timeout=5)
+        except Exception as e:
+            logger.warning("Failed to post scrape-started: %s", e)
 
         for category in CATEGORIES:
             for gateway_code, city_slug in GATEWAY_SLUGS.items():
@@ -457,8 +515,9 @@ def run_scraper(once: bool = True) -> None:
 
                 deals = fetch_deals_from_page(url)
                 logger.info("Found %d deals on %s", len(deals), url)
+                if not deals:
+                    cycle_errors.append({"url": url, "error": "0 deals returned (possible 404 or parse failure)"})
 
-                # Collect new matches per signal for digest emails
                 signal_new_deals: dict = {}
 
                 with next(get_db()) as db:
@@ -487,9 +546,8 @@ def run_scraper(once: bool = True) -> None:
                                 db.add(match)
                                 db.commit()
                                 total_matches += 1
-                                logger.info("Match: %s → %s %s $%d", signal.name, deal.destination, deal.depart_date, deal.price_cents // 100)
+                                logger.info("Match: %s -> %s %s $%d", signal.name, deal.destination, deal.depart_date, deal.price_cents // 100)
 
-                                # Collect for digest
                                 key = signal.id
                                 if key not in signal_new_deals:
                                     signal_new_deals[key] = {"signal": signal, "deals": [], "email": signal.config.get("notifications", {}).get("email", ""), "user": None}
@@ -497,9 +555,9 @@ def run_scraper(once: bool = True) -> None:
 
                         except Exception as e:
                             logger.error("Error processing deal: %s", e)
+                            cycle_errors.append({"url": url, "error": str(e)})
                             continue
 
-                    # Send one digest email per signal
                     for key, data in signal_new_deals.items():
                         try:
                             user_email = data["email"]
@@ -521,7 +579,6 @@ def run_scraper(once: bool = True) -> None:
                                 continue
 
                             if not is_pro:
-                                # Free trial: max 1 digest per signal per 24 hours
                                 recent = db.execute(
                                     select(DealMatch).where(
                                         DealMatch.signal_id == signal.id,
@@ -540,7 +597,7 @@ def run_scraper(once: bool = True) -> None:
 
                 time.sleep(random.uniform(8, 20))
 
-        # Mark deals inactive if not seen in this scrape run
+        # Mark stale deals inactive
         if seen_dedupe_keys:
             with next(get_db()) as db:
                 stale = db.query(Deal).filter(
@@ -553,7 +610,23 @@ def run_scraper(once: bool = True) -> None:
                 if stale:
                     logger.info("Marked %d deals inactive", len(stale))
 
+        completed_at = datetime.now(timezone.utc)
         logger.info("Scrape complete. Deals: %d, Matches: %d", total_deals, total_matches)
+
+        # Post completion summary to API
+        try:
+            import requests as _req
+            _req.post("http://api:8000/api/system/collection-complete", json={
+                "started_at": started_at.isoformat(),
+                "completed_at": completed_at.isoformat(),
+                "total_deals": total_deals,
+                "total_matches": total_matches,
+                "error_count": len(cycle_errors),
+                "errors": cycle_errors,
+                "status": "completed",
+            }, timeout=5)
+        except Exception as e:
+            logger.warning("Failed to post collection summary: %s", e)
 
         if once:
             return
@@ -561,10 +634,13 @@ def run_scraper(once: bool = True) -> None:
         logger.info("Sleeping 6 hours before next scrape")
         jitter = random.randint(-1800, 1800)
         sleep_seconds = 6 * 60 * 60 + jitter
-        next_scan_at = datetime.now(timezone.utc).timestamp() + sleep_seconds
+        next_scan_at = completed_at.timestamp() + sleep_seconds
         try:
             import requests as _req
-            _req.post("http://api:8000/api/system/next-scan", json={"next_scan_at": next_scan_at}, timeout=5)
+            _req.post("http://api:8000/api/system/next-scan", json={
+                "next_scan_at": next_scan_at,
+                "last_scan_at": completed_at.timestamp(),
+            }, timeout=5)
         except Exception as e:
             logger.warning("Failed to post next_scan time: %s", e)
         logger.info("Next scan in %.0f minutes", sleep_seconds / 60)

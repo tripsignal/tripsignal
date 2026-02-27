@@ -28,9 +28,45 @@ class RegionKey(str, Enum):
     """Destination region keys."""
 
     mexico = "mexico"
+    riviera_maya = "riviera_maya"
+    cancun = "cancun"
+    puerto_vallarta = "puerto_vallarta"
+    los_cabos = "los_cabos"
+    mazatlan = "mazatlan"
+    huatulco = "huatulco"
+    ixtapa = "ixtapa"
+    puerto_escondido = "puerto_escondido"
     dominican_republic = "dominican_republic"
-    cuba = "cuba"
+    punta_cana = "punta_cana"
+    puerto_plata = "puerto_plata"
+    la_romana = "la_romana"
+    samana = "samana"
+    santo_domingo = "santo_domingo"
     jamaica = "jamaica"
+    montego_bay = "montego_bay"
+    negril = "negril"
+    ocho_rios = "ocho_rios"
+    cuba = "cuba"
+    varadero = "varadero"
+    holguin = "holguin"
+    havana = "havana"
+    cayo_coco = "cayo_coco"
+    caribbean = "caribbean"
+    aruba = "aruba"
+    barbados = "barbados"
+    curacao = "curacao"
+    cayman_islands = "cayman_islands"
+    saint_lucia = "saint_lucia"
+    st_maarten = "st_maarten"
+    turks_caicos = "turks_caicos"
+    bahamas = "bahamas"
+    antigua = "antigua"
+    grenada = "grenada"
+    central_america = "central_america"
+    costa_rica = "costa_rica"
+    panama = "panama"
+    belize = "belize"
+    roatan = "roatan"
 
 
 class DepartureSpec(BaseModel):
@@ -55,6 +91,7 @@ class DestinationSpec(BaseModel):
     mode: Mode
     regions: list[RegionKey] = Field(default_factory=list)
     airports: list[str] = Field(default_factory=list, description="List of IATA airport codes")
+    label: Optional[str] = None
 
     @field_validator("airports")
     @classmethod
@@ -73,6 +110,8 @@ class TravelWindow(BaseModel):
     end_month: str = Field(description="End month in YYYY-MM format")
     min_nights: int = Field(default=7, ge=1, description="Minimum nights")
     max_nights: int = Field(default=10, ge=1, description="Maximum nights")
+    start_date: Optional[str] = Field(default=None, description="Specific start date in YYYY-MM-DD format")
+    end_date: Optional[str] = Field(default=None, description="Specific end date in YYYY-MM-DD format")
 
     @field_validator("start_month", "end_month")
     @classmethod

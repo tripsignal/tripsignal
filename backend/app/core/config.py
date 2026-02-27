@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     # Stripe
     STRIPE_SECRET_KEY: str = ""
-    STRIPE_WEBHOOK_SECRET: str = ""  
+    STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_PRO_PRICE_ID: str = ""
 
     # Database Settings
     POSTGRES_USER: str = "postgres"
