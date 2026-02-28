@@ -71,7 +71,7 @@ GATEWAY_SLUGS = {
 }
 
 DESTINATION_REGION_MAP = {
-    "mexico": "mexico",
+    # Sub-regions MUST come before parent catch-alls (first match wins)
     "riviera maya": "riviera_maya",
     "cancun": "cancun",
     "puerto vallarta": "puerto_vallarta",
@@ -80,22 +80,23 @@ DESTINATION_REGION_MAP = {
     "huatulco": "huatulco",
     "ixtapa": "ixtapa",
     "puerto escondido": "puerto_escondido",
-    "dominican republic": "dominican_republic",
+    "mexico": "mexico",
     "punta cana": "punta_cana",
     "puerto plata": "puerto_plata",
     "la romana": "la_romana",
     "samana": "samana",
     "santo domingo": "santo_domingo",
-    "cuba": "cuba",
+    "dominican republic": "dominican_republic",
     "varadero": "varadero",
     "holguin": "holguin",
     "havana": "havana",
     "cayo coco": "cayo_coco",
     "santa clara": "cuba",
-    "jamaica": "jamaica",
+    "cuba": "cuba",
     "montego bay": "montego_bay",
     "negril": "negril",
     "ocho rios": "ocho_rios",
+    "jamaica": "jamaica",
     "aruba": "aruba",
     "barbados": "barbados",
     "curacao": "curacao",
@@ -330,17 +331,25 @@ def match_deal_to_signals(db: Session, deal: Deal, deal_meta: dict) -> list[Sign
             if not deal_matches_signal_region(deal_meta["region"], signal.destination_regions):
                 continue
 
-            start_month_str = travel_window.get("start_month")
-            end_month_str = travel_window.get("end_month")
-            if start_month_str and end_month_str:
-                start_month = datetime.strptime(start_month_str, "%Y-%m").date().replace(day=1)
-                end_month_dt = datetime.strptime(end_month_str, "%Y-%m")
-                if end_month_dt.month == 12:
-                    end_month = end_month_dt.replace(day=31).date()
-                else:
-                    end_month = (end_month_dt.replace(month=end_month_dt.month + 1, day=1) - timedelta(days=1)).date()
-                if not (start_month <= deal.depart_date <= end_month):
+            start_date_str = travel_window.get("start_date")
+            end_date_str = travel_window.get("end_date")
+            if start_date_str and end_date_str:
+                start_dt = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+                end_dt = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+                if not (start_dt <= deal.depart_date <= end_dt):
                     continue
+            else:
+                start_month_str = travel_window.get("start_month")
+                end_month_str = travel_window.get("end_month")
+                if start_month_str and end_month_str:
+                    start_month = datetime.strptime(start_month_str, "%Y-%m").date().replace(day=1)
+                    end_month_dt = datetime.strptime(end_month_str, "%Y-%m")
+                    if end_month_dt.month == 12:
+                        end_month = end_month_dt.replace(day=31).date()
+                    else:
+                        end_month = (end_month_dt.replace(month=end_month_dt.month + 1, day=1) - timedelta(days=1)).date()
+                    if not (start_month <= deal.depart_date <= end_month):
+                        continue
 
             min_nights = travel_window.get("min_nights")
             max_nights = travel_window.get("max_nights")
@@ -357,8 +366,7 @@ def match_deal_to_signals(db: Session, deal: Deal, deal_meta: dict) -> list[Sign
 
             target_pp = budget.get("target_pp")
             adults = travellers.get("adults", 2)
-            strict = budget.get("strict", False)
-            if target_pp and strict:
+            if target_pp:
                 total_budget_cents = int(target_pp) * adults * 100
                 if deal.price_cents > total_budget_cents:
                     continue

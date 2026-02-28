@@ -49,6 +49,7 @@ USER_AGENTS = [
 ]
 
 DESTINATION_REGION_MAP = {
+    # Sub-regions MUST come before parent catch-alls (first match wins)
     "riviera maya": "riviera_maya", "playa del carmen": "riviera_maya",
     "playa mujeres": "riviera_maya", "cozumel": "riviera_maya", "tulum": "riviera_maya",
     "cancun": "cancun", "cancún": "cancun",
@@ -60,21 +61,21 @@ DESTINATION_REGION_MAP = {
     "ixtapa": "ixtapa", "zihuatanejo": "ixtapa",
     "puerto escondido": "puerto_escondido",
     "mexico": "mexico", "acapulco": "mexico",
-    "dominican republic": "dominican_republic",
     "punta cana": "punta_cana",
     "puerto plata": "puerto_plata",
     "la romana": "la_romana",
     "samana": "samana", "samaná": "samana",
     "santo domingo": "santo_domingo",
-    "cuba": "cuba",
+    "dominican republic": "dominican_republic",
     "varadero": "varadero",
     "holguin": "holguin", "holguín": "holguin",
     "havana": "havana",
     "cayo coco": "cayo_coco", "cayo santa maria": "cuba",
-    "jamaica": "jamaica",
+    "cuba": "cuba",
     "montego bay": "montego_bay",
     "negril": "negril",
     "ocho rios": "ocho_rios", "runaway bay": "jamaica",
+    "jamaica": "jamaica",
     "aruba": "aruba",
     "barbados": "barbados",
     "curacao": "curacao", "curaçao": "curacao",
