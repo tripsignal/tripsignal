@@ -335,6 +335,13 @@ async def update_signal(
 
     signal.updated_at = datetime.now(timezone.utc)
 
+    # Re-match deals if search criteria changed
+    if update_dict and ("departure" in update_dict or "destination" in update_dict
+                        or "travel_window" in update_dict or "budget" in update_dict):
+        db.query(DealMatch).filter(DealMatch.signal_id == signal.id).delete()
+        db.flush()
+        _match_signal_against_deals(db, signal)
+
     db.commit()
     db.refresh(signal)
 

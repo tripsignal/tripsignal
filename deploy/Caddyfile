@@ -25,3 +25,22 @@ tripsignal.ca {
 www.tripsignal.ca {
   redir https://tripsignal.ca{uri} permanent
 }
+
+staging.tripsignal.ca {
+  encode zstd gzip
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "no-referrer"
+  }
+
+  handle /api/* {
+    reverse_proxy api:8000
+  }
+
+  handle {
+    reverse_proxy tripsignal-frontend-staging:3000
+  }
+}
