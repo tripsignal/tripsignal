@@ -11,6 +11,7 @@ import time
 import uuid as _uuid
 from collections import defaultdict
 from datetime import date, datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from typing import Optional
 
 import urllib.request
@@ -43,6 +44,37 @@ PROXY_COUNTRY = os.getenv("PROXY_COUNTRY", "cr.ca")
 
 # Module-level proxy opener, set per cycle in run_scraper()
 _cycle_proxy_opener: Optional[urllib.request.OpenerDirector] = None
+
+# Scrape schedule: 3 daily windows in Eastern Time (America/Toronto)
+# Each tuple: (start_hour, start_min, end_hour, end_min)
+_ET = ZoneInfo("America/Toronto")
+_SCRAPE_WINDOWS = [(7, 0, 9, 0), (12, 0, 14, 0), (18, 0, 20, 0)]
+
+
+def _in_scrape_window() -> bool:
+    """True if current Eastern time falls inside a scrape window."""
+    now_et = datetime.now(_ET)
+    for sh, sm, eh, em in _SCRAPE_WINDOWS:
+        ws = now_et.replace(hour=sh, minute=sm, second=0, microsecond=0)
+        we = now_et.replace(hour=eh, minute=em, second=0, microsecond=0)
+        if ws <= now_et < we:
+            return True
+    return False
+
+
+def _next_scrape_time() -> datetime:
+    """Return a random UTC datetime in the next upcoming scrape window."""
+    now_et = datetime.now(_ET)
+    for day_offset in range(3):
+        base = now_et + timedelta(days=day_offset)
+        for sh, sm, eh, em in _SCRAPE_WINDOWS:
+            window_start = base.replace(hour=sh, minute=sm, second=0, microsecond=0)
+            window_end = base.replace(hour=eh, minute=em, second=0, microsecond=0)
+            if window_start > now_et:
+                offset = random.randint(0, int((window_end - window_start).total_seconds()))
+                return (window_start + timedelta(seconds=offset)).astimezone(timezone.utc)
+    # Fallback (shouldn't happen)
+    return datetime.now(timezone.utc) + timedelta(hours=6)
 
 
 def _build_proxy_url() -> Optional[str]:
@@ -1121,6 +1153,28 @@ def run_matching_only(db: Session) -> None:
 def run_scraper(once: bool = True) -> None:
     logger.info("SellOff scraper starting")
 
+    if not once:
+        logger.info("Scraper configured for 3 daily cycles: ~8AM, ~1PM, ~7PM ET")
+        if not _in_scrape_window():
+            next_time = _next_scrape_time()
+            next_et = next_time.astimezone(_ET)
+            sleep_sec = max(0, (next_time - datetime.now(timezone.utc)).total_seconds())
+            hours, remainder = divmod(int(sleep_sec), 3600)
+            minutes = remainder // 60
+            logger.info("Not in a scrape window — next scrape scheduled for %s ET (%dh %dm from now)",
+                        next_et.strftime("%Y-%m-%d %I:%M %p"), hours, minutes)
+            try:
+                import requests as _req
+                _req.post("http://api:8000/api/system/next-scan", json={
+                    "next_scan_at": next_time.timestamp(),
+                    "last_scan_at": datetime.now(timezone.utc).timestamp(),
+                }, timeout=5)
+            except Exception as e:
+                logger.warning("Failed to post next_scan time: %s", e)
+            time.sleep(sleep_sec)
+        else:
+            logger.info("Currently inside a scrape window — starting immediately")
+
     while True:
         cycle_errors: list = []
         total_deals = 0
@@ -1293,19 +1347,21 @@ def run_scraper(once: bool = True) -> None:
         if once:
             return
 
-        logger.info("Sleeping 6 hours before next scrape")
-        jitter = random.randint(-1800, 1800)
-        sleep_seconds = 6 * 60 * 60 + jitter
-        next_scan_at = completed_at.timestamp() + sleep_seconds
+        next_time = _next_scrape_time()
+        next_et = next_time.astimezone(_ET)
+        sleep_seconds = max(0, (next_time - datetime.now(timezone.utc)).total_seconds())
+        hours, remainder = divmod(int(sleep_seconds), 3600)
+        minutes = remainder // 60
+        logger.info("Next scrape scheduled for %s ET (%dh %dm from now)",
+                    next_et.strftime("%Y-%m-%d %I:%M %p"), hours, minutes)
         try:
             import requests as _req
             _req.post("http://api:8000/api/system/next-scan", json={
-                "next_scan_at": next_scan_at,
+                "next_scan_at": next_time.timestamp(),
                 "last_scan_at": completed_at.timestamp(),
             }, timeout=5)
         except Exception as e:
             logger.warning("Failed to post next_scan time: %s", e)
-        logger.info("Next scan in %.0f minutes", sleep_seconds / 60)
         time.sleep(sleep_seconds)
 
 

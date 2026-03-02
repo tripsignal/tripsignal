@@ -629,6 +629,7 @@ def list_scrape_runs(
             "duration_sec": duration_sec,
             "deal_delta": delta,
             "new_deals": new_deals,
+            "proxy_ip": run.proxy_ip,
         })
 
     results.reverse()
