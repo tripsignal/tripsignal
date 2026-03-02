@@ -23,6 +23,7 @@ from app.db.models.deal_price_history import DealPriceHistory
 from app.db.models.notification_outbox import NotificationOutbox
 from app.db.models.signal import Signal
 from app.db.models.user import User
+from app.core.config import settings
 from app.db.session import get_db
 
 logger = logging.getLogger("selloff_scraper")
@@ -31,6 +32,33 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 UNSUB_SECRET = os.getenv("UNSUB_SECRET", "tripsignal-unsub-default-key")
 NEXT_SCAN_FILE = "/tmp/next_scan.json"
+
+# Proxy configuration (DataImpulse residential proxy)
+PROXY_ENABLED = os.getenv("PROXY_ENABLED", "false").lower() in ("true", "1", "yes")
+PROXY_HOST = os.getenv("PROXY_HOST", "gw.dataimpulse.com")
+PROXY_PORT = os.getenv("PROXY_PORT", "823")
+PROXY_USER = os.getenv("PROXY_USER", "")
+PROXY_PASS = os.getenv("PROXY_PASS", "")
+PROXY_COUNTRY = os.getenv("PROXY_COUNTRY", "cr.ca")
+
+# Module-level proxy opener, set per cycle in run_scraper()
+_cycle_proxy_opener: Optional[urllib.request.OpenerDirector] = None
+
+
+def _build_proxy_url() -> Optional[str]:
+    """Build proxy URL from env vars. Returns None if not configured."""
+    if not PROXY_ENABLED or not PROXY_USER:
+        return None
+    return f"http://{PROXY_USER}__{PROXY_COUNTRY}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
+
+
+def _build_proxy_opener(proxy_url: str) -> urllib.request.OpenerDirector:
+    """Build a urllib opener that routes through the proxy."""
+    proxy_handler = urllib.request.ProxyHandler({
+        "http": proxy_url,
+        "https": proxy_url,
+    })
+    return urllib.request.build_opener(proxy_handler)
 
 CATEGORIES = [
     "luxury-vacations",
@@ -232,10 +260,28 @@ def fetch_deals_from_page(url: str) -> list[dict]:
                 "Accept-Language": "en-CA,en;q=0.9",
             },
         )
-        html = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "ignore")
+        if _cycle_proxy_opener:
+            html = _cycle_proxy_opener.open(req, timeout=30).read().decode("utf-8", "ignore")
+        else:
+            html = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "ignore")
     except Exception as e:
-        logger.warning("Failed to fetch %s: %s", url, e)
-        return []
+        if _cycle_proxy_opener:
+            logger.warning("Proxy error fetching %s: %s — retrying direct", url, e)
+            try:
+                req = urllib.request.Request(
+                    url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+                        "Accept-Language": "en-CA,en;q=0.9",
+                    },
+                )
+                html = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "ignore")
+            except Exception as e2:
+                logger.warning("Direct retry also failed for %s: %s", url, e2)
+                return []
+        else:
+            logger.warning("Failed to fetch %s: %s", url, e)
+            return []
 
     destinations = re.findall(r'adModuleHeading--\w+\">([^<]+)</h2>', html)
     hotels = re.findall(r'adModuleSubheading--\w+\">([^<]+)</p>', html)
@@ -977,8 +1023,8 @@ def _send_cycle_alerts(
 
         logger.info("V2 match alerts sent for %d signals", len(v2_signal_deals))
 
-    elif user_digest:
-        # Legacy path — send consolidated digests
+    elif not settings.EMAIL_V2_ENABLED and user_digest:
+        # Legacy path — only when V2 is explicitly disabled
         if db_override:
             send_all_user_digests(db_override, user_digest)
         else:
@@ -1044,26 +1090,27 @@ def run_matching_only(db: Session) -> None:
                 "deeplink_url": deal.deeplink_url or "",
             })
 
-            # Accumulate for legacy consolidated digest
-            user_email = signal.config.get("notifications", {}).get("email", "")
-            if user_email:
-                if sig_key not in user_digest[user_email]:
-                    user_digest[user_email][sig_key] = {
-                        "signal_name": signal.name,
-                        "signal_id": signal.id,
-                        "deals": [],
-                    }
-                user_digest[user_email][sig_key]["deals"].append({
-                    "price_cents": deal.price_cents,
-                    "price_dropped": delta > 0,
-                    "price_delta": delta,
-                    "hotel_name": deal.hotel_name or "",
-                    "star_rating": deal.star_rating,
-                    "depart_date": deal.depart_date,
-                    "return_date": deal.return_date,
-                    "destination_str": deal.destination_str or deal.destination or "",
-                    "origin": deal.origin or "",
-                })
+            # Accumulate for legacy consolidated digest (only when V2 disabled)
+            if not settings.EMAIL_V2_ENABLED:
+                user_email = signal.config.get("notifications", {}).get("email", "")
+                if user_email:
+                    if sig_key not in user_digest[user_email]:
+                        user_digest[user_email][sig_key] = {
+                            "signal_name": signal.name,
+                            "signal_id": signal.id,
+                            "deals": [],
+                        }
+                    user_digest[user_email][sig_key]["deals"].append({
+                        "price_cents": deal.price_cents,
+                        "price_dropped": delta > 0,
+                        "price_delta": delta,
+                        "hotel_name": deal.hotel_name or "",
+                        "star_rating": deal.star_rating,
+                        "depart_date": deal.depart_date,
+                        "return_date": deal.return_date,
+                        "destination_str": deal.destination_str or deal.destination or "",
+                        "origin": deal.origin or "",
+                    })
 
     # Send match alert emails
     _send_cycle_alerts(v2_signal_deals, user_digest, db_override=db)
@@ -1082,11 +1129,33 @@ def run_scraper(once: bool = True) -> None:
         seen_dedupe_keys: set[str] = set()
         started_at = datetime.now(timezone.utc)
 
+        # Proxy setup for this cycle
+        global _cycle_proxy_opener
+        _cycle_proxy_opener = None
+        proxy_ip = None
+        proxy_url = _build_proxy_url()
+        if proxy_url:
+            logger.info("Using residential proxy (Canada) via DataImpulse")
+            try:
+                test_opener = _build_proxy_opener(proxy_url)
+                test_req = urllib.request.Request("https://api.ipify.org?format=json")
+                resp = test_opener.open(test_req, timeout=10)
+                ip_data = json.loads(resp.read().decode())
+                proxy_ip = ip_data.get("ip")
+                logger.info("Proxy check passed: scraping from IP %s", proxy_ip)
+                _cycle_proxy_opener = test_opener
+            except Exception as e:
+                logger.warning("Proxy check FAILED — falling back to direct connection: %s", e)
+        else:
+            logger.info("Proxy not configured — using direct connection")
+
         # Post cycle start to API
         try:
             import requests as _req
             _req.post("http://api:8000/api/system/scrape-started", json={
                 "started_at": started_at.isoformat(),
+                "proxy_enabled": _cycle_proxy_opener is not None,
+                "proxy_ip": proxy_ip,
             }, timeout=5)
         except Exception as e:
             logger.warning("Failed to post scrape-started: %s", e)
@@ -1152,26 +1221,27 @@ def run_scraper(once: bool = True) -> None:
                                     "deeplink_url": deal.deeplink_url or "",
                                 })
 
-                                # Accumulate for legacy consolidated digest
-                                user_email = signal.config.get("notifications", {}).get("email", "")
-                                if user_email:
-                                    if sig_key not in user_digest[user_email]:
-                                        user_digest[user_email][sig_key] = {
-                                            "signal_name": signal.name,
-                                            "signal_id": signal.id,
-                                            "deals": [],
-                                        }
-                                    user_digest[user_email][sig_key]["deals"].append({
-                                        "price_cents": deal.price_cents,
-                                        "price_dropped": getattr(deal, "_price_dropped", False),
-                                        "price_delta": getattr(deal, "_price_delta", 0),
-                                        "hotel_name": deal.hotel_name or "",
-                                        "star_rating": deal.star_rating,
-                                        "depart_date": deal.depart_date,
-                                        "return_date": deal.return_date,
-                                        "destination_str": deal.destination_str or deal.destination or "",
-                                        "origin": deal.origin or "",
-                                    })
+                                # Accumulate for legacy consolidated digest (only when V2 disabled)
+                                if not settings.EMAIL_V2_ENABLED:
+                                    user_email = signal.config.get("notifications", {}).get("email", "")
+                                    if user_email:
+                                        if sig_key not in user_digest[user_email]:
+                                            user_digest[user_email][sig_key] = {
+                                                "signal_name": signal.name,
+                                                "signal_id": signal.id,
+                                                "deals": [],
+                                            }
+                                        user_digest[user_email][sig_key]["deals"].append({
+                                            "price_cents": deal.price_cents,
+                                            "price_dropped": getattr(deal, "_price_dropped", False),
+                                            "price_delta": getattr(deal, "_price_delta", 0),
+                                            "hotel_name": deal.hotel_name or "",
+                                            "star_rating": deal.star_rating,
+                                            "depart_date": deal.depart_date,
+                                            "return_date": deal.return_date,
+                                            "destination_str": deal.destination_str or deal.destination or "",
+                                            "origin": deal.origin or "",
+                                        })
 
                         except Exception as e:
                             logger.error("Error processing deal: %s", e)
@@ -1214,6 +1284,8 @@ def run_scraper(once: bool = True) -> None:
                 "errors": cycle_errors,
                 "deals_deactivated": deals_deactivated,
                 "status": "completed",
+                "proxy_enabled": _cycle_proxy_opener is not None,
+                "proxy_ip": proxy_ip,
             }, timeout=5)
         except Exception as e:
             logger.warning("Failed to post collection summary: %s", e)
