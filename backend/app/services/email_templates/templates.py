@@ -35,7 +35,7 @@ def welcome(*, user: "User", context: dict) -> tuple[str, str]:
         )
         + para(
             "Create your first signal to tell us what you're looking for — we'll check "
-            "prices every 6 hours and email you when deals match."
+            "prices multiple times a day and email you when deals match."
         )
         + button("Create your first signal", "https://tripsignal.ca/signals/new")
         + para("No rush — your account is ready whenever you are.")
@@ -50,7 +50,7 @@ def first_signal(*, user: "User", context: dict) -> tuple[str, str]:
         heading("Your signal is live")
         + para(
             f"We've started monitoring deals for <strong>{signal_name}</strong>. "
-            "Prices are checked every 6 hours across our travel provider network."
+            "Prices are checked multiple times a day across our travel provider network."
         )
         + para(
             "When a deal matches your criteria, you'll receive an alert with pricing "
@@ -258,7 +258,7 @@ def trial_expiring_soon(*, user: "User", context: dict) -> tuple[str, str]:
             '<p style="margin:0 0 8px;font-size:14px;font-weight:600;color:#1D4ED8;">Trip Signal Pro includes:</p>'
             '<ul style="margin:0;padding-left:20px;font-size:14px;color:#333;">'
             "<li>Up to 10 active signals</li>"
-            "<li>Prices checked every 6 hours</li>"
+            "<li>Prices checked multiple times a day</li>"
             "<li>Email + SMS alerts</li>"
             "<li>Price drop tracking &amp; history</li>"
             "</ul>"
@@ -288,7 +288,7 @@ def trial_expired_upsell(*, user: "User", context: dict) -> tuple[str, str]:
             '<p style="margin:0 0 8px;font-size:14px;font-weight:600;color:#1D4ED8;">Trip Signal Pro includes:</p>'
             '<ul style="margin:0;padding-left:20px;font-size:14px;color:#333;">'
             "<li>Up to 10 active signals</li>"
-            "<li>Prices checked every 6 hours</li>"
+            "<li>Prices checked multiple times a day</li>"
             "<li>Email + SMS alerts</li>"
             "<li>Price drop tracking &amp; history</li>"
             "</ul>"
@@ -320,7 +320,7 @@ def pro_activated(*, user: "User", context: dict) -> tuple[str, str]:
         + info_box(
             '<ul style="margin:0;padding-left:20px;font-size:14px;color:#333;">'
             "<li>Up to 10 active signals</li>"
-            "<li>Prices checked every 6 hours</li>"
+            "<li>Prices checked multiple times a day</li>"
             "<li>Email + SMS alerts</li>"
             "<li>Full price drop tracking &amp; history</li>"
             "</ul>"
@@ -453,7 +453,7 @@ def no_match_update(*, user: "User", context: dict) -> tuple[str, str]:
             "</ul>"
         )
         + button("Edit your signal", "https://tripsignal.ca/signals")
-        + para("We're still checking every 6 hours — if a deal appears, you'll hear from us.")
+        + para("We're still checking throughout the day — if a deal appears, you'll hear from us.")
     )
     return subject, wrap(
         body,

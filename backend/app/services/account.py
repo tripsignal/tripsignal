@@ -213,7 +213,7 @@ def send_trial_expired_email(to: str) -> bool:
     <p style="margin: 0 0 8px; font-size: 14px; font-weight: 600; color: #1D4ED8;">TripSignal Pro includes:</p>
     <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #333;">
       <li>Up to 10 active signals</li>
-      <li>Prices checked every 6 hours</li>
+      <li>Prices checked multiple times a day</li>
       <li>Email + SMS alerts</li>
       <li>Price drop tracking &amp; history</li>
     </ul>

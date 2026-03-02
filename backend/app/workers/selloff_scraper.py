@@ -816,7 +816,7 @@ def send_user_digest_email(user_email: str, signal_deals: dict, is_pro: bool = F
         if has_drops:
             upsell_copy = "Pro users got this alert hours earlier. Upgrade to get instant price drop notifications."
         else:
-            upsell_copy = "Free signals check every 6 hours. Pro alerts you within minutes &mdash; before prices change."
+            upsell_copy = "Free signals check once a day. Pro checks multiple times a day &mdash; so you catch deals before prices change."
         upsell_html = f"""
     <div style="background: #fefce8; border: 1px solid #fde68a; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px;">
       <p style="margin: 0 0 4px; font-size: 13px; font-weight: 600; color: #92400e;">&#9889; Go Pro</p>
