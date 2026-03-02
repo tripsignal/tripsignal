@@ -17,7 +17,7 @@ from app.db.models.signal_run import SignalRun
 from app.db.models.deal import Deal
 from app.db.models.scrape_run import ScrapeRun
 from app.db.models.hotel_link import HotelLink
-from app.services.account import delete_account, VALID_REASONS
+from app.services.account import delete_account, restore_account, VALID_REASONS
 
 logger = logging.getLogger(__name__)
 
@@ -380,6 +380,33 @@ def admin_delete_user(
         "already_deleted": result.already_deleted,
         "stripe_canceled": result.stripe_canceled,
         "email_sent": result.email_sent,
+    }
+
+
+# ── POST /admin/users/{user_id}/undelete ──────────────────────────────
+@router.post("/users/{user_id}/undelete")
+def admin_undelete_user(
+    user_id: str,
+    db: Session = Depends(get_db),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    verify_admin(x_admin_token)
+
+    user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    result = restore_account(db=db, user=user)
+
+    if not result.ok:
+        raise HTTPException(status_code=500, detail=result.error or "Restore failed")
+
+    return {
+        "ok": True,
+        "not_deleted": result.not_deleted,
+        "email": user.email,
+        "plan_status": user.plan_status,
+        "plan_type": user.plan_type,
     }
 
 

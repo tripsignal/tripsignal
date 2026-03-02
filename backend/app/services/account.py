@@ -141,6 +141,48 @@ def delete_account(
     )
 
 
+# ── Restore (undelete) ────────────────────────────────────────────────
+
+@dataclass
+class RestoreResult:
+    ok: bool
+    not_deleted: bool = False
+    error: str | None = None
+
+
+def restore_account(
+    *,
+    db: Session,
+    user: User,
+) -> RestoreResult:
+    """Restore a soft-deleted user account (admin-only).
+
+    Clears deletion metadata, restores plan_status to active,
+    re-enables email delivery.  Does NOT touch Stripe or signals.
+    """
+    if user.deleted_at is None:
+        logger.info("restore_account: user %s is not deleted, skipping", user.email)
+        return RestoreResult(ok=True, not_deleted=True)
+
+    user.deleted_at = None
+    user.deleted_by = None
+    user.deleted_reason = None
+    user.deleted_reason_other = None
+    user.plan_status = "active"
+    user.email_opt_out = False
+
+    try:
+        db.commit()
+        db.refresh(user)
+        logger.info("[ADMIN] restore_account: %s restored", user.email)
+    except Exception as e:
+        db.rollback()
+        logger.error("DB commit failed during restore for %s: %s", user.email, e)
+        return RestoreResult(ok=False, error=f"Database error: {e}")
+
+    return RestoreResult(ok=True)
+
+
 def _send_deletion_email(to: str, had_subscription: bool) -> bool:
     """Send account deletion confirmation email."""
     if had_subscription:
