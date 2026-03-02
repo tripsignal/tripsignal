@@ -23,6 +23,7 @@ class ScrapeRun(Base):
     error_log: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     deals_deactivated: Mapped[int | None] = mapped_column(Integer, nullable=True)
     proxy_ip: Mapped[str | None] = mapped_column(Text, nullable=True)
+    proxy_geo: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     def __repr__(self) -> str:
         return f"<ScrapeRun(id={self.id}, started_at={self.started_at}, status={self.status})>"

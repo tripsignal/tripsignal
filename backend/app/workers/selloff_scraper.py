@@ -1203,6 +1203,20 @@ def run_scraper(once: bool = True) -> None:
         else:
             logger.info("Proxy not configured — using direct connection")
 
+        # Geo-locate the proxy IP
+        proxy_geo = None
+        if proxy_ip:
+            try:
+                geo_req = urllib.request.Request(f"http://ip-api.com/json/{proxy_ip}?fields=city,regionName,countryCode")
+                opener = _cycle_proxy_opener or urllib.request.build_opener()
+                geo_resp = opener.open(geo_req, timeout=5)
+                geo = json.loads(geo_resp.read().decode())
+                if geo.get("city"):
+                    proxy_geo = f"{geo['city']}, {geo.get('regionName', '')}, {geo.get('countryCode', '')}".strip(", ")
+                    logger.info("Proxy geo: %s", proxy_geo)
+            except Exception as e:
+                logger.debug("Proxy geo lookup failed: %s", e)
+
         # Post cycle start to API
         try:
             import requests as _req
@@ -1210,6 +1224,7 @@ def run_scraper(once: bool = True) -> None:
                 "started_at": started_at.isoformat(),
                 "proxy_enabled": _cycle_proxy_opener is not None,
                 "proxy_ip": proxy_ip,
+                "proxy_geo": proxy_geo,
             }, timeout=5)
         except Exception as e:
             logger.warning("Failed to post scrape-started: %s", e)
@@ -1340,6 +1355,7 @@ def run_scraper(once: bool = True) -> None:
                 "status": "completed",
                 "proxy_enabled": _cycle_proxy_opener is not None,
                 "proxy_ip": proxy_ip,
+                "proxy_geo": proxy_geo,
             }, timeout=5)
         except Exception as e:
             logger.warning("Failed to post collection summary: %s", e)

@@ -90,7 +90,7 @@ async def scrape_started(payload: dict):
     started_at = datetime.fromisoformat(started_at_str) if started_at_str else datetime.now(timezone.utc)
     db = next(get_db())
     try:
-        run = ScrapeRun(started_at=started_at, status="running", proxy_ip=payload.get("proxy_ip"))
+        run = ScrapeRun(started_at=started_at, status="running", proxy_ip=payload.get("proxy_ip"), proxy_geo=payload.get("proxy_geo"))
         db.add(run)
         db.commit()
         db.refresh(run)
@@ -124,6 +124,8 @@ async def collection_complete(payload: dict):
             run.status = payload.get("status", "completed")
             if payload.get("proxy_ip"):
                 run.proxy_ip = payload["proxy_ip"]
+            if payload.get("proxy_geo"):
+                run.proxy_geo = payload["proxy_geo"]
         else:
             started_at_str = payload.get("started_at")
             started_at = datetime.fromisoformat(started_at_str) if started_at_str else completed_at
@@ -137,6 +139,7 @@ async def collection_complete(payload: dict):
                 deals_deactivated=payload.get("deals_deactivated"),
                 status=payload.get("status", "completed"),
                 proxy_ip=payload.get("proxy_ip"),
+                proxy_geo=payload.get("proxy_geo"),
             )
             db.add(run)
 
