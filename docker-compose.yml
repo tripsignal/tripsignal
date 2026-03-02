@@ -77,6 +77,30 @@ services:
     healthcheck:
       disable: true
 
+  lifecycle_worker:
+    build:
+      context: /opt/tripsignal
+      dockerfile: /opt/tripsignal/Dockerfile
+    working_dir: /app/backend
+    env_file:
+      - .env
+    environment:
+      PYTHONPATH: /app/backend
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      LIFECYCLE_POLL_SECONDS: "300"
+    volumes:
+      - ./backend:/app/backend
+    command: ["python", "-m", "app.workers.lifecycle_email_worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - tripsignal-network
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+
   selloff_scraper:
     build:
       context: /opt/tripsignal
@@ -90,7 +114,7 @@ services:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
       SCRAPE_DELAY_SECONDS: "10"
-    command: ["python", "-c", "import sys; sys.path.insert(0, '/app/backend'); from app.workers.selloff_scraper import run_scraper; run_scraper()"]
+    command: ["python", "-c", "import sys; sys.path.insert(0, '/app/backend'); from app.workers.selloff_scraper import run_scraper; run_scraper(once=False)"]
     depends_on:
       postgres:
         condition: service_healthy

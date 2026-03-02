@@ -41,6 +41,9 @@ class Deal(Base):
     is_active: Mapped[bool] = mapped_column(
         nullable=False, server_default=text("true"), index=True
     )
+    deactivated_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True, index=True
+    )
     hotel_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     hotel_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     discount_pct: Mapped[int | None] = mapped_column(Integer, nullable=True)

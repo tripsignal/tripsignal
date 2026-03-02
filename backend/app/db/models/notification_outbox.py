@@ -27,3 +27,5 @@ class NotificationOutbox(Base):
     to_email = Column(Text, nullable=False)
     subject = Column(Text, nullable=False)
     body_text = Column(Text, nullable=False)
+    opened_at = Column(DateTime(timezone=True), nullable=True)
+    open_count = Column(Integer, nullable=False, server_default="0")

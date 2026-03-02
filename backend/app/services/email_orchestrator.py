@@ -1,0 +1,419 @@
+"""
+Centralized Email Orchestrator — single entry point for all lifecycle emails.
+
+Every email in the system flows through ``trigger()`` which:
+1. Gates on EMAIL_V2_ENABLED (returns "skipped" when off).
+2. Loads user + validates state.
+3. Applies suppression rules (see ``_check_suppression``).
+4. Computes a deterministic idempotency key and dedupes via email_log.
+5. Inserts a "pending" row into email_log BEFORE sending.
+6. Renders the template.
+7. Sends via Resend (or dry-runs).
+8. Updates email_log with sent_at, provider_message_id, and metadata.
+"""
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from enum import Enum
+
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.db.models.email_log import EmailLog
+from app.db.models.user import User
+from app.services.email import send_email
+
+logger = logging.getLogger(__name__)
+
+
+# ── Email categories ─────────────────────────────────────────────────────────
+
+class EmailCategory(str, Enum):
+    TRANSACTIONAL = "transactional"   # welcome, first signal, account deleted
+    BILLING = "billing"               # pro activated, payment failed, canceled
+    ALERT = "alert"                   # match found, major drop
+    UPSELL = "upsell"                 # trial expiring, trial expired
+    ENGAGEMENT = "engagement"         # no signal, inactive, no matches
+
+
+class EmailType(str, Enum):
+    WELCOME = "WELCOME_EMAIL"
+    FIRST_SIGNAL = "FIRST_SIGNAL_EMAIL"
+    NO_SIGNAL_REMINDER = "NO_SIGNAL_REMINDER"
+    MATCH_ALERT = "MATCH_ALERT_EMAIL"
+    MAJOR_DROP_ALERT = "MAJOR_DROP_ALERT"
+    TRIAL_EXPIRING_SOON = "TRIAL_EXPIRING_SOON"
+    TRIAL_EXPIRED_UPSELL = "TRIAL_EXPIRED_UPSELL"
+    PRO_ACTIVATED = "PRO_ACTIVATED"
+    PAYMENT_FAILED = "PAYMENT_FAILED"
+    PAYMENT_FAILED_REMINDER = "PAYMENT_FAILED_REMINDER"
+    SUBSCRIPTION_CANCELED = "SUBSCRIPTION_CANCELED_CONFIRMATION"
+    ACCOUNT_DELETED_FREE = "ACCOUNT_DELETED_FREE"
+    ACCOUNT_DELETED_PRO = "ACCOUNT_DELETED_PRO"
+    NO_MATCH_UPDATE = "NO_MATCH_UPDATE"
+    INACTIVE_REENGAGEMENT = "INACTIVE_REENGAGEMENT"
+
+
+# Map each email type to its category
+EMAIL_TYPE_CATEGORY: dict[str, EmailCategory] = {
+    EmailType.WELCOME: EmailCategory.TRANSACTIONAL,
+    EmailType.FIRST_SIGNAL: EmailCategory.TRANSACTIONAL,
+    EmailType.ACCOUNT_DELETED_FREE: EmailCategory.TRANSACTIONAL,
+    EmailType.ACCOUNT_DELETED_PRO: EmailCategory.TRANSACTIONAL,
+    EmailType.PRO_ACTIVATED: EmailCategory.BILLING,
+    EmailType.PAYMENT_FAILED: EmailCategory.BILLING,
+    EmailType.PAYMENT_FAILED_REMINDER: EmailCategory.BILLING,
+    EmailType.SUBSCRIPTION_CANCELED: EmailCategory.BILLING,
+    EmailType.MATCH_ALERT: EmailCategory.ALERT,
+    EmailType.MAJOR_DROP_ALERT: EmailCategory.ALERT,
+    EmailType.TRIAL_EXPIRING_SOON: EmailCategory.UPSELL,
+    EmailType.TRIAL_EXPIRED_UPSELL: EmailCategory.UPSELL,
+    EmailType.NO_SIGNAL_REMINDER: EmailCategory.ENGAGEMENT,
+    EmailType.NO_MATCH_UPDATE: EmailCategory.ENGAGEMENT,
+    EmailType.INACTIVE_REENGAGEMENT: EmailCategory.ENGAGEMENT,
+}
+
+# Categories that honour the user's marketing/engagement opt-out
+SUPPRESSIBLE_CATEGORIES = {EmailCategory.ENGAGEMENT, EmailCategory.UPSELL}
+
+# Categories that are never suppressed (even if user is deleted — handled specially)
+ALWAYS_SEND_CATEGORIES = {EmailCategory.TRANSACTIONAL, EmailCategory.BILLING}
+
+
+# ── Orchestrator ─────────────────────────────────────────────────────────────
+
+def trigger(
+    *,
+    db: Session,
+    email_type: str | EmailType,
+    user_id: str,
+    context: dict | None = None,
+    idempotency_key: str | None = None,
+) -> dict:
+    """
+    Main entry point.  Returns dict with outcome:
+      {"status": "sent"|"dry_run"|"suppressed"|"duplicate"|"skipped"|"error",
+       "reason": ...}
+    """
+    email_type = EmailType(email_type) if isinstance(email_type, str) else email_type
+    context = context or {}
+    category = EMAIL_TYPE_CATEGORY.get(email_type, EmailCategory.TRANSACTIONAL)
+
+    # ── 0. V2 gate — when disabled, return immediately so legacy paths run ──
+    if not settings.EMAIL_V2_ENABLED:
+        logger.debug("orchestrator: EMAIL_V2_ENABLED=false, skipping %s", email_type.value)
+        return {"status": "skipped", "reason": "v2_disabled"}
+
+    # ── 1. Load user ──────────────────────────────────────────────────────
+    user = db.execute(
+        select(User).where(User.id == user_id)
+    ).scalar_one_or_none()
+    if not user:
+        logger.warning("orchestrator: user %s not found", user_id)
+        return {"status": "error", "reason": "user_not_found"}
+
+    # ── 2. Suppression checks ─────────────────────────────────────────────
+    suppression = _check_suppression(db, user, email_type, category)
+    if suppression:
+        _log_suppressed(db, user, email_type, category, idempotency_key, suppression)
+        return {"status": "suppressed", "reason": suppression}
+
+    # ── 3. Compute idempotency key ────────────────────────────────────────
+    if not idempotency_key:
+        idempotency_key = _build_idempotency_key(email_type, str(user.id), context)
+
+    # ── 4. Insert pending row BEFORE sending (dedupe via unique key) ──────
+    try:
+        existing = db.execute(
+            select(EmailLog).where(EmailLog.idempotency_key == idempotency_key)
+        ).scalar_one_or_none()
+        if existing:
+            logger.info("orchestrator: duplicate key %s for %s", idempotency_key, email_type.value)
+            return {"status": "duplicate", "reason": "idempotency_key_exists"}
+
+        log_row = EmailLog(
+            user_id=user.id,
+            email_type=email_type.value,
+            category=category.value,
+            idempotency_key=idempotency_key,
+            to_email=user.email,
+            status="pending",
+        )
+        db.add(log_row)
+        db.flush()
+    except Exception as e:
+        logger.error("orchestrator: email_log insert error: %s", e)
+        db.rollback()
+        return {"status": "error", "reason": str(e)}
+
+    # ── 5. Render template ────────────────────────────────────────────────
+    if "_unsub_url" not in context:
+        try:
+            from app.workers.selloff_scraper import generate_unsub_token
+            token = generate_unsub_token(str(user.id))
+            context["_unsub_url"] = f"https://tripsignal.ca/unsubscribe?token={token}"
+        except Exception:
+            logger.warning("orchestrator: failed to generate unsub token for %s", user_id)
+
+    from app.services.email_templates import render_template
+    subject, html = render_template(email_type, user=user, context=context, db=db)
+
+    # ── 6. Send (or dry-run) ─────────────────────────────────────────────
+    now = datetime.now(timezone.utc)
+    message_id = send_email(user.email, subject, html)
+
+    # ── 7. Update the pending email_log row ──────────────────────────────
+    log_row.subject = subject
+    if settings.EMAIL_DRY_RUN:
+        log_row.status = "dry_run"
+        log_row.sent_at = now
+        log_row.provider_message_id = None
+        log_row.metadata_json = {
+            "dry_run": True,
+            "rendered_subject": subject,
+            "rendered_body": html,
+            **(context or {}),
+        }
+    elif message_id:
+        log_row.status = "sent"
+        log_row.sent_at = now
+        log_row.provider_message_id = message_id
+        log_row.metadata_json = context if context else None
+    else:
+        log_row.status = "failed"
+        log_row.metadata_json = context if context else None
+
+    # ── 8. Stamp user-level sent_at flags ─────────────────────────────────
+    if message_id:
+        _stamp_user_sent(user, email_type, now)
+
+    try:
+        db.commit()
+    except Exception as e:
+        logger.error("orchestrator: commit error: %s", e)
+        db.rollback()
+        return {"status": "error", "reason": str(e)}
+
+    status_label = "dry_run" if settings.EMAIL_DRY_RUN else ("sent" if message_id else "failed")
+    logger.info(
+        "orchestrator: %s → %s (%s) key=%s mid=%s",
+        email_type.value, user.email, status_label, idempotency_key, message_id or "—",
+    )
+    return {
+        "status": status_label,
+        "reason": None if message_id else ("dry_run" if settings.EMAIL_DRY_RUN else "send_failed"),
+        "idempotency_key": idempotency_key,
+    }
+
+
+# ── Suppression logic ────────────────────────────────────────────────────────
+#
+# Evaluation order matters — most decisive rules first.
+#
+# 1. EMAIL_SUSPEND_NONCRITICAL (global kill-switch for ENGAGEMENT + UPSELL)
+# 2. Deleted user (suppress all except ACCOUNT_DELETED_*)
+# 3. email_opt_out / unsubscribed_marketing (suppress ENGAGEMENT + UPSELL)
+# 4. email_enabled=false (suppress ALERT — user paused notifications)
+# 5. 24-hour rate limit (max 2 ENGAGEMENT + UPSELL per 24h)
+# 6. Upsell cooldown (no UPSELL within 48h of TRIAL_EXPIRING_SOON)
+# 7. Canceled-after-deletion guard
+#
+
+def _check_suppression(
+    db: Session, user: User, email_type: EmailType, category: EmailCategory,
+) -> str | None:
+    """Return a suppression reason string, or None if email should be sent."""
+
+    # 1. Global noncritical suspension: suppress ENGAGEMENT and UPSELL emails.
+    #    NEVER suppresses BILLING, TRANSACTIONAL, or ALERT.
+    if settings.EMAIL_SUSPEND_NONCRITICAL and category in SUPPRESSIBLE_CATEGORIES:
+        return "global_noncritical_suspended"
+
+    # 2. Deleted users: suppress everything except the deletion confirmation itself.
+    is_deletion_email = email_type in (EmailType.ACCOUNT_DELETED_FREE, EmailType.ACCOUNT_DELETED_PRO)
+    if user.deleted_at is not None and not is_deletion_email:
+        return "user_deleted"
+
+    # 3. Marketing opt-out (email_opt_out): suppress ENGAGEMENT and UPSELL.
+    #    BILLING and TRANSACTIONAL always send regardless of opt-out.
+    if user.email_opt_out and category in SUPPRESSIBLE_CATEGORIES:
+        return "email_opt_out"
+
+    # 4. Notifications paused (email_enabled=False): suppress ALERT emails.
+    if not user.email_enabled and category == EmailCategory.ALERT:
+        return "email_disabled"
+
+    # 5. Rate limit: max 2 non-alert lifecycle emails per 24h.
+    #    Counts "sent" and "dry_run" statuses to prevent dry-run floods.
+    if category in SUPPRESSIBLE_CATEGORIES:
+        recent_count = db.execute(
+            select(func.count(EmailLog.id)).where(
+                EmailLog.user_id == user.id,
+                EmailLog.category.in_(["engagement", "upsell"]),
+                EmailLog.status.in_(["sent", "dry_run"]),
+                EmailLog.sent_at >= datetime.now(timezone.utc) - timedelta(hours=24),
+            )
+        ).scalar() or 0
+        if recent_count >= 2:
+            return "rate_limit_24h"
+
+    # 6. Upsell cooldown: suppress UPSELL within 48h of a TRIAL_EXPIRING_SOON email.
+    if category == EmailCategory.UPSELL and email_type != EmailType.TRIAL_EXPIRING_SOON:
+        trial_email = db.execute(
+            select(EmailLog).where(
+                EmailLog.user_id == user.id,
+                EmailLog.email_type == EmailType.TRIAL_EXPIRING_SOON.value,
+                EmailLog.status.in_(["sent", "dry_run"]),
+                EmailLog.sent_at >= datetime.now(timezone.utc) - timedelta(hours=48),
+            ).limit(1)
+        ).scalar_one_or_none()
+        if trial_email:
+            return "upsell_after_trial_warning"
+
+    # 7. Suppress SUBSCRIPTION_CANCELED if account was deleted within last 24h.
+    if email_type == EmailType.SUBSCRIPTION_CANCELED:
+        if user.deleted_at and (datetime.now(timezone.utc) - user.deleted_at) < timedelta(hours=24):
+            return "canceled_after_deletion"
+
+    return None
+
+
+# ── Deterministic idempotency keys ───────────────────────────────────────────
+#
+# Every key is a pure function of its inputs — no random UUIDs, no timestamps
+# unless the timestamp IS the deduplication window (e.g. trial_end_date).
+#
+# Format: ``{type_prefix}:{scope_id}[:{qualifier}]``
+#
+# | EmailType               | Key                                           |
+# |-------------------------|-----------------------------------------------|
+# | WELCOME                 | welcome:{userId}                              |
+# | FIRST_SIGNAL            | first_signal:{userId}                         |
+# | TRIAL_EXPIRING_SOON     | trial_expiring:{userId}:{trial_end_date}      |
+# | TRIAL_EXPIRED_UPSELL    | trial_expired:{userId}:{trial_end_date}       |
+# | PRO_ACTIVATED           | pro_activated:{subscription_id}               |
+# | PAYMENT_FAILED          | payment_failed:{invoice_id}                   |
+# | PAYMENT_FAILED_REMINDER | payment_failed_reminder:{invoice_id}:{index}  |
+# | SUBSCRIPTION_CANCELED   | subscription_canceled:{subscription_id}       |
+# | ACCOUNT_DELETED_FREE    | account_deleted_free:{userId}                 |
+# | ACCOUNT_DELETED_PRO     | account_deleted_pro:{userId}                  |
+# | MATCH_ALERT             | match_alert:{signalId}:{runId}                |
+# | MAJOR_DROP_ALERT        | major_drop:{signalId}:{dealId}                |
+# | NO_SIGNAL_REMINDER      | no_signal:{userId}                            |
+# | NO_MATCH_UPDATE         | no_match:{signalId}:{window_start}            |
+# | INACTIVE_REENGAGEMENT   | inactive:{userId}:{window_start}              |
+
+def _build_idempotency_key(email_type: EmailType, user_id: str, context: dict) -> str:
+    """Generate a deterministic idempotency key from event identifiers.
+
+    Callers can also pass an explicit ``idempotency_key`` to ``trigger()``
+    to override this default.
+    """
+    uid = str(user_id)
+
+    if email_type == EmailType.WELCOME:
+        return f"welcome:{uid}"
+
+    if email_type == EmailType.FIRST_SIGNAL:
+        return f"first_signal:{uid}"
+
+    if email_type == EmailType.TRIAL_EXPIRING_SOON:
+        trial_end = context.get("trial_end_date", "unknown")
+        return f"trial_expiring:{uid}:{trial_end}"
+
+    if email_type == EmailType.TRIAL_EXPIRED_UPSELL:
+        trial_end = context.get("trial_end_date", "unknown")
+        return f"trial_expired:{uid}:{trial_end}"
+
+    if email_type == EmailType.PRO_ACTIVATED:
+        sub_id = context.get("subscription_id", uid)
+        return f"pro_activated:{sub_id}"
+
+    if email_type == EmailType.PAYMENT_FAILED:
+        invoice_id = context.get("invoice_id", "unknown")
+        return f"payment_failed:{invoice_id}"
+
+    if email_type == EmailType.PAYMENT_FAILED_REMINDER:
+        invoice_id = context.get("invoice_id", "unknown")
+        index = context.get("reminder_num", context.get("index", "0"))
+        return f"payment_failed_reminder:{invoice_id}:{index}"
+
+    if email_type == EmailType.SUBSCRIPTION_CANCELED:
+        sub_id = context.get("subscription_id", uid)
+        return f"subscription_canceled:{sub_id}"
+
+    if email_type == EmailType.ACCOUNT_DELETED_FREE:
+        return f"account_deleted_free:{uid}"
+
+    if email_type == EmailType.ACCOUNT_DELETED_PRO:
+        return f"account_deleted_pro:{uid}"
+
+    if email_type == EmailType.MATCH_ALERT:
+        signal_id = context.get("signal_id", "unknown")
+        run_id = context.get("run_id", "unknown")
+        return f"match_alert:{signal_id}:{run_id}"
+
+    if email_type == EmailType.MAJOR_DROP_ALERT:
+        signal_id = context.get("signal_id", "unknown")
+        deal_id = context.get("deal_id", "unknown")
+        return f"major_drop:{signal_id}:{deal_id}"
+
+    if email_type == EmailType.NO_SIGNAL_REMINDER:
+        return f"no_signal:{uid}"
+
+    if email_type == EmailType.NO_MATCH_UPDATE:
+        signal_id = context.get("signal_id", "unknown")
+        window_start = context.get("window_start", "unknown")
+        return f"no_match:{signal_id}:{window_start}"
+
+    if email_type == EmailType.INACTIVE_REENGAGEMENT:
+        window_start = context.get("window_start", context.get("period", "unknown"))
+        return f"inactive:{uid}:{window_start}"
+
+    # Fallback (should never happen if all types are covered above)
+    return f"{email_type.value}:{uid}"
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def _stamp_user_sent(user: User, email_type: EmailType, now: datetime) -> None:
+    """Set user-level sent_at flags to prevent re-queries by scheduled jobs."""
+    stamp_map = {
+        EmailType.WELCOME: "welcome_email_sent_at",
+        EmailType.TRIAL_EXPIRING_SOON: "trial_expiring_email_sent_at",
+        EmailType.TRIAL_EXPIRED_UPSELL: "trial_expired_email_sent_at",
+        EmailType.NO_SIGNAL_REMINDER: "no_signal_email_sent_at",
+    }
+    attr = stamp_map.get(email_type)
+    if attr and hasattr(user, attr):
+        setattr(user, attr, now)
+
+
+def _log_suppressed(
+    db: Session,
+    user: User,
+    email_type: EmailType,
+    category: EmailCategory,
+    idempotency_key: str | None,
+    reason: str,
+) -> None:
+    """Record a suppressed email in the log for audit purposes."""
+    key = idempotency_key or _build_idempotency_key(email_type, str(user.id), {})
+    try:
+        stmt = pg_insert(EmailLog).values(
+            user_id=user.id,
+            email_type=email_type.value,
+            category=category.value,
+            idempotency_key=f"suppressed:{key}:{reason}",
+            to_email=user.email,
+            status="suppressed",
+            suppressed_reason=reason,
+        ).on_conflict_do_nothing(index_elements=["idempotency_key"])
+        db.execute(stmt)
+        db.commit()
+    except Exception:
+        db.rollback()
+    logger.info("orchestrator: SUPPRESSED %s → %s reason=%s", email_type.value, user.email, reason)

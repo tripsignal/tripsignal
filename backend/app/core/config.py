@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str = ""
     STRIPE_PRO_PRICE_ID: str = ""
 
+    # Email feature flags
+    EMAIL_V2_ENABLED: bool = False
+    EMAIL_DRY_RUN: bool = False
+    EMAIL_SUSPEND_NONCRITICAL: bool = False
+
     # Database Settings
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"

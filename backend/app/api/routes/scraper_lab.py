@@ -339,11 +339,8 @@ def simulate_signal_matches(deals: list[dict], db: Session) -> list[dict]:
 
                 budget = config.get("budget", {})
                 target_pp = budget.get("target_pp")
-                travellers = config.get("travellers", {})
-                adults = travellers.get("adults", 2)
                 if target_pp:
-                    total_budget = int(target_pp) * adults
-                    if deal["price_cad"] > total_budget:
+                    if deal["price_cad"] > int(target_pp):
                         continue
 
                 matched.append({"signal_id": str(signal.id), "signal_name": signal.name})

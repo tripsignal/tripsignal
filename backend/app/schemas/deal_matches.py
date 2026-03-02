@@ -23,12 +23,14 @@ class DealOut(BaseModel):
     dedupe_key: Optional[str] = None
     price_trend: Optional[str] = None
     previous_price_cents: Optional[int] = None
+    price_delta_cents: Optional[int] = None
     is_active: Optional[bool] = None
     hotel_name: Optional[str] = None
     hotel_id: Optional[str] = None
     discount_pct: Optional[int] = None
     destination_str: Optional[str] = None
     star_rating: Optional[float] = None
+    tripadvisor_url: Optional[str] = None
 
     class Config:
         from_attributes = True

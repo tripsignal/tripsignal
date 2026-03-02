@@ -56,6 +56,13 @@ class DealMatch(Base):
         server_default=text("false"),
     )
 
+    notified_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True,
+    )
+    major_drop_alert_sent_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True,
+    )
+
     # Relationships
     deal: Mapped["Deal"] = relationship("Deal", back_populates="deal_matches")
     signal: Mapped["Signal"] = relationship("Signal", back_populates="deal_matches")

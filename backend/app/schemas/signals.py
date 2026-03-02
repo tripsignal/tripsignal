@@ -21,6 +21,7 @@ class SignalStatus(str, Enum):
 
     active = "active"
     paused = "paused"
+    payment_paused = "payment_paused"
     archived = "archived"
 
 

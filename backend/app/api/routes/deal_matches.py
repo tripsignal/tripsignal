@@ -13,6 +13,7 @@ from app.db.models.signal_run import SignalRun
 from app.db.models.deal_match import DealMatch
 from app.db.models.deal import Deal
 from app.db.models.deal_price_history import DealPriceHistory
+from app.db.models.hotel_link import HotelLink
 from app.db.models.notification_outbox import NotificationOutbox
 from app.schemas.deal_matches import DealMatchOut, DealOut
 from app.schemas.deals import DealMatchCreate
@@ -21,27 +22,26 @@ router = APIRouter(prefix="/signals", tags=["matches"])
 
 
 def get_price_trend(db: Session, deal_id: UUID):
-    """Return (price_trend, previous_price_cents) for a deal based on price history."""
+    """Return (price_trend, previous_price_cents, delta_cents) comparing current vs first-seen price."""
     history = (
         db.query(DealPriceHistory)
         .filter(DealPriceHistory.deal_id == deal_id)
-        .order_by(DealPriceHistory.recorded_at.desc())
-        .limit(2)
+        .order_by(DealPriceHistory.recorded_at.asc())
         .all()
     )
     if len(history) < 2:
-        return None, None
+        return None, None, None
 
-    current = history[0].price_cents
-    previous = history[1].price_cents
-    change_pct = (current - previous) / previous * 100
+    first_price = history[0].price_cents
+    current_price = history[-1].price_cents
+    delta_cents = current_price - first_price
 
-    if change_pct <= -5:
-        return "down", previous
-    elif change_pct >= 5:
-        return "up", previous
+    if delta_cents < 0:
+        return "down", first_price, abs(delta_cents)
+    elif delta_cents > 0:
+        return "up", first_price, delta_cents
     else:
-        return "stable", previous
+        return "stable", first_price, 0
 
 
 @router.get("/{signal_id}/matches", response_model=List[DealMatchOut])
@@ -61,9 +61,20 @@ def list_signal_matches(
         .all()
     )
 
+    # Batch-fetch TripAdvisor URLs for all hotels in this result set
+    hotel_ids = [m.deal.hotel_id for m in matches if m.deal.hotel_id]
+    ta_urls: dict[str, str] = {}
+    if hotel_ids:
+        rows = (
+            db.query(HotelLink.hotel_id, HotelLink.tripadvisor_url)
+            .filter(HotelLink.hotel_id.in_(hotel_ids), HotelLink.tripadvisor_url.isnot(None))
+            .all()
+        )
+        ta_urls = {r.hotel_id: r.tripadvisor_url for r in rows}
+
     result = []
     for match in matches:
-        trend, previous_price = get_price_trend(db, match.deal.id)
+        trend, previous_price, delta_cents = get_price_trend(db, match.deal.id)
         deal_out = DealOut(
             id=match.deal.id,
             provider=match.deal.provider,
@@ -80,12 +91,14 @@ def list_signal_matches(
             dedupe_key=match.deal.dedupe_key,
             price_trend=trend,
             previous_price_cents=previous_price,
+            price_delta_cents=delta_cents,
             is_active=match.deal.is_active,
             hotel_name=match.deal.hotel_name,
             hotel_id=match.deal.hotel_id,
             discount_pct=match.deal.discount_pct,
             destination_str=match.deal.destination_str,
             star_rating=match.deal.star_rating,
+            tripadvisor_url=ta_urls.get(match.deal.hotel_id),
         )
         result.append(DealMatchOut(
             id=match.id,
@@ -116,7 +129,12 @@ def toggle_favourite(
     db.commit()
     db.refresh(match)
 
-    trend, previous_price = get_price_trend(db, match.deal.id)
+    trend, previous_price, delta_cents = get_price_trend(db, match.deal.id)
+    ta_url = None
+    if match.deal.hotel_id:
+        ta_url = db.query(HotelLink.tripadvisor_url).filter(
+            HotelLink.hotel_id == match.deal.hotel_id
+        ).scalar()
     deal_out = DealOut(
         id=match.deal.id,
         provider=match.deal.provider,
@@ -133,7 +151,14 @@ def toggle_favourite(
         dedupe_key=match.deal.dedupe_key,
         price_trend=trend,
         previous_price_cents=previous_price,
+        price_delta_cents=delta_cents,
         is_active=match.deal.is_active,
+        hotel_name=match.deal.hotel_name,
+        hotel_id=match.deal.hotel_id,
+        discount_pct=match.deal.discount_pct,
+        destination_str=match.deal.destination_str,
+        star_rating=match.deal.star_rating,
+        tripadvisor_url=ta_url,
     )
 
     return DealMatchOut(

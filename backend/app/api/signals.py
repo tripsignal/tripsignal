@@ -1,5 +1,6 @@
 """Signal CRUD endpoints."""
 import copy
+import logging
 from typing import List
 from uuid import UUID
 
@@ -7,6 +8,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.db.models.deal import Deal
 from app.db.models.deal_match import DealMatch
 from app.db.models.signal import Signal
 from app.db.models.user import User
@@ -17,6 +19,8 @@ from app.schemas.signals import (
     SignalStatus,
     SignalUpdate,
 )
+
+logger = logging.getLogger("signals")
 
 
 router = APIRouter(prefix="/api/signals", tags=["signals"])
@@ -52,13 +56,109 @@ def _signal_to_out(signal: Signal) -> SignalOut:
     )
 
 
+def _match_signal_against_deals(db: Session, signal: Signal) -> int:
+    """Match a newly created signal against all active deals (synchronous).
+
+    Returns the number of new matches created.
+    No email is sent — deals just appear on the dashboard immediately.
+    """
+    from app.workers.selloff_scraper import deal_matches_signal_region
+    from datetime import datetime, timedelta
+
+    config = signal.config or {}
+    budget = config.get("budget", {})
+    travel_window = config.get("travel_window", {})
+
+    deals = db.execute(select(Deal).where(Deal.is_active == True)).scalars().all()
+    new_matches = 0
+    seen_deal_ids: set = set()
+
+    for deal in deals:
+        try:
+            # Gateway check
+            if deal.origin not in signal.departure_airports:
+                continue
+            # Region check
+            dest = deal.destination or ""
+            if not deal_matches_signal_region(dest, signal.destination_regions):
+                continue
+
+            # Duration check
+            duration_days = (deal.return_date - deal.depart_date).days if deal.return_date else 7
+
+            # Travel window — exact dates
+            start_date_str = travel_window.get("start_date")
+            end_date_str = travel_window.get("end_date")
+            if start_date_str and end_date_str:
+                start_dt = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+                end_dt = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+                if deal.depart_date < start_dt:
+                    continue
+                deal_return = deal.return_date or (deal.depart_date + timedelta(days=duration_days))
+                if deal_return > end_dt:
+                    continue
+            else:
+                start_month_str = travel_window.get("start_month")
+                end_month_str = travel_window.get("end_month")
+                if start_month_str and end_month_str:
+                    start_month = datetime.strptime(start_month_str, "%Y-%m").date().replace(day=1)
+                    end_month_dt = datetime.strptime(end_month_str, "%Y-%m")
+                    if end_month_dt.month == 12:
+                        end_month = end_month_dt.replace(day=31).date()
+                    else:
+                        end_month = (end_month_dt.replace(month=end_month_dt.month + 1, day=1) - timedelta(days=1)).date()
+                    if not (start_month <= deal.depart_date <= end_month):
+                        continue
+
+            min_nights = travel_window.get("min_nights")
+            max_nights = travel_window.get("max_nights")
+            if min_nights and duration_days < min_nights:
+                continue
+            if max_nights and duration_days > max_nights:
+                continue
+
+            # Star rating check
+            preferences = config.get("preferences", {})
+            min_star_rating = preferences.get("min_star_rating")
+            if min_star_rating and deal.star_rating is not None:
+                if deal.star_rating < float(min_star_rating):
+                    continue
+
+            # Budget check (per-person)
+            target_pp = budget.get("target_pp")
+            if target_pp:
+                budget_cents = int(target_pp) * 100
+                if deal.price_cents > budget_cents:
+                    continue
+
+            # Dedup within this batch
+            if deal.id in seen_deal_ids:
+                continue
+            seen_deal_ids.add(deal.id)
+
+            match = DealMatch(signal_id=signal.id, deal_id=deal.id)
+            db.add(match)
+            new_matches += 1
+        except Exception:
+            continue
+
+    if new_matches:
+        db.flush()
+
+    logger.info(
+        "Signal %s initial matching complete: %d matches from %d active deals",
+        signal.id, new_matches, len(deals),
+    )
+    return new_matches
+
+
 @router.post("", response_model=SignalOut, status_code=status.HTTP_201_CREATED)
 async def create_signal(
     signal_data: SignalCreate,
     db: Session = Depends(get_db),
     x_user_id: str = Header(None),
 ) -> SignalOut:
-    """Create a new signal."""
+    """Create a new signal and immediately match against existing deals."""
     if not x_user_id:
         raise HTTPException(status_code=401, detail="Missing user ID")
 
@@ -84,10 +184,32 @@ async def create_signal(
     )
 
     db.add(signal)
-    db.commit()
+    db.flush()          # flush so signal has an ID for matching
     db.refresh(signal)
 
-    return _signal_to_out(signal)
+    # Match against existing deals synchronously (fast — just filtering ~2k deals)
+    match_count = _match_signal_against_deals(db, signal)
+
+    db.commit()
+
+    # Trigger first-signal email if this is the user's first signal (idempotent)
+    try:
+        signal_count = db.execute(
+            select(func.count(Signal.id)).where(Signal.user_id == user.id)
+        ).scalar()
+        if signal_count == 1:
+            from app.services.email_orchestrator import trigger as email_trigger, EmailType
+            email_trigger(
+                db=db,
+                email_type=EmailType.FIRST_SIGNAL,
+                user_id=str(user.id),
+                context={"signal_name": signal.name, "signal_id": str(signal.id)},
+            )
+    except Exception:
+        logger.exception("Failed to trigger first-signal email for user %s", user.id)
+
+    out = _signal_to_out(signal)
+    return out.model_copy(update={"match_count": match_count})
 
 
 @router.get("", response_model=List[SignalOut])

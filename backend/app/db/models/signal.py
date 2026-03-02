@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ARRAY, TIMESTAMP, Text, text, ForeignKey
+from sqlalchemy import ARRAY, Integer, TIMESTAMP, Text, text, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -39,6 +39,24 @@ class Signal(Base):
     )
 
     config: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+    # Signal intelligence — populated by scraper after each cycle
+    last_check_min_price: Mapped[int | None] = mapped_column(
+        Integer, nullable=True,
+    )
+    last_check_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True,
+    )
+    all_time_low_price: Mapped[int | None] = mapped_column(
+        Integer, nullable=True,
+    )
+    all_time_low_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True,
+    )
+
+    no_match_email_sent_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True,
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
