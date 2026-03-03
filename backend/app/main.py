@@ -1,11 +1,15 @@
 """FastAPI application entry point."""
 from datetime import datetime, timezone
 
-from fastapi import FastAPI
+import logging
+import traceback
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
 from sqlalchemy import select, text
 
+from app.core.config import settings
 from app.core.logging import setup_logging
 from app.db.session import get_db
 from app.db.models.scrape_run import ScrapeRun
@@ -27,6 +31,9 @@ app = FastAPI(
     title="TripSignal API",
     description="Backend API for TripSignal",
     version="1.0.0",
+    docs_url="/docs" if settings.DEBUG else None,
+    redoc_url="/redoc" if settings.DEBUG else None,
+    openapi_url="/openapi.json" if settings.DEBUG else None,
 )
 
 # CORS middleware
@@ -40,6 +47,23 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+
+# Catch-all exception handler — log full traceback server-side, return generic error to client
+_logger = logging.getLogger(__name__)
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    _logger.error(
+        "Unhandled exception on %s %s:\n%s",
+        request.method,
+        request.url.path,
+        traceback.format_exc(),
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
 
 # Include routers
 app.include_router(health.router, tags=["health"])
@@ -190,10 +214,3 @@ async def root():
     """Root endpoint."""
     return {"message": "TripSignal API", "version": "1.0.0"}
 
-
-@app.get("/debug/routes")
-def debug_routes():
-    return [
-        {"path": r.path, "methods": sorted(list(r.methods or []))}
-        for r in app.routes
-    ]
