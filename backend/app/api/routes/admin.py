@@ -652,14 +652,18 @@ def list_notifications(
 @router.get("/scrape-runs")
 def list_scrape_runs(
     limit: int = 20,
+    offset: int = 0,
     db: Session = Depends(get_db),
     x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
     verify_admin(x_admin_token)
     limit = max(1, min(limit, 50))
+    offset = max(0, offset)
+
+    total = db.execute(select(func.count()).select_from(ScrapeRun)).scalar()
 
     runs = db.execute(
-        select(ScrapeRun).order_by(ScrapeRun.started_at.desc()).limit(limit)
+        select(ScrapeRun).order_by(ScrapeRun.started_at.desc()).limit(limit).offset(offset)
     ).scalars().all()
 
     results = []
@@ -697,7 +701,7 @@ def list_scrape_runs(
         })
 
     results.reverse()
-    return {"runs": results}
+    return {"runs": results, "total": total}
 
 
 @router.get("/deals")
