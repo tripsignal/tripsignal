@@ -1,4 +1,5 @@
 """FastAPI application entry point."""
+import time
 from datetime import datetime, timezone
 
 import logging
@@ -48,6 +49,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Request logging middleware
+_request_logger = logging.getLogger('tripsignal.access')
+_SKIP_LOG_PATHS = {'/health', '/'}
+
+
+@app.middleware('http')
+async def log_requests(request: Request, call_next):
+    if request.url.path in _SKIP_LOG_PATHS:
+        return await call_next(request)
+
+    start = time.monotonic()
+    response = await call_next(request)
+    elapsed_ms = (time.monotonic() - start) * 1000
+
+    client_ip = (request.headers.get('x-forwarded-for', '') .split(',')[0].strip()
+                 or request.client.host if request.client else 'unknown')
+    user_id = (request.headers.get('x-clerk-user-id')
+               or request.headers.get('x-user-id')
+               or 'anonymous')
+
+    _request_logger.info(
+        '%s | %s | %s %s | user:%s | %s | %.0fms',
+        datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        client_ip,
+        request.method,
+        request.url.path,
+        user_id,
+        response.status_code,
+        elapsed_ms,
+    )
+
+    return response
 
 # Catch-all exception handler — log full traceback server-side, return generic error to client
 _logger = logging.getLogger(__name__)

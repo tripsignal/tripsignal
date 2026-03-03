@@ -410,6 +410,42 @@ def admin_undelete_user(
     }
 
 
+# ── DELETE /admin/users/{user_id}/hard-delete ─────────────────────────
+@router.delete("/users/{user_id}/hard-delete")
+def admin_hard_delete_user(
+    user_id: str,
+    db: Session = Depends(get_db),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """Permanently remove a soft-deleted user and all associated data.
+
+    CASCADE FKs handle: signals → deal_matches, signal_runs.
+    SET NULL FKs handle: email_log.user_id, notifications_outbox.signal_id.
+    """
+    verify_admin(x_admin_token)
+
+    user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.deleted_at is None:
+        raise HTTPException(
+            status_code=400,
+            detail="User must be soft-deleted first. Use DELETE /admin/users/{id}.",
+        )
+
+    try:
+        db.delete(user)
+        db.commit()
+        logger.info("[ADMIN] hard_delete: user %s permanently removed", user_id)
+    except Exception as e:
+        db.rollback()
+        logger.error("Hard delete failed for %s: %s", user_id, e)
+        raise HTTPException(status_code=500, detail=f"Hard delete failed: {e}")
+
+    return {"ok": True, "hard_deleted": True, "user_id": user_id}
+
+
 # ── PATCH /admin/users/{user_id}/extend-trial ──────────────────────────
 @router.patch("/users/{user_id}/extend-trial")
 def extend_trial(

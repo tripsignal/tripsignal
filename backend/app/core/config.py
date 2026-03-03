@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str = ""
     STRIPE_PRO_PRICE_ID: str = ""
 
+    # Clerk
+    CLERK_SECRET_KEY: str = ""
+
     # Email feature flags
     EMAIL_V2_ENABLED: bool = False
     EMAIL_DRY_RUN: bool = False

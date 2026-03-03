@@ -216,7 +216,6 @@ def delete_user(
     x_clerk_user_id: str = Header(..., alias="x-clerk-user-id"),
 ):
     user = _get_user_by_clerk(x_clerk_user_id, db)
-    had_pro = user.plan_type == "pro" or user.stripe_subscription_id is not None
     result = _delete_account(
         db=db,
         user=user,
@@ -227,14 +226,7 @@ def delete_user(
     if not result.ok:
         raise HTTPException(status_code=500, detail=result.error or "Delete failed")
 
-    # Trigger account deletion email via orchestrator (idempotent, logged)
-    if result.ok and not result.already_deleted:
-        try:
-            email_type = EmailType.ACCOUNT_DELETED_PRO if had_pro else EmailType.ACCOUNT_DELETED_FREE
-            email_trigger(db=db, email_type=email_type, user_id=str(user.id))
-        except Exception:
-            logger.exception("Failed to trigger deletion email for %s", user.email)
-
+    # Email sending is now handled inside delete_account() (between phase 1 and phase 2)
     return {
         "ok": True,
         "deleted": True,

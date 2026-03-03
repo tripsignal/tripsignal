@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, DateTime, Integer, String, Text, func
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.db.base import Base
@@ -19,8 +19,8 @@ class NotificationOutbox(Base):
 
     last_error = Column(Text, nullable=True)
 
-    signal_id = Column(UUID(as_uuid=True), nullable=False)
-    match_id = Column(UUID(as_uuid=True), nullable=False)
+    signal_id = Column(UUID(as_uuid=True), ForeignKey("signals.id", ondelete="SET NULL"), nullable=True)
+    match_id = Column(UUID(as_uuid=True), nullable=True)
 
     channel = Column(String(20), nullable=False, server_default="log")
 
