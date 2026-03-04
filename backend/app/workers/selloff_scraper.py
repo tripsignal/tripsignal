@@ -521,7 +521,7 @@ def send_digest_email(user_email: str, signal: Signal, new_deals: list) -> None:
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; background: #fff; max-width: 560px; margin: 0 auto; padding: 40px 24px;">
 
   <div style="margin-bottom: 24px;">
-    <img src="https://tripsignal.ca/email-logo.png" alt="Trip Signal" height="60" style="height: 60px; width: auto; display: block;">
+    <span style="font-size: 20px; font-weight: 600; letter-spacing: -0.3px;">Trip Signal</span>
   </div>
 
   <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px;">
