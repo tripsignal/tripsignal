@@ -217,10 +217,9 @@ def trigger(
 # 2. Deleted user (suppress all except ACCOUNT_DELETED_*)
 # 3. email_opt_out / unsubscribed_marketing (suppress ENGAGEMENT + UPSELL)
 # 4. email_enabled=false (suppress ALERT — user paused notifications)
-# 5. Quiet hours (suppress ALERT when in user's quiet window)
-# 6. 24-hour rate limit (max 2 ENGAGEMENT + UPSELL per 24h)
-# 7. Upsell cooldown (no UPSELL within 48h of TRIAL_EXPIRING_SOON)
-# 8. Canceled-after-deletion guard
+# 5. 24-hour rate limit (max 2 ENGAGEMENT + UPSELL per 24h)
+# 6. Upsell cooldown (no UPSELL within 48h of TRIAL_EXPIRING_SOON)
+# 7. Canceled-after-deletion guard
 #
 
 def _check_suppression(
@@ -247,12 +246,7 @@ def _check_suppression(
     if not user.email_enabled and category == EmailCategory.ALERT:
         return "email_disabled"
 
-    # 5. Quiet hours: suppress ALERT emails during user's quiet window.
-    if category == EmailCategory.ALERT and user.quiet_hours_enabled and user.timezone:
-        if _in_quiet_hours(user):
-            return "quiet_hours"
-
-    # 6. Rate limit: max 2 non-alert lifecycle emails per 24h.
+    # 5. Rate limit: max 2 non-alert lifecycle emails per 24h.
     #    Counts "sent" and "dry_run" statuses to prevent dry-run floods.
     if category in SUPPRESSIBLE_CATEGORIES:
         recent_count = db.execute(
@@ -266,7 +260,7 @@ def _check_suppression(
         if recent_count >= 2:
             return "rate_limit_24h"
 
-    # 7. Upsell cooldown: suppress UPSELL within 48h of a TRIAL_EXPIRING_SOON email.
+    # 6. Upsell cooldown: suppress UPSELL within 48h of a TRIAL_EXPIRING_SOON email.
     if category == EmailCategory.UPSELL and email_type != EmailType.TRIAL_EXPIRING_SOON:
         trial_email = db.execute(
             select(EmailLog).where(
@@ -279,31 +273,12 @@ def _check_suppression(
         if trial_email:
             return "upsell_after_trial_warning"
 
-    # 8. Suppress SUBSCRIPTION_CANCELED if account was deleted within last 24h.
+    # 7. Suppress SUBSCRIPTION_CANCELED if account was deleted within last 24h.
     if email_type == EmailType.SUBSCRIPTION_CANCELED:
         if user.deleted_at and (datetime.now(timezone.utc) - user.deleted_at) < timedelta(hours=24):
             return "canceled_after_deletion"
 
     return None
-
-
-def _in_quiet_hours(user: User) -> bool:
-    """Check if current time in user's timezone falls within their quiet window."""
-    try:
-        from zoneinfo import ZoneInfo
-        user_now = datetime.now(ZoneInfo(user.timezone))
-        current = user_now.hour * 60 + user_now.minute
-        start_h, start_m = map(int, user.quiet_hours_start.split(":"))
-        end_h, end_m = map(int, user.quiet_hours_end.split(":"))
-        start = start_h * 60 + start_m
-        end = end_h * 60 + end_m
-        if start <= end:
-            return start <= current < end
-        # Spans midnight (e.g. 21:00–08:00)
-        return current >= start or current < end
-    except Exception:
-        logger.warning("quiet_hours: failed to evaluate for user %s tz=%s", user.id, user.timezone)
-        return False
 
 
 # ── Deterministic idempotency keys ───────────────────────────────────────────

@@ -2,18 +2,16 @@
 
 ──────────────────────────────────────────────────────────────────────
 LOCKED MATCH ALERT SUBJECT PRIORITY:
-  1. new_low                        → "New low: {route}"
-  2. pct_drop >= alert_threshold    → "Price drop: {route}"
-  3. deal_count == 1                → "New deal: {route}"
-  4. else                           → "New deals found ({deal_count}): {route}"
+  1. new_low         → "New low: {route}"
+  2. pct_drop >= 10  → "Price drop: {route}"
+  3. deal_count == 1  → "New deal: {route}"
+  4. else            → "New deals found ({deal_count}): {route}"
 
 LOCKED MATCH ALERT PREVIEW PRIORITY:
-  1. new_low                        → "All-time low {price}/person at {hotel}"
-  2. pct_drop >= alert_threshold    → "Down {pct}% — {price}/person at {hotel}"
-  3. single                         → "{price}/person · {hotel} · {nights} nights"
-  4. multi                          → "{count} deals from {price}/person"
-
-alert_threshold defaults to 10 (%) and is configurable per user.
+  1. new_low         → "All-time low {price}/person at {hotel}"
+  2. pct_drop >= 10  → "Down {pct}% — {price}/person at {hotel}"
+  3. single          → "{price}/person · {hotel} · {nights} nights"
+  4. multi           → "{count} deals from {price}/person"
 ──────────────────────────────────────────────────────────────────────
 """
 from __future__ import annotations
@@ -33,14 +31,13 @@ def build_match_subject(context: dict) -> str:
     new_low = context.get("new_low", False)
     pct_drop = context.get("pct_drop", 0)
     deal_count = context.get("deal_count", 1)
-    threshold = context.get("alert_threshold", 10)
 
     # Priority 1: All-time low
     if new_low:
         return f"New low: {route}"
 
-    # Priority 2: Significant price drop (≥ user threshold, default 10%)
-    if pct_drop and pct_drop >= threshold:
+    # Priority 2: Significant price drop (≥ 10%)
+    if pct_drop and pct_drop >= 10:
         return f"Price drop: {route}"
 
     # Priority 3: Single deal
@@ -57,7 +54,6 @@ def build_match_preview(context: dict) -> str:
     pct_drop = context.get("pct_drop", 0)
     deal_count = context.get("deal_count", 1)
     deals = context.get("deals", [])
-    threshold = context.get("alert_threshold", 10)
 
     best = deals[0] if deals else {}
     price = _fmt_price(best.get("price_cents"))
@@ -68,8 +64,8 @@ def build_match_preview(context: dict) -> str:
     if new_low:
         return f"All-time low {price}/person at {hotel}" if hotel else f"All-time low {price}/person"
 
-    # Priority 2: Significant price drop (≥ user threshold)
-    if pct_drop and pct_drop >= threshold:
+    # Priority 2: Significant price drop (≥ 10%)
+    if pct_drop and pct_drop >= 10:
         base = f"Down {pct_drop}% \u2014 {price}/person"
         return f"{base} at {hotel}" if hotel else base
 

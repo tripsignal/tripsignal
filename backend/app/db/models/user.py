@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import TIMESTAMP, Boolean, Integer, String, Text, text
+from sqlalchemy import TIMESTAMP, Boolean, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -48,19 +48,6 @@ class User(Base):
     )
     email_opt_out: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false"),
-    )
-    alert_threshold: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=10, server_default=text("10"),
-    )
-    timezone: Mapped[str | None] = mapped_column(Text, nullable=True)
-    quiet_hours_enabled: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default=text("false"),
-    )
-    quiet_hours_start: Mapped[str] = mapped_column(
-        Text, nullable=False, default="21:00", server_default=text("'21:00'"),
-    )
-    quiet_hours_end: Mapped[str] = mapped_column(
-        Text, nullable=False, default="08:00", server_default=text("'08:00'"),
     )
 
     # Pro activation

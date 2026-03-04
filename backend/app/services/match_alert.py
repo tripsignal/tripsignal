@@ -20,7 +20,6 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.db.models.signal import Signal
-from app.db.models.user import User
 from app.services.email_orchestrator import trigger as email_trigger, EmailType
 
 logger = logging.getLogger(__name__)
@@ -98,10 +97,6 @@ def process_signal_matches(
             for d in sorted_deals
         ]
 
-        # Load user's alert threshold (default 10%)
-        user = db.query(User).filter(User.id == signal.user_id).first()
-        alert_threshold = user.alert_threshold if user else 10
-
         context = {
             "signal_id": signal_id_str,
             "run_id": run_id,
@@ -110,7 +105,6 @@ def process_signal_matches(
             "deal_count": len(deals),
             "new_low": is_new_low,
             "pct_drop": pct_drop,
-            "alert_threshold": alert_threshold,
             "deals": template_deals,
         }
 
