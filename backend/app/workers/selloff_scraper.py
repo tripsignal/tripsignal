@@ -348,7 +348,7 @@ def fetch_deals_from_page(url: str) -> list[dict]:
             price_cents = int(prices[i]) * 100
             destination_str = destinations[i].strip() if i < len(destinations) else ""
             hotel_name = hotels[i].replace("&amp;", "&").strip() if i < len(hotels) else ""
-            star_rating = float(star_ratings[i]) if i < len(star_ratings) else None
+star_rating = float(star_ratings[i]) if i < len(star_ratings) else None
             region = map_destination_to_region(destination_str)
 
             if not hotel_name or star_rating is None:
@@ -844,7 +844,7 @@ def send_user_digest_email(user_email: str, signal_deals: dict, is_pro: bool = F
 
   <!-- Header -->
   <div style="margin-bottom: 24px;">
-    <span style="font-size: 20px; font-weight: 600; letter-spacing: -0.3px;">Trip Signal</span>
+    <img src="https://tripsignal.ca/email-logo.png" alt="Trip Signal" height="60" style="height: 60px; width: auto; display: block;">
   </div>
 
   <!-- Hero Deal -->
