@@ -907,6 +907,22 @@ def run_scraper(once: bool = True) -> None:
                 if stale:
                     logger.info("Marked %d deals inactive", len(stale))
 
+        # Mark expired deals (past departure date) inactive
+        deals_expired = 0
+        with next(get_db()) as db:
+            expired = db.query(Deal).filter(
+                Deal.is_active == True,
+                Deal.depart_date < date.today()
+            ).all()
+            if expired:
+                deactivated_now = datetime.now(timezone.utc)
+                for deal in expired:
+                    deal.is_active = False
+                    deal.deactivated_at = deactivated_now
+                db.commit()
+                deals_expired = len(expired)
+                logger.info("Marked %d expired deals inactive", deals_expired)
+
         # Send match alert emails after full cycle
         _send_cycle_alerts(v2_signal_deals, user_digest)
 
@@ -932,6 +948,7 @@ def run_scraper(once: bool = True) -> None:
                 "error_count": sum(1 for e in cycle_errors if e.get("type") == "error"),
                 "errors": cycle_errors,
                 "deals_deactivated": deals_deactivated,
+                "deals_expired": deals_expired,
                 "status": "completed",
                 "proxy_enabled": _cycle_proxy_opener is not None,
                 "proxy_ip": proxy_ip,

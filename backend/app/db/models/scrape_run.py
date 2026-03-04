@@ -22,6 +22,7 @@ class ScrapeRun(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'running'"))
     error_log: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     deals_deactivated: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    deals_expired: Mapped[int | None] = mapped_column(Integer, nullable=True)
     proxy_ip: Mapped[str | None] = mapped_column(Text, nullable=True)
     proxy_geo: Mapped[str | None] = mapped_column(Text, nullable=True)
 

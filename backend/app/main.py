@@ -184,6 +184,7 @@ async def collection_complete(payload: dict):
             run.error_count = payload.get("error_count", 0)
             run.error_log = payload.get("errors", [])
             run.deals_deactivated = payload.get("deals_deactivated")
+            run.deals_expired = payload.get("deals_expired")
             run.status = payload.get("status", "completed")
             if payload.get("proxy_ip"):
                 run.proxy_ip = payload["proxy_ip"]
@@ -200,6 +201,7 @@ async def collection_complete(payload: dict):
                 error_count=payload.get("error_count", 0),
                 error_log=payload.get("errors", []),
                 deals_deactivated=payload.get("deals_deactivated"),
+                deals_expired=payload.get("deals_expired"),
                 status=payload.get("status", "completed"),
                 proxy_ip=payload.get("proxy_ip"),
                 proxy_geo=payload.get("proxy_geo"),
