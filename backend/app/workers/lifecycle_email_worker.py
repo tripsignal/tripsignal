@@ -31,7 +31,11 @@ from app.db.models.email_log import EmailLog
 from app.db.models.signal import Signal
 from app.db.models.user import User
 from app.db.session import SessionLocal
-from app.services.email_orchestrator import EmailType, trigger as email_trigger
+from app.services.email_orchestrator import (
+    EmailType,
+    drain_deferred_emails,
+    trigger as email_trigger,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +68,9 @@ def run_cycle(db: Session, now: datetime | None = None) -> None:
     if now is None:
         now = datetime.now(timezone.utc)
 
+    # Drain deferred quiet-hours emails first — deliver waiting emails ASAP.
+    _run_deferred_drain(db)
+
     # Order matters — extension must run before trial warnings.
     _run_trial_auto_extension(db, now)
     _run_trial_expiring_soon(db, now)
@@ -74,6 +81,18 @@ def run_cycle(db: Session, now: datetime | None = None) -> None:
     _run_payment_failed_reminders(db, now)
     _run_user_mode_refresh(db, now)
     _run_weekly_digests(db, now)
+
+
+# ── Job 0: Drain deferred quiet-hours emails ─────────────────────────────────
+
+def _run_deferred_drain(db: Session) -> int:
+    """Send emails that were deferred during quiet hours."""
+    try:
+        return drain_deferred_emails(db)
+    except Exception:
+        logger.exception("deferred_drain failed")
+        db.rollback()
+        return 0
 
 
 # ── Job 1: Automatic 7-day trial extension (48h before expiry) ───────────────

@@ -114,6 +114,9 @@ def trigger(
     # ── 2. Suppression checks ─────────────────────────────────────────────
     suppression = _check_suppression(db, user, email_type, category)
     if suppression:
+        if suppression == "quiet_hours":
+            _log_deferred(db, user, email_type, category, idempotency_key, context)
+            return {"status": "deferred", "reason": "quiet_hours"}
         _log_suppressed(db, user, email_type, category, idempotency_key, suppression)
         return {"status": "suppressed", "reason": suppression}
 
@@ -472,6 +475,105 @@ def _log_suppressed(
     except Exception:
         db.rollback()
     logger.info("orchestrator: SUPPRESSED %s → %s reason=%s", email_type.value, user.email, reason)
+
+
+def _log_deferred(
+    db: Session,
+    user: User,
+    email_type: EmailType,
+    category: EmailCategory,
+    idempotency_key: str | None,
+    context: dict | None,
+) -> None:
+    """Record a deferred email (quiet hours) with full context for later delivery."""
+    key = idempotency_key or _build_idempotency_key(email_type, str(user.id), context or {})
+    try:
+        stmt = pg_insert(EmailLog).values(
+            user_id=user.id,
+            email_type=email_type.value,
+            category=category.value,
+            idempotency_key=key,
+            to_email=user.email,
+            status="deferred",
+            suppressed_reason="quiet_hours",
+            metadata_json=context,
+        ).on_conflict_do_nothing(index_elements=["idempotency_key"])
+        db.execute(stmt)
+        db.commit()
+    except Exception:
+        db.rollback()
+    logger.info("orchestrator: DEFERRED %s → %s reason=quiet_hours", email_type.value, user.email)
+
+
+def drain_deferred_emails(db: Session) -> int:
+    """Send deferred quiet-hours emails whose quiet hours have ended.
+
+    Called by the lifecycle worker every poll cycle (~5 min).
+    Returns the number of emails sent.
+    """
+    rows = db.execute(
+        select(EmailLog).where(
+            EmailLog.status == "deferred",
+            EmailLog.suppressed_reason == "quiet_hours",
+        ).order_by(EmailLog.created_at.asc()).limit(50)
+    ).scalars().all()
+
+    if not rows:
+        return 0
+
+    sent = 0
+    for row in rows:
+        user = db.execute(
+            select(User).where(User.id == row.user_id)
+        ).scalar_one_or_none()
+
+        if not user:
+            row.status = "suppressed"
+            row.suppressed_reason = "user_not_found"
+            db.commit()
+            continue
+
+        # Still in quiet hours — skip, will retry next cycle
+        if _in_quiet_hours(user):
+            continue
+
+        # Quiet hours ended — render and send
+        email_type = EmailType(row.email_type)
+        context = row.metadata_json or {}
+
+        if "_unsub_url" not in context:
+            try:
+                from app.workers.selloff_scraper import generate_unsub_token
+                token = generate_unsub_token(str(user.id))
+                context["_unsub_url"] = f"https://tripsignal.ca/unsubscribe?token={token}"
+            except Exception:
+                logger.warning("drain_deferred: failed to generate unsub token for %s", user.id)
+
+        try:
+            from app.services.email_templates import render_template
+            subject, html = render_template(email_type, user=user, context=context, db=db)
+
+            message_id = send_email(user.email, subject, html)
+            now = datetime.now(timezone.utc)
+
+            row.subject = subject
+            if message_id:
+                row.status = "sent"
+                row.sent_at = now
+                row.provider_message_id = message_id
+                _stamp_user_sent(user, email_type, now)
+                sent += 1
+            else:
+                row.status = "failed"
+
+            row.suppressed_reason = None
+            db.commit()
+        except Exception:
+            logger.exception("drain_deferred: failed to send %s to %s", row.email_type, user.email)
+            db.rollback()
+
+    logger.info("drain_deferred: processed %d deferred emails, sent %d", len(rows), sent)
+    return sent
 
 
 def _in_quiet_hours(user: User) -> bool:
