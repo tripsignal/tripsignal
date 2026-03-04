@@ -93,6 +93,24 @@ class User(Base):
         TIMESTAMP(timezone=True), nullable=True,
     )
 
+    # Email intelligence — user mode & engagement tracking
+    email_mode: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'active'"),
+    )
+    last_email_opened_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True,
+    )
+    last_email_clicked_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True,
+    )
+    alert_threshold: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'any'"),
+    )
+    email_send_hour: Mapped[int | None] = mapped_column(nullable=True)
+    timezone: Mapped[str | None] = mapped_column(
+        Text, nullable=True, server_default=text("'America/Toronto'"),
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()"),
     )

@@ -564,20 +564,14 @@ def run_trial_expiry(
     sent = 0
     failed = 0
     for user in expired_users:
-        if settings.EMAIL_V2_ENABLED:
-            # V2: route through orchestrator
-            from app.services.email_orchestrator import trigger as email_trigger, EmailType
-            result = email_trigger(
-                db=db,
-                email_type=EmailType.TRIAL_EXPIRED_UPSELL,
-                user_id=str(user.id),
-                context={"period": now.strftime("%Y-%m-%d")},
-            )
-            ok = result.get("status") in ("sent", "dry_run")
-        else:
-            # Legacy: direct send
-            from app.services.account import send_trial_expired_email
-            ok = send_trial_expired_email(user.email)
+        from app.services.email_orchestrator import trigger as email_trigger, EmailType
+        result = email_trigger(
+            db=db,
+            email_type=EmailType.TRIAL_EXPIRED_UPSELL,
+            user_id=str(user.id),
+            context={"period": now.strftime("%Y-%m-%d")},
+        )
+        ok = result.get("status") in ("sent", "dry_run")
         if ok:
             user.trial_expired_email_sent_at = now
             sent += 1

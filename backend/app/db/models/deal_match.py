@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, ForeignKey, TIMESTAMP, UniqueConstraint, text
+from sqlalchemy import Boolean, ForeignKey, Integer, TIMESTAMP, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -61,6 +61,17 @@ class DealMatch(Base):
     )
     major_drop_alert_sent_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True,
+    )
+
+    # Intel columns
+    price_per_night_cents: Mapped[int | None] = mapped_column(
+        Integer, nullable=True,
+    )
+    deal_seen_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True, server_default=text("now()"),
+    )
+    deal_last_seen_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True, server_default=text("now()"),
     )
 
     # Relationships

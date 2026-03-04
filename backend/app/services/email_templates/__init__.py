@@ -40,6 +40,7 @@ from app.services.email_templates.templates import (
     account_deleted_pro,
     no_match_update,
     inactive_reengagement,
+    weekly_digest,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,7 @@ _REGISTRY: dict[EmailType, callable] = {
     EmailType.ACCOUNT_DELETED_PRO: account_deleted_pro,
     EmailType.NO_MATCH_UPDATE: no_match_update,
     EmailType.INACTIVE_REENGAGEMENT: inactive_reengagement,
+    EmailType.WEEKLY_DIGEST: weekly_digest,
 }
 
 # Variables available per email type (for admin UI hints + interpolation)
@@ -69,7 +71,9 @@ TEMPLATE_VARIABLES: dict[EmailType, list[str]] = {
     EmailType.NO_SIGNAL_REMINDER: [],
     EmailType.MATCH_ALERT: [
         "signal_name", "route", "deal_count", "new_low", "pct_drop",
-        "deals",  # list of {hotel_name, star_rating, price_cents, duration_nights, depart_date, deeplink_url}
+        "deals", "intel_sentence", "days_monitoring", "is_top_25",
+        "percentile_rank", "trend_direction", "trend_weeks",
+        "best_price_delta", "best_price_cents", "destination",
     ],
     EmailType.MAJOR_DROP_ALERT: [
         "signal_name", "route", "hotel_name", "star_rating", "drop_amount",
@@ -84,7 +88,16 @@ TEMPLATE_VARIABLES: dict[EmailType, list[str]] = {
     EmailType.ACCOUNT_DELETED_FREE: [],
     EmailType.ACCOUNT_DELETED_PRO: [],
     EmailType.NO_MATCH_UPDATE: ["signal_name", "signal_id", "days_active"],
-    EmailType.INACTIVE_REENGAGEMENT: ["days_inactive"],
+    EmailType.INACTIVE_REENGAGEMENT: [
+        "days_inactive", "total_deals_found", "best_missed_deal",
+        "best_missed_price_cents", "min_price_ever_cents", "max_price_ever_cents",
+        "trend_direction", "current_best_deal",
+    ],
+    EmailType.WEEKLY_DIGEST: [
+        "deal_count", "deals", "trend_direction", "trend_weeks",
+        "best_value_nights", "best_value_pct_saving", "total_matches",
+        "days_monitoring", "signal_name", "route", "destination", "best_price_cents",
+    ],
 }
 
 
@@ -257,6 +270,22 @@ def _sample_context_for_type(email_type: EmailType) -> dict:
         EmailType.ACCOUNT_DELETED_FREE: {},
         EmailType.ACCOUNT_DELETED_PRO: {},
         EmailType.NO_MATCH_UPDATE: {"signal_name": "Europe Summer Trip", "signal_id": "test-signal-456", "days_active": 14},
-        EmailType.INACTIVE_REENGAGEMENT: {"days_inactive": 21},
+        EmailType.INACTIVE_REENGAGEMENT: {
+            "days_inactive": 21, "total_deals_found": 23,
+            "best_missed_deal": {"price_cents": 87900, "hotel_name": "Riu Palace", "duration_nights": 7, "depart_date": "2026-03-15"},
+            "best_missed_price_cents": 87900,
+            "min_price_ever_cents": 79900, "max_price_ever_cents": 149900,
+            "trend_direction": "down", "current_best_deal": {"price_cents": 92900, "hotel_name": "Sandos Caracol", "duration_nights": 7},
+        },
+        EmailType.WEEKLY_DIGEST: {
+            "deal_count": 7, "signal_name": "Caribbean Winter Escape", "destination": "Mexico",
+            "deals": [
+                {"hotel_name": "Riu Palace", "star_rating": 4.5, "price_cents": 87900, "duration_nights": 7, "depart_date": "2026-03-20"},
+            ],
+            "trend_direction": "down", "trend_weeks": 3,
+            "best_value_nights": 7, "best_value_pct_saving": 15,
+            "total_matches": 42, "days_monitoring": 30, "route": "YQR → Cancun",
+            "best_price_cents": 87900,
+        },
     }
     return samples.get(email_type, {})

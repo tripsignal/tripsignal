@@ -16,8 +16,6 @@ from app.db.models.email_log import EmailLog
 from app.db.models.notification_outbox import NotificationOutbox
 from app.db.models.signal import Signal
 from app.db.models.user import User
-from app.services.email import send_email
-
 logger = logging.getLogger(__name__)
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
@@ -131,20 +129,17 @@ def delete_account(
     # ── Step 3: Send confirmation email (email still readable in DB) ──
     had_subscription = stripe_canceled or user.plan_type == "pro"
     email_sent = False
-    if settings.EMAIL_V2_ENABLED:
-        try:
-            from app.services.email_orchestrator import EmailType
-            from app.services.email_orchestrator import trigger as email_trigger
-            email_type = (
-                EmailType.ACCOUNT_DELETED_PRO if had_subscription
-                else EmailType.ACCOUNT_DELETED_FREE
-            )
-            email_trigger(db=db, email_type=email_type, user_id=user_id_str)
-            email_sent = True
-        except Exception:
-            logger.exception("Failed to trigger deletion email for %s", original_email)
-    else:
-        email_sent = _send_deletion_email(original_email, had_subscription)
+    try:
+        from app.services.email_orchestrator import EmailType
+        from app.services.email_orchestrator import trigger as email_trigger
+        email_type = (
+            EmailType.ACCOUNT_DELETED_PRO if had_subscription
+            else EmailType.ACCOUNT_DELETED_FREE
+        )
+        email_trigger(db=db, email_type=email_type, user_id=user_id_str)
+        email_sent = True
+    except Exception:
+        logger.exception("Failed to trigger deletion email for %s", original_email)
 
     # ── Step 4 (Phase 2): Scrub PII + deactivate signals ─────────────
     sentinel_email = f"deleted-{user_id_str}@{_DELETED_DOMAIN}"
@@ -284,96 +279,3 @@ def restore_account(
     return RestoreResult(ok=True)
 
 
-def _send_deletion_email(to: str, had_subscription: bool) -> bool:
-    """Send account deletion confirmation email."""
-    if had_subscription:
-        subject = "Account deleted — subscription canceled"
-        extra_line = (
-            '<p style="margin: 0 0 16px; font-size: 14px; color: #333;">'
-            "Your Pro subscription has been canceled and you will not be charged again."
-            "</p>"
-        )
-    else:
-        subject = "Your TripSignal account has been deleted"
-        extra_line = ""
-
-    html = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; background: #fff; max-width: 560px; margin: 0 auto; padding: 40px 24px;">
-
-  <div style="margin-bottom: 24px;">
-    <span style="font-size: 20px; font-weight: 600; letter-spacing: -0.3px;">Trip Signal</span>
-  </div>
-
-  <h1 style="font-size: 22px; font-weight: 600; margin: 0 0 16px;">Your account has been deleted</h1>
-
-  <p style="margin: 0 0 16px; font-size: 14px; color: #333;">
-    Thank you for trying TripSignal. Your account and all associated data have been removed.
-    You will no longer receive deal alerts or notifications from us.
-  </p>
-
-  {extra_line}
-
-  <p style="margin: 0 0 16px; font-size: 14px; color: #333;">
-    If this was a mistake or you'd like to come back, you can always create a new account at
-    <a href="https://tripsignal.ca" style="color: #1D4ED8;">tripsignal.ca</a>.
-  </p>
-
-  <hr style="border: none; border-top: 1px solid #eee; margin: 32px 0;">
-
-  <p style="font-size: 12px; color: #999; margin: 0;">
-    TripSignal &middot; Vacation deal monitoring for Canadians
-  </p>
-
-</body>
-</html>"""
-
-    return bool(send_email(to, subject, html))
-
-
-def send_trial_expired_email(to: str) -> bool:
-    """Send trial expiration upsell email."""
-    subject = "Your TripSignal trial has ended — keep your signals running"
-
-    html = """<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; background: #fff; max-width: 560px; margin: 0 auto; padding: 40px 24px;">
-
-  <div style="margin-bottom: 24px;">
-    <span style="font-size: 20px; font-weight: 600; letter-spacing: -0.3px;">Trip Signal</span>
-  </div>
-
-  <h1 style="font-size: 22px; font-weight: 600; margin: 0 0 16px;">Your free trial has ended</h1>
-
-  <p style="margin: 0 0 16px; font-size: 14px; color: #333;">
-    Your signals have been paused, but your saved settings are still here.
-    Upgrade to Pro to keep monitoring — for less than a cup of coffee a month.
-  </p>
-
-  <div style="background: #f0f7ff; border: 1px solid #dbeafe; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px;">
-    <p style="margin: 0 0 8px; font-size: 14px; font-weight: 600; color: #1D4ED8;">TripSignal Pro includes:</p>
-    <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #333;">
-      <li>Up to 10 active signals</li>
-      <li>Prices checked multiple times a day</li>
-      <li>Email + SMS alerts</li>
-      <li>Price drop tracking &amp; history</li>
-    </ul>
-  </div>
-
-  <a href="https://tripsignal.ca/signals" style="display: inline-block; background: #F97316; color: #fff; text-decoration: none; padding: 14px 28px; border-radius: 24px; font-size: 14px; font-weight: 600; margin-bottom: 32px;">
-    Upgrade to Pro &rarr;
-  </a>
-
-  <hr style="border: none; border-top: 1px solid #eee; margin: 32px 0;">
-
-  <p style="font-size: 12px; color: #999; margin: 0;">
-    You're receiving this because your TripSignal free trial ended.<br>
-    <a href="https://tripsignal.ca" style="color: #999;">tripsignal.ca</a>
-  </p>
-
-</body>
-</html>"""
-
-    return bool(send_email(to, subject, html))

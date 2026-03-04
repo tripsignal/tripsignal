@@ -23,6 +23,7 @@ from app.api.routes.unsubscribe import router as unsubscribe_router
 from app.api.routes.users import router as users_router
 from app.api.routes.clerk_webhook import router as clerk_webhook_router
 from app.api.signals import router as signals_router
+from app.api.routes.resend_webhooks import router as resend_webhook_router
 
 # Setup logging
 setup_logging()
@@ -108,6 +109,7 @@ app.include_router(admin_router)
 app.include_router(unsubscribe_router)
 app.include_router(users_router)
 app.include_router(clerk_webhook_router)
+app.include_router(resend_webhook_router)
 
 @app.post("/api/system/next-scan")
 async def set_next_scan(payload: dict):

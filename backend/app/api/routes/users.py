@@ -168,6 +168,7 @@ def get_prefs(
         "email_enabled": user.email_enabled,
         "sms_enabled": user.sms_enabled,
         "email_opt_out": user.email_opt_out,
+        "alert_threshold": user.alert_threshold,
     }
 
 
@@ -177,7 +178,11 @@ class UpdatePrefsRequest(BaseModel):
     notification_delivery_speed: str | None = None
     email_enabled: bool | None = None
     sms_enabled: bool | None = None
+    alert_threshold: str | None = None
     complete_activation: bool = False
+
+
+_VALID_THRESHOLDS = {"any", "drops", "records"}
 
 
 @router.put("/prefs")
@@ -194,6 +199,13 @@ def update_prefs(
         user.email_enabled = body.email_enabled
     if body.sms_enabled is not None:
         user.sms_enabled = body.sms_enabled
+    if body.alert_threshold is not None:
+        if body.alert_threshold not in _VALID_THRESHOLDS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"alert_threshold must be one of: {', '.join(sorted(_VALID_THRESHOLDS))}",
+            )
+        user.alert_threshold = body.alert_threshold
 
     if body.complete_activation and user.pro_activation_completed_at is None:
         user.pro_activation_completed_at = datetime.now(timezone.utc)

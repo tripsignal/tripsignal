@@ -2,14 +2,13 @@
 Centralized Email Orchestrator — single entry point for all lifecycle emails.
 
 Every email in the system flows through ``trigger()`` which:
-1. Gates on EMAIL_V2_ENABLED (returns "skipped" when off).
-2. Loads user + validates state.
-3. Applies suppression rules (see ``_check_suppression``).
-4. Computes a deterministic idempotency key and dedupes via email_log.
-5. Inserts a "pending" row into email_log BEFORE sending.
-6. Renders the template.
-7. Sends via Resend (or dry-runs).
-8. Updates email_log with sent_at, provider_message_id, and metadata.
+1. Loads user + validates state.
+2. Applies suppression rules (see ``_check_suppression``).
+3. Computes a deterministic idempotency key and dedupes via email_log.
+4. Inserts a "pending" row into email_log BEFORE sending.
+5. Renders the template.
+6. Sends via Resend (or dry-runs).
+7. Updates email_log with sent_at, provider_message_id, and metadata.
 """
 from __future__ import annotations
 
@@ -55,6 +54,7 @@ class EmailType(str, Enum):
     ACCOUNT_DELETED_PRO = "ACCOUNT_DELETED_PRO"
     NO_MATCH_UPDATE = "NO_MATCH_UPDATE"
     INACTIVE_REENGAGEMENT = "INACTIVE_REENGAGEMENT"
+    WEEKLY_DIGEST = "WEEKLY_DIGEST"
 
 
 # Map each email type to its category
@@ -74,6 +74,7 @@ EMAIL_TYPE_CATEGORY: dict[str, EmailCategory] = {
     EmailType.NO_SIGNAL_REMINDER: EmailCategory.ENGAGEMENT,
     EmailType.NO_MATCH_UPDATE: EmailCategory.ENGAGEMENT,
     EmailType.INACTIVE_REENGAGEMENT: EmailCategory.ENGAGEMENT,
+    EmailType.WEEKLY_DIGEST: EmailCategory.ALERT,
 }
 
 # Categories that honour the user's marketing/engagement opt-out
@@ -101,11 +102,6 @@ def trigger(
     email_type = EmailType(email_type) if isinstance(email_type, str) else email_type
     context = context or {}
     category = EMAIL_TYPE_CATEGORY.get(email_type, EmailCategory.TRANSACTIONAL)
-
-    # ── 0. V2 gate — when disabled, return immediately so legacy paths run ──
-    if not settings.EMAIL_V2_ENABLED:
-        logger.debug("orchestrator: EMAIL_V2_ENABLED=false, skipping %s", email_type.value)
-        return {"status": "skipped", "reason": "v2_disabled"}
 
     # ── 1. Load user ──────────────────────────────────────────────────────
     user = db.execute(
@@ -278,6 +274,56 @@ def _check_suppression(
         if user.deleted_at and (datetime.now(timezone.utc) - user.deleted_at) < timedelta(hours=24):
             return "canceled_after_deletion"
 
+    # ── Anti-fatigue rules (Email Intelligence Spec) ──────────────────────
+
+    # 8. Daily cap: max 1 instant alert per user per day.
+    if category == EmailCategory.ALERT and email_type != EmailType.WEEKLY_DIGEST:
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        alert_today = db.execute(
+            select(func.count(EmailLog.id)).where(
+                EmailLog.user_id == user.id,
+                EmailLog.category == "alert",
+                EmailLog.status.in_(["sent", "dry_run", "delivered"]),
+                EmailLog.sent_at >= today_start,
+            )
+        ).scalar() or 0
+        if alert_today >= 1:
+            return "daily_cap"
+
+    # 9. 3-strike rule: 3 consecutive alert emails with no open -> downgrade to passive.
+    if category == EmailCategory.ALERT and email_type != EmailType.WEEKLY_DIGEST:
+        last_3_alerts = db.execute(
+            select(EmailLog).where(
+                EmailLog.user_id == user.id,
+                EmailLog.category == "alert",
+                EmailLog.status.in_(["sent", "delivered"]),
+            ).order_by(EmailLog.sent_at.desc()).limit(3)
+        ).scalars().all()
+
+        if len(last_3_alerts) >= 3:
+            all_unopened = all(
+                not (log.metadata_json or {}).get("opens")
+                for log in last_3_alerts
+            )
+            if all_unopened:
+                user.email_mode = "passive"
+                db.flush()
+                logger.info("3-strike: user %s downgraded to passive", user.id)
+                return "three_strike_downgrade"
+
+    # 10. Re-engagement cap: max 1 re-engagement email per 60 days.
+    if email_type == EmailType.INACTIVE_REENGAGEMENT:
+        recent_reengage = db.execute(
+            select(EmailLog).where(
+                EmailLog.user_id == user.id,
+                EmailLog.email_type == EmailType.INACTIVE_REENGAGEMENT.value,
+                EmailLog.status.in_(["sent", "dry_run", "delivered"]),
+                EmailLog.sent_at >= datetime.now(timezone.utc) - timedelta(days=60),
+            ).limit(1)
+        ).scalar_one_or_none()
+        if recent_reengage:
+            return "reengage_cap_60d"
+
     return None
 
 
@@ -372,6 +418,10 @@ def _build_idempotency_key(email_type: EmailType, user_id: str, context: dict) -
     if email_type == EmailType.INACTIVE_REENGAGEMENT:
         window_start = context.get("window_start", context.get("period", "unknown"))
         return f"inactive:{uid}:{window_start}"
+
+    if email_type == EmailType.WEEKLY_DIGEST:
+        week_iso = context.get("week_iso", datetime.now(timezone.utc).strftime("%Y-W%W"))
+        return f"weekly_digest:{uid}:{week_iso}"
 
     # Fallback (should never happen if all types are covered above)
     return f"{email_type.value}:{uid}"

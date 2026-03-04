@@ -1,6 +1,6 @@
 """
 Lifecycle Email Worker — scheduled jobs for trial, inactivity, no-match,
-and payment retry reminder emails.
+weekly digest, and payment retry reminder emails.
 
 Runs as an infinite-loop polling worker (same pattern as notifications_log_worker).
 Each cycle scans for eligible users/signals and calls the orchestrator.
@@ -10,9 +10,11 @@ Job execution order matters:
   2. Trial expiring soon
   3. Trial expired
   4. No signal reminder
-  5. Inactive re-engagement (PRO only)
+  5. Inactive re-engagement (dormant users)
   6. No match update (PRO only)
   7. Payment failed reminders
+  8. User mode refresh
+  9. Weekly digest (passive users, Sundays only)
 """
 from __future__ import annotations
 
@@ -70,6 +72,8 @@ def run_cycle(db: Session, now: datetime | None = None) -> None:
     _run_inactive_reengagement(db, now)
     _run_no_match_update(db, now)
     _run_payment_failed_reminders(db, now)
+    _run_user_mode_refresh(db, now)
+    _run_weekly_digests(db, now)
 
 
 # ── Job 1: Automatic 7-day trial extension (48h before expiry) ───────────────
@@ -242,17 +246,16 @@ def _run_no_signal_reminder(db: Session, now: datetime) -> int:
     return sent
 
 
-# ── Job 5: Inactive re-engagement (PRO only, last_login >21d) ────────────────
+# ── Job 5: Inactive re-engagement (dormant users with active signals) ────────
 
 def _run_inactive_reengagement(db: Session, now: datetime) -> int:
-    """Send INACTIVE_REENGAGEMENT to PRO users inactive for 21+ days.
+    """Send INACTIVE_REENGAGEMENT to dormant users with active signals.
 
-    PRO only — free users don't get re-engagement emails.
-    30-day cooldown between re-engagement emails per user.
+    Triggers when user is dormant (email_mode='dormant').
+    60-day cooldown is enforced by the orchestrator suppression rule.
+    After sending, move user to passive (weekly-only).
     Returns the number of emails triggered.
     """
-    cutoff = now - timedelta(days=21)
-
     active_signal_count = (
         select(func.count(Signal.id))
         .where(Signal.user_id == User.id, Signal.status == "active")
@@ -262,39 +265,34 @@ def _run_inactive_reengagement(db: Session, now: datetime) -> int:
 
     users = db.execute(
         select(User).where(
-            User.plan_type == "pro",
-            User.last_login_at.isnot(None),
-            User.last_login_at <= cutoff,
+            User.email_mode == "dormant",
             User.deleted_at.is_(None),
             User.email_opt_out == False,  # noqa: E712
+            User.email != "",
             active_signal_count > 0,
         )
     ).scalars().all()
 
     sent = 0
     for user in users:
-        # 30-day cooldown between re-engagement emails
-        last_engagement = db.execute(
-            select(func.max(EmailLog.sent_at)).where(
-                EmailLog.user_id == user.id,
-                EmailLog.email_type == EmailType.INACTIVE_REENGAGEMENT.value,
-                EmailLog.status.in_(("sent", "dry_run")),
-            )
-        ).scalar()
-        if last_engagement and (now - last_engagement) < timedelta(days=30):
-            continue
+        days_inactive = 0
+        if user.last_login_at:
+            days_inactive = (now - user.last_login_at).days
 
-        days_inactive = (now - user.last_login_at).days
+        # Build enriched context with proof-of-value data
+        context = _build_reengagement_context(db, user, days_inactive, now)
+
         try:
-            email_trigger(
+            result = email_trigger(
                 db=db,
                 email_type=EmailType.INACTIVE_REENGAGEMENT,
                 user_id=str(user.id),
-                context={
-                    "days_inactive": days_inactive,
-                    "period": now.strftime("%Y-%m"),
-                },
+                context=context,
             )
+            if result.get("status") in ("sent", "dry_run"):
+                # Move user to passive (weekly-only) after re-engagement
+                user.email_mode = "passive"
+                db.commit()
             sent += 1
         except Exception:
             logger.exception("inactive_reengagement failed for %s", user.email)
@@ -302,6 +300,88 @@ def _run_inactive_reengagement(db: Session, now: datetime) -> int:
     if users:
         logger.info("inactive_reengagement: checked %d users", len(users))
     return sent
+
+
+def _build_reengagement_context(
+    db: Session, user: User, days_inactive: int, now: datetime,
+) -> dict:
+    """Build enriched context for re-engagement email with proof-of-value data."""
+    from app.db.models.deal import Deal
+
+    context: dict = {
+        "days_inactive": days_inactive,
+        "period": now.strftime("%Y-%m"),
+    }
+
+    # Total deals found across all user signals
+    total_deals = db.execute(
+        select(func.count(DealMatch.id))
+        .join(Signal, DealMatch.signal_id == Signal.id)
+        .where(Signal.user_id == user.id)
+    ).scalar() or 0
+    context["total_deals_found"] = total_deals
+
+    # Best missed deal (cheapest match the user didn't click on)
+    best_missed = db.execute(
+        select(Deal.hotel_name, Deal.depart_date, Deal.price_cents,
+               Deal.return_date)
+        .join(DealMatch, DealMatch.deal_id == Deal.id)
+        .join(Signal, DealMatch.signal_id == Signal.id)
+        .where(Signal.user_id == user.id)
+        .order_by(Deal.price_cents.asc())
+        .limit(1)
+    ).first()
+    if best_missed:
+        nights = 7
+        if best_missed.return_date and best_missed.depart_date:
+            nights = (best_missed.return_date - best_missed.depart_date).days or 7
+        context["best_missed_deal"] = {
+            "price_cents": best_missed.price_cents,
+            "hotel_name": best_missed.hotel_name or "",
+            "duration_nights": nights,
+            "depart_date": str(best_missed.depart_date) if best_missed.depart_date else "",
+        }
+        context["best_missed_price_cents"] = best_missed.price_cents
+
+    # Price range from intel caches
+    from app.db.models.signal_intel_cache import SignalIntelCache
+    intel_rows = db.execute(
+        select(SignalIntelCache)
+        .join(Signal, SignalIntelCache.signal_id == Signal.id)
+        .where(Signal.user_id == user.id)
+    ).scalars().all()
+
+    if intel_rows:
+        min_prices = [i.min_price_ever_cents for i in intel_rows if i.min_price_ever_cents]
+        if min_prices:
+            context["min_price_ever_cents"] = min(min_prices)
+
+        # Get current trend from first intel row with data
+        for intel in intel_rows:
+            if intel.trend_direction and intel.trend_direction != "stable":
+                context["trend_direction"] = intel.trend_direction
+                break
+
+    # Current best deal (active deal matching any user signal)
+    current_best = db.execute(
+        select(Deal.hotel_name, Deal.price_cents, Deal.depart_date, Deal.return_date)
+        .join(DealMatch, DealMatch.deal_id == Deal.id)
+        .join(Signal, DealMatch.signal_id == Signal.id)
+        .where(Signal.user_id == user.id, Deal.is_active == True)  # noqa: E712
+        .order_by(Deal.price_cents.asc())
+        .limit(1)
+    ).first()
+    if current_best:
+        nights = 7
+        if current_best.return_date and current_best.depart_date:
+            nights = (current_best.return_date - current_best.depart_date).days or 7
+        context["current_best_deal"] = {
+            "price_cents": current_best.price_cents,
+            "hotel_name": current_best.hotel_name or "",
+            "duration_nights": nights,
+        }
+
+    return context
 
 
 # ── Job 6: No match update (PRO only, signal active 14d, 0 matches) ──────────
@@ -423,6 +503,146 @@ def _run_payment_failed_reminders(db: Session, now: datetime) -> int:
             except Exception:
                 logger.exception("payment_failed_reminder failed for %s", user.email)
 
+    return sent
+
+
+# ── Job 8: User mode refresh ─────────────────────────────────────────────────
+
+def _run_user_mode_refresh(db: Session, now: datetime) -> dict:
+    """Refresh email mode for all users based on engagement timestamps."""
+    try:
+        from app.services.user_mode import refresh_all_user_modes
+        return refresh_all_user_modes(db)
+    except Exception:
+        logger.exception("User mode refresh failed")
+        db.rollback()
+        return {}
+
+
+# ── Job 9: Weekly digest (passive users, Sundays only) ──────────────────────
+
+def _run_weekly_digests(db: Session, now: datetime) -> int:
+    """Send WEEKLY_DIGEST to passive users on Sundays.
+
+    For each passive user, find the best deals from their signals over the
+    last 7 days. If no deals found that week, skip silently (per spec).
+    Returns the number of digests sent.
+    """
+    # Only send on Sundays (weekday 6)
+    if now.weekday() != 6:
+        return 0
+
+    # Only send once per Sunday — check if we already ran today
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Use a simple time window: only run between 8-10 AM UTC on Sundays
+    if now.hour < 8 or now.hour >= 10:
+        return 0
+
+    from app.db.models.deal import Deal
+    from app.db.models.signal_intel_cache import SignalIntelCache
+
+    passive_users = db.execute(
+        select(User).where(
+            User.email_mode == "passive",
+            User.deleted_at.is_(None),
+            User.email_opt_out == False,  # noqa: E712
+            User.email != "",
+        )
+    ).scalars().all()
+
+    week_ago = now - timedelta(days=7)
+    week_iso = now.strftime("%Y-W%W")
+    sent = 0
+
+    for user in passive_users:
+        # Get all active signals for this user
+        signals = db.execute(
+            select(Signal).where(
+                Signal.user_id == user.id,
+                Signal.status == "active",
+            )
+        ).scalars().all()
+
+        if not signals:
+            continue
+
+        # Find best deals across all signals from the past 7 days
+        all_deals = []
+        best_intel = None
+        for sig in signals:
+            deals = db.execute(
+                select(
+                    Deal.hotel_name, Deal.price_cents, Deal.depart_date,
+                    Deal.return_date, Deal.star_rating,
+                )
+                .join(DealMatch, DealMatch.deal_id == Deal.id)
+                .where(
+                    DealMatch.signal_id == sig.id,
+                    DealMatch.matched_at >= week_ago,
+                )
+                .order_by(Deal.price_cents.asc())
+                .limit(10)
+            ).all()
+
+            for d in deals:
+                nights = 7
+                if d.return_date and d.depart_date:
+                    nights = (d.return_date - d.depart_date).days or 7
+                all_deals.append({
+                    "hotel_name": d.hotel_name or "",
+                    "star_rating": d.star_rating,
+                    "price_cents": d.price_cents,
+                    "duration_nights": nights,
+                    "depart_date": str(d.depart_date) if d.depart_date else "",
+                })
+
+            # Grab intel for context
+            if not best_intel:
+                best_intel = db.execute(
+                    select(SignalIntelCache).where(SignalIntelCache.signal_id == sig.id)
+                ).scalar_one_or_none()
+
+        # Spec: skip silently if no deals found that week
+        if not all_deals:
+            continue
+
+        # Sort by price, take best
+        all_deals.sort(key=lambda d: d["price_cents"])
+
+        days_monitoring = 0
+        first_signal = signals[0] if signals else None
+        if first_signal and first_signal.created_at:
+            days_monitoring = (now - first_signal.created_at).days
+
+        context = {
+            "deal_count": len(all_deals),
+            "deals": all_deals[:5],  # Top 5 deals
+            "signal_name": first_signal.name if first_signal else "your signals",
+            "route": "",
+            "destination": "",
+            "best_price_cents": all_deals[0]["price_cents"] if all_deals else None,
+            "trend_direction": best_intel.trend_direction if best_intel else "stable",
+            "trend_weeks": best_intel.trend_consecutive_weeks if best_intel else 0,
+            "best_value_nights": best_intel.best_value_nights if best_intel else None,
+            "best_value_pct_saving": best_intel.best_value_pct_saving if best_intel else None,
+            "total_matches": best_intel.total_matches if best_intel else 0,
+            "days_monitoring": days_monitoring,
+            "week_iso": week_iso,
+        }
+
+        try:
+            email_trigger(
+                db=db,
+                email_type=EmailType.WEEKLY_DIGEST,
+                user_id=str(user.id),
+                context=context,
+            )
+            sent += 1
+        except Exception:
+            logger.exception("weekly_digest failed for %s", user.email)
+
+    if passive_users:
+        logger.info("weekly_digest: checked %d passive users, sent %d", len(passive_users), sent)
     return sent
 
 

@@ -494,84 +494,6 @@ def match_deal_to_signals(db: Session, deal: Deal, deal_meta: dict) -> list[Sign
     return matches
 
 
-def send_digest_email(user_email: str, signal: Signal, new_deals: list) -> None:
-    if not RESEND_API_KEY:
-        logger.warning("No RESEND_API_KEY set, skipping email")
-        return
-
-    if not new_deals:
-        return
-
-    count = len(new_deals)
-    best_price = min(d.price_cents for d in new_deals) // 100
-    price_drops = [d for d in new_deals if getattr(d, "_price_dropped", False)]
-
-    if count == 1:
-        subject = f"New deal found for your {signal.name} signal — from ${best_price:,}"
-    else:
-        subject = f"{count} new deals found for your {signal.name} signal — from ${best_price:,}"
-
-    drop_line = ""
-    if price_drops:
-        drop_line = f'<p style="margin: 0 0 16px; font-size: 14px; color: #15803d;">&#8595; {len(price_drops)} deal{"s" if len(price_drops) > 1 else ""} dropped in price since your last check.</p>'
-
-    html = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; background: #fff; max-width: 560px; margin: 0 auto; padding: 40px 24px;">
-
-  <div style="margin-bottom: 24px;">
-    <span style="font-size: 20px; font-weight: 600; letter-spacing: -0.3px;">Trip Signal</span>
-  </div>
-
-  <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px;">
-    <p style="margin: 0; font-size: 13px; color: #15803d; font-weight: 500;">
-      {count} new deal{"s" if count > 1 else ""} found for your signal: {signal.name}
-    </p>
-  </div>
-
-  <h1 style="font-size: 22px; font-weight: 600; margin: 0 0 8px;">Best price found</h1>
-  <p style="font-size: 32px; font-weight: 700; margin: 0 0 8px; color: #111;">${best_price:,} <span style="font-size: 16px; font-weight: 400; color: #666;">CAD</span></p>
-  <p style="font-size: 14px; color: #666; margin: 0 0 24px;">Across {count} new matching deal{"s" if count > 1 else ""}.</p>
-
-  {drop_line}
-
-  <a href="https://tripsignal.ca/signals" style="display: inline-block; background: #111; color: #fff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-size: 14px; font-weight: 500; margin-bottom: 32px;">
-    Review your deals &rarr;
-  </a>
-
-  <hr style="border: none; border-top: 1px solid #eee; margin: 32px 0;">
-
-  <p style="font-size: 12px; color: #999; margin: 0;">
-    You're receiving this because your Trip Signal signal "{signal.name}" found new matches.<br>
-    Manage your signals at <a href="https://tripsignal.ca/signals" style="color: #999;">tripsignal.ca/signals</a>
-  </p>
-
-</body>
-</html>"""
-
-    import requests as _requests
-    try:
-        resp = _requests.post(
-            "https://api.resend.com/emails",
-            headers={
-                "Authorization": f"Bearer {RESEND_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "from": "Trip Signal <hello@tripsignal.ca>",
-                "to": user_email,
-                "subject": subject,
-                "html": html,
-            },
-            timeout=10,
-        )
-        resp.raise_for_status()
-        logger.info("Digest email sent to %s — %d deals for signal %s", user_email, count, signal.id)
-    except Exception as e:
-        logger.error("Failed to send digest email to %s: %s", user_email, e)
-
-
 def generate_unsub_token(user_id: str) -> str:
     """Generate an HMAC-signed token encoding a user ID for unsubscribe links."""
     sig = hmac.new(UNSUB_SECRET.encode(), user_id.encode(), hashlib.sha256).digest()
@@ -655,318 +577,6 @@ def _star_display(rating) -> str:
     return f"★ {rating:.1f}"
 
 
-def send_user_digest_email(user_email: str, signal_deals: dict, is_pro: bool = False, unsub_token: str = "", notification_id: str = "") -> None:
-    """Send a single consolidated digest email covering all signals for one user.
-
-    signal_deals: {signal_id_str: {"signal_name": str, "signal_id": UUID, "deals": [dict]}}
-    Each deal dict: {price_cents, hotel_name, star_rating, depart_date, return_date,
-                     destination_str, origin, price_dropped, price_delta}
-    """
-    if not RESEND_API_KEY:
-        logger.warning("No RESEND_API_KEY set, skipping email")
-        return
-
-    if not signal_deals:
-        return
-
-    total_deals = sum(len(sd["deals"]) for sd in signal_deals.values())
-    if total_deals == 0:
-        return
-
-    num_signals = len(signal_deals)
-
-    # ── Collect all deals with their signal context ──────────────────
-    all_deals_with_signal = []
-    for sd in signal_deals.values():
-        for d in sd["deals"]:
-            all_deals_with_signal.append((d, sd["signal_name"]))
-
-    # ── Count total price drops across all signals ───────────────────
-    total_drops = sum(1 for d, _ in all_deals_with_signal if d.get("price_delta", 0) > 0)
-    has_drops = total_drops > 0
-
-    # ── Find the hero deal ───────────────────────────────────────────
-    # If any deals have price drops, hero = biggest dollar drop
-    # Otherwise, hero = cheapest deal
-    dropped_deals = [(d, s) for d, s in all_deals_with_signal if d.get("price_delta", 0) > 0]
-    if dropped_deals:
-        hero_deal, hero_signal_name = max(dropped_deals, key=lambda x: x[0]["price_delta"])
-    else:
-        hero_deal, hero_signal_name = min(all_deals_with_signal, key=lambda x: x[0]["price_cents"])
-
-    hero_price = hero_deal["price_cents"] // 100
-    hero_city = _city_from_destination(hero_deal.get("destination_str", ""))
-    hero_origin = hero_deal.get("origin", "")
-    hero_origin_city = AIRPORT_CITY_MAP.get(hero_origin, hero_origin)
-    hero_hotel = hero_deal.get("hotel_name", "")
-    hero_stars = _star_display(hero_deal.get("star_rating"))
-    hero_dates = _format_date_range(hero_deal.get("depart_date"), hero_deal.get("return_date"))
-    hero_delta = hero_deal.get("price_delta", 0)
-
-    dep = hero_deal.get("depart_date")
-    ret = hero_deal.get("return_date")
-    hero_nights = (ret - dep).days if dep and ret else 7
-
-    # ── Readable destination for subject line ────────────────────────
-    # Use the hero deal's city, or fall back to parsing the signal name
-    subj_dest = hero_city or "your destinations"
-
-    # ── Subject line (no price — curiosity-driven) ───────────────────
-    if has_drops and num_signals == 1:
-        subject = f"Price drop on your {subj_dest} signal"
-    elif has_drops and num_signals > 1:
-        subject = f"Prices dropped across {num_signals} of your signals"
-    elif num_signals == 1:
-        subject = f"New deals for your {subj_dest} signal"
-    else:
-        subject = f"New deals across {num_signals} of your signals"
-
-    # ── Preheader (hidden preview text for inbox list view) ──────────
-    cheapest = min(d["price_cents"] for d, _ in all_deals_with_signal) // 100
-    if num_signals == 1:
-        preheader = f"From ${cheapest:,} &middot; {total_deals} deal{'s' if total_deals > 1 else ''} available now"
-    else:
-        preheader = f"From ${cheapest:,} &middot; {total_deals} deal{'s' if total_deals > 1 else ''} across {num_signals} signals"
-
-    # ── Hero deal: price context line (only if real price drop) ──────
-    price_context_html = ""
-    if hero_delta > 0:
-        drop_dollars = hero_delta // 100
-        price_context_html = f"""
-      <p style="margin: 0 0 12px; font-size: 13px; color: #15803d; font-weight: 500;">
-        &#8595; ${drop_dollars:,} less than last check
-      </p>"""
-
-    # ── Hero deal: detail line (dates · nights · stars · hotel) ──────
-    detail_parts = []
-    if hero_dates:
-        detail_parts.append(hero_dates)
-    detail_parts.append(f"{hero_nights} night{'s' if hero_nights != 1 else ''}")
-    if hero_stars:
-        detail_parts.append(hero_stars)
-    if hero_hotel:
-        detail_parts.append(hero_hotel)
-    hero_detail_line = " &middot; ".join(detail_parts)
-
-    # ── Hero route label (readable city names) ───────────────────────
-    hero_route = f"{hero_origin_city} &rarr; {hero_city}" if hero_origin_city and hero_city else hero_signal_name
-
-    # ── Urgency line (deal count for the hero's signal) ──────────────
-    hero_signal_deal_count = 0
-    for sd in signal_deals.values():
-        if sd["signal_name"] == hero_signal_name:
-            hero_signal_deal_count = len(sd["deals"])
-            break
-    urgency_html = f"""
-      <p style="margin: 12px 0 0; font-size: 12px; color: #999;">
-        {hero_signal_deal_count} deal{'s' if hero_signal_deal_count != 1 else ''} available for this signal &middot; Prices change daily
-      </p>"""
-
-    # ── Other signals section (readable names from deal data) ────────
-    other_signals_html = ""
-    sorted_signals = sorted(signal_deals.values(), key=lambda x: min(d["price_cents"] for d in x["deals"]))
-    if num_signals > 1:
-        signal_rows = []
-        for sd in sorted_signals:
-            deals = sd["deals"]
-            sig_count = len(deals)
-            sig_best = min(d["price_cents"] for d in deals) // 100
-            sig_drops = sum(1 for d in deals if d.get("price_delta", 0) > 0)
-
-            # Build readable signal label from deal data
-            cheapest_deal = min(deals, key=lambda d: d["price_cents"])
-            sig_city = _city_from_destination(cheapest_deal.get("destination_str", ""))
-            sig_origin = cheapest_deal.get("origin", "")
-            sig_origin_city = AIRPORT_CITY_MAP.get(sig_origin, sig_origin)
-            sig_label = f"{sig_origin_city} &rarr; {sig_city}" if sig_origin_city and sig_city else sd["signal_name"]
-
-            drop_text = ""
-            if sig_drops:
-                drop_text = f' &middot; <span style="color: #15803d;">&#8595; {sig_drops} price drop{"s" if sig_drops > 1 else ""}</span>'
-
-            signal_rows.append(f"""
-        <div style="padding: 12px 0; border-top: 1px solid #f0f0f0;">
-          <p style="margin: 0; font-size: 14px; font-weight: 500; color: #111;">{sig_label}</p>
-          <p style="margin: 2px 0 0; font-size: 13px; color: #666;">
-            {sig_count} deal{'s' if sig_count > 1 else ''} from <strong style="color: #111;">${sig_best:,}</strong>{drop_text}
-          </p>
-        </div>""")
-
-        other_signals_html = f"""
-    <div style="background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #e5e5e5;">
-      <p style="margin: 0 0 4px; font-size: 14px; font-weight: 600; color: #333;">
-        More deals from your signals
-      </p>
-      {''.join(signal_rows)}
-    </div>"""
-
-    # ── Primary CTA — always drives to website ───────────────────────
-    if num_signals == 1:
-        cta_text = f"See all {total_deals} deal{'s' if total_deals > 1 else ''}"
-    else:
-        cta_text = "See all your deals"
-    cta_html = f"""
-    <a href="https://tripsignal.ca/signals" style="display: inline-block; background: #111; color: #fff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-size: 14px; font-weight: 500; margin-bottom: 20px;">
-      {cta_text} &rarr;
-    </a>"""
-
-    # ── Pro upsell (free users only, contextual) ─────────────────────
-    upsell_html = ""
-    if not is_pro:
-        if has_drops:
-            upsell_copy = "Pro users got this alert hours earlier. Upgrade to get instant price drop notifications."
-        else:
-            upsell_copy = "Free signals check once a day. Pro checks multiple times a day &mdash; so you catch deals before prices change."
-        upsell_html = f"""
-    <div style="background: #fefce8; border: 1px solid #fde68a; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px;">
-      <p style="margin: 0 0 4px; font-size: 13px; font-weight: 600; color: #92400e;">&#9889; Go Pro</p>
-      <p style="margin: 0 0 8px; font-size: 13px; color: #78350f; line-height: 1.4;">
-        {upsell_copy}
-      </p>
-      <a href="https://tripsignal.ca/pricing" style="font-size: 13px; color: #92400e; font-weight: 500; text-decoration: underline;">
-        Upgrade to Pro &rarr;
-      </a>
-    </div>"""
-
-    # ── Assemble final HTML ──────────────────────────────────────────
-    html = f"""<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; background: #f5f5f5; margin: 0; padding: 0;">
-<!-- Preheader text (hidden, shows in inbox preview) -->
-<div style="display: none; max-height: 0; overflow: hidden; mso-hide: all;">
-  {preheader}
-</div>
-<div style="max-width: 560px; margin: 0 auto; padding: 32px 16px;">
-
-  <!-- Header -->
-  <div style="margin-bottom: 24px;">
-    <span style="font-size: 20px; font-weight: 600; letter-spacing: -0.3px;">Trip Signal</span>
-  </div>
-
-  <!-- Hero Deal -->
-  <div style="background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 20px; border: 1px solid #e5e5e5;">
-    <p style="margin: 0 0 6px; font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px;">
-      &#9992; {hero_route}
-    </p>
-
-    <p style="margin: 0 0 2px; font-size: 36px; font-weight: 700; color: #111; line-height: 1.1;">
-      ${hero_price:,} <span style="font-size: 15px; font-weight: 400; color: #666;">CAD per person</span>
-    </p>
-    {price_context_html}
-    <p style="margin: 0 0 4px; font-size: 14px; color: #555; line-height: 1.4;">
-      {hero_detail_line}
-    </p>
-    {urgency_html}
-  </div>
-
-  {other_signals_html}
-
-  {cta_html}
-
-  {upsell_html}
-
-  <!-- Footer -->
-  <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
-  <p style="font-size: 12px; color: #999; margin: 0; line-height: 1.6;">
-    You're receiving this because you have active signals on Trip Signal.<br>
-    <a href="https://tripsignal.ca/signals" style="color: #999;">Manage signals</a> &middot;
-    <a href="https://tripsignal.ca/unsubscribe?token={unsub_token}" style="color: #999;">Unsubscribe</a>
-  </p>
-  {f'<img src="https://tripsignal.ca/api/notifications/{notification_id}/pixel.png" width="1" height="1" style="display:block;" alt="" />' if notification_id else ''}
-
-</div>
-</body>
-</html>"""
-
-    import requests as _requests
-    try:
-        resp = _requests.post(
-            "https://api.resend.com/emails",
-            headers={
-                "Authorization": f"Bearer {RESEND_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "from": "Trip Signal <hello@tripsignal.ca>",
-                "to": user_email,
-                "subject": subject,
-                "html": html,
-            },
-            timeout=10,
-        )
-        resp.raise_for_status()
-        logger.info("Consolidated digest sent to %s — %d deals across %d signals", user_email, total_deals, num_signals)
-    except Exception as e:
-        logger.error("Failed to send consolidated digest to %s: %s", user_email, e)
-
-
-def send_all_user_digests(db: Session, user_digest: dict, stagger_seconds: float = 1.5) -> None:
-    """Send one consolidated email per user, with staggering between sends."""
-    user_emails = sorted(user_digest.keys())
-    logger.info("Sending consolidated digests to %d users", len(user_emails))
-
-    for i, user_email in enumerate(user_emails):
-        try:
-            can_send, is_pro = validate_user_for_email(db, user_email)
-            if not can_send:
-                continue
-
-            # Generate unsubscribe token for this user
-            user = db.execute(
-                select(User).where(User.email == user_email)
-            ).scalar_one_or_none()
-            unsub_token = generate_unsub_token(str(user.id)) if user else ""
-
-            signal_deals = user_digest[user_email]
-
-            # Create outbox record BEFORE sending so we have the ID for the tracking pixel
-            total_deals = sum(len(sd["deals"]) for sd in signal_deals.values())
-            signal_names = ", ".join(sd["signal_name"] for sd in signal_deals.values())
-            first_signal = next(iter(signal_deals.values()))
-            outbox = NotificationOutbox(
-                id=_uuid.uuid4(),
-                signal_id=first_signal["signal_id"],
-                match_id=_uuid.uuid4(),
-                channel="email",
-                to_email=user_email,
-                subject=f"{total_deals} new deals across {len(signal_deals)} signals",
-                body_text=f"Consolidated digest for signals: {signal_names}",
-                status="pending",
-            )
-            db.add(outbox)
-            db.flush()  # get the ID without committing
-
-            send_user_digest_email(
-                user_email, signal_deals,
-                is_pro=is_pro, unsub_token=unsub_token,
-                notification_id=str(outbox.id),
-            )
-
-            # Mark as sent after successful send
-            outbox.status = "sent"
-            outbox.sent_at = datetime.now(timezone.utc)
-            outbox.next_attempt_at = null()
-            db.commit()
-
-            # Stagger between users
-            if i < len(user_emails) - 1:
-                time.sleep(stagger_seconds)
-
-        except Exception as e:
-            logger.error("Error sending digest for user %s: %s", user_email, e)
-            try:
-                db.rollback()
-            except Exception:
-                pass
-            continue
-
-    logger.info("Digest sending complete for %d users", len(user_emails))
-
-
 def _build_price_delta_map(db: Session) -> dict:
     """Query price history to find the most recent price drop per deal.
 
@@ -993,75 +603,65 @@ def _send_cycle_alerts(
 ) -> None:
     """Send match alert emails for a scrape cycle.
 
-    V2 gate: when EMAIL_V2_ENABLED=true, creates SignalRun records and calls
-    the orchestrator via process_signal_matches (one email per signal per run).
-    When false, falls back to legacy send_all_user_digests.
+    Creates SignalRun records and calls the orchestrator via
+    process_signal_matches (one email per signal per run).
     """
-    from app.core.config import settings
+    if not v2_signal_deals:
+        return
 
-    if settings.EMAIL_V2_ENABLED and v2_signal_deals:
-        from app.db.models.signal_run import SignalRun, SignalRunType, SignalRunStatus
-        from app.services.match_alert import process_signal_matches
+    from app.db.models.signal_run import SignalRun, SignalRunType, SignalRunStatus
+    from app.services.match_alert import process_signal_matches
 
-        def _process(db: Session) -> None:
-            now = datetime.now(timezone.utc)
-            for signal_id_str, deals in v2_signal_deals.items():
-                if not deals:
-                    continue
-                # Create a SignalRun record for this signal in this cycle
-                run = SignalRun(
-                    signal_id=signal_id_str,
-                    run_type=SignalRunType.morning,
-                    status=SignalRunStatus.success,
-                    started_at=now,
-                    completed_at=now,
-                    matches_created_count=len(deals),
-                )
-                db.add(run)
-                db.flush()
+    def _process(db: Session) -> None:
+        now = datetime.now(timezone.utc)
+        run_map: dict[str, tuple[str, list]] = {}
+        for signal_id_str, deals in v2_signal_deals.items():
+            if not deals:
+                continue
+            # Create a SignalRun record for this signal in this cycle
+            run = SignalRun(
+                signal_id=signal_id_str,
+                run_type=SignalRunType.morning,
+                status=SignalRunStatus.success,
+                started_at=now,
+                completed_at=now,
+                matches_created_count=len(deals),
+            )
+            db.add(run)
+            db.flush()
 
-                # Update DealMatch rows with run_id
-                for deal_dict in deals:
-                    deal_id = deal_dict.get("deal_id")
-                    if deal_id:
-                        dm = db.execute(
-                            select(DealMatch).where(
-                                DealMatch.signal_id == signal_id_str,
-                                DealMatch.deal_id == deal_id,
-                                DealMatch.run_id.is_(None),
-                            )
-                        ).scalar_one_or_none()
-                        if dm:
-                            dm.run_id = run.id
+            # Update DealMatch rows with run_id
+            for deal_dict in deals:
+                deal_id = deal_dict.get("deal_id")
+                if deal_id:
+                    dm = db.execute(
+                        select(DealMatch).where(
+                            DealMatch.signal_id == signal_id_str,
+                            DealMatch.deal_id == deal_id,
+                            DealMatch.run_id.is_(None),
+                        )
+                    ).scalar_one_or_none()
+                    if dm:
+                        dm.run_id = run.id
 
-                db.flush()
+            db.flush()
+            run_map[signal_id_str] = (str(run.id), deals)
 
-                # Re-key so process_signal_matches can use the run_id
-                v2_signal_deals[signal_id_str] = (str(run.id), deals)
+        # Now call process_signal_matches with {signal_id: [deals]} + run_id
+        for signal_id_str, (run_id, deals) in run_map.items():
+            process_signal_matches(
+                db=db,
+                signal_deals={signal_id_str: deals},
+                run_id=run_id,
+            )
 
-            # Now call process_signal_matches with {signal_id: [deals]} + run_id
-            for signal_id_str, (run_id, deals) in v2_signal_deals.items():
-                process_signal_matches(
-                    db=db,
-                    signal_deals={signal_id_str: deals},
-                    run_id=run_id,
-                )
+    if db_override:
+        _process(db_override)
+    else:
+        with next(get_db()) as db:
+            _process(db)
 
-        if db_override:
-            _process(db_override)
-        else:
-            with next(get_db()) as db:
-                _process(db)
-
-        logger.info("V2 match alerts sent for %d signals", len(v2_signal_deals))
-
-    elif not settings.EMAIL_V2_ENABLED and user_digest:
-        # Legacy path — only when V2 is explicitly disabled
-        if db_override:
-            send_all_user_digests(db_override, user_digest)
-        else:
-            with next(get_db()) as db:
-                send_all_user_digests(db, user_digest)
+    logger.info("Match alerts sent for %d signals", len(v2_signal_deals))
 
 
 def run_matching_only(db: Session) -> None:
@@ -1098,7 +698,12 @@ def run_matching_only(db: Session) -> None:
             if existing:
                 continue
 
-            match = DealMatch(signal_id=signal.id, deal_id=deal.id)
+            ppn = deal.price_cents // duration_days if duration_days > 0 else None
+            match = DealMatch(
+                signal_id=signal.id,
+                deal_id=deal.id,
+                price_per_night_cents=ppn,
+            )
             db.add(match)
             db.commit()
             total_matches += 1
@@ -1122,30 +727,15 @@ def run_matching_only(db: Session) -> None:
                 "deeplink_url": deal.deeplink_url or "",
             })
 
-            # Accumulate for legacy consolidated digest (only when V2 disabled)
-            if not settings.EMAIL_V2_ENABLED:
-                user_email = signal.config.get("notifications", {}).get("email", "")
-                if user_email:
-                    if sig_key not in user_digest[user_email]:
-                        user_digest[user_email][sig_key] = {
-                            "signal_name": signal.name,
-                            "signal_id": signal.id,
-                            "deals": [],
-                        }
-                    user_digest[user_email][sig_key]["deals"].append({
-                        "price_cents": deal.price_cents,
-                        "price_dropped": delta > 0,
-                        "price_delta": delta,
-                        "hotel_name": deal.hotel_name or "",
-                        "star_rating": deal.star_rating,
-                        "depart_date": deal.depart_date,
-                        "return_date": deal.return_date,
-                        "destination_str": deal.destination_str or deal.destination or "",
-                        "origin": deal.origin or "",
-                    })
-
     # Send match alert emails
     _send_cycle_alerts(v2_signal_deals, user_digest, db_override=db)
+
+    # Refresh signal intelligence cache
+    try:
+        from app.services.signal_intel import refresh_all_active_signal_caches
+        refresh_all_active_signal_caches(db)
+    except Exception as e:
+        logger.warning("Intel cache refresh failed: %s", e)
 
     logger.info("Match-only complete. New matches: %d", total_matches)
 
@@ -1265,13 +855,17 @@ def run_scraper(once: bool = True) -> None:
                                 if existing:
                                     continue
 
-                                match = DealMatch(signal_id=signal.id, deal_id=deal.id)
+                                duration_days = deal_meta.get("duration_days", 7)
+                                ppn = deal.price_cents // duration_days if duration_days > 0 else None
+                                match = DealMatch(
+                                    signal_id=signal.id,
+                                    deal_id=deal.id,
+                                    price_per_night_cents=ppn,
+                                )
                                 db.add(match)
                                 db.commit()
                                 total_matches += 1
                                 logger.info("Match: %s -> %s %s $%d", signal.name, deal.destination, deal.depart_date, deal.price_cents // 100)
-
-                                duration_days = deal_meta.get("duration_days", 7)
 
                                 # Accumulate for V2 match alerts
                                 sig_key = str(signal.id)
@@ -1289,28 +883,6 @@ def run_scraper(once: bool = True) -> None:
                                     "origin": deal.origin or "",
                                     "deeplink_url": deal.deeplink_url or "",
                                 })
-
-                                # Accumulate for legacy consolidated digest (only when V2 disabled)
-                                if not settings.EMAIL_V2_ENABLED:
-                                    user_email = signal.config.get("notifications", {}).get("email", "")
-                                    if user_email:
-                                        if sig_key not in user_digest[user_email]:
-                                            user_digest[user_email][sig_key] = {
-                                                "signal_name": signal.name,
-                                                "signal_id": signal.id,
-                                                "deals": [],
-                                            }
-                                        user_digest[user_email][sig_key]["deals"].append({
-                                            "price_cents": deal.price_cents,
-                                            "price_dropped": getattr(deal, "_price_dropped", False),
-                                            "price_delta": getattr(deal, "_price_delta", 0),
-                                            "hotel_name": deal.hotel_name or "",
-                                            "star_rating": deal.star_rating,
-                                            "depart_date": deal.depart_date,
-                                            "return_date": deal.return_date,
-                                            "destination_str": deal.destination_str or deal.destination or "",
-                                            "origin": deal.origin or "",
-                                        })
 
                         except Exception as e:
                             logger.error("Error processing deal: %s", e)
@@ -1337,6 +909,14 @@ def run_scraper(once: bool = True) -> None:
 
         # Send match alert emails after full cycle
         _send_cycle_alerts(v2_signal_deals, user_digest)
+
+        # Refresh signal intelligence cache after each scrape cycle
+        try:
+            from app.services.signal_intel import refresh_all_active_signal_caches
+            with next(get_db()) as intel_db:
+                refresh_all_active_signal_caches(intel_db)
+        except Exception as e:
+            logger.warning("Intel cache refresh failed: %s", e)
 
         completed_at = datetime.now(timezone.utc)
         logger.info("Scrape complete. Deals: %d, Matches: %d", total_deals, total_matches)

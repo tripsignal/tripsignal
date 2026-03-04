@@ -100,71 +100,99 @@ def no_signal_reminder(*, user: "User", context: dict) -> tuple[str, str]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
-    """Match alert — single or multi-deal rendering.
+    """Instant alert — intelligence-driven, zone-structured.
+
+    Zones (per Email Intelligence Spec):
+      1. Signal ID — route, dates, criteria in one line
+      2. Hero stat — single most compelling number
+      3. Deal card — hotel, date, nights, price (delta if > 5%)
+      4. One-line intel — the sentence nobody else can say
+      5. Single CTA — drives to app
+      6. Footer — manage signal + preferences + unsubscribe
 
     Context fields:
-        signal_name: str
-        route: str — e.g. "Regina (YQR) → Cancun"
-        deal_count: int
-        new_low: bool — all-time low for this signal
-        pct_drop: int — percentage drop from previous, 0 if none
-        deals: list[dict] — each with hotel_name, star_rating, price_cents,
-            duration_nights, depart_date, deeplink_url
+        signal_name, route, deal_count, new_low, pct_drop, deals,
+        intel_sentence, days_monitoring, is_top_25, percentile_rank,
+        trend_direction, trend_weeks, best_price_delta, best_price_cents,
+        destination
     """
     from app.services.email_templates.subject_preview import (
         build_match_subject, build_match_preview,
     )
 
     signal_name = context.get("signal_name", "your signal")
+    route = context.get("route", "")
     deal_count = context.get("deal_count", 1)
     is_new_low = context.get("new_low", False)
     pct_drop = context.get("pct_drop", 0)
     deals = context.get("deals", [])
+    intel_sentence = context.get("intel_sentence", "")
+    days_monitoring = context.get("days_monitoring", 0)
 
     subject = build_match_subject(context)
     preview = build_match_preview(context)
 
     parts: list[str] = []
 
-    # Conditional banners
+    # ── Conditional banners ──
     if is_new_low:
-        parts.append(new_low_banner())
+        parts.append(new_low_banner(days_monitoring))
     elif pct_drop and pct_drop >= 10:
         parts.append(price_drop_banner(pct_drop))
 
-    if deal_count == 1 and deals:
-        # ── Single deal: prominent card ──
-        deal = deals[0]
-        parts.append(heading(f"New deal for {signal_name}"))
-        parts.append(_single_deal_card(deal, context.get("route", "")))
-        deeplink = deal.get("deeplink_url", "https://tripsignal.ca/signals")
-        parts.append(button("View deal →", deeplink))
-    else:
-        # ── Multi-deal: list of rows ──
-        s = "s" if deal_count != 1 else ""
-        parts.append(heading(f"{deal_count} new deal{s} for {signal_name}"))
-        if deals:
-            parts.append(para(
-                f"We found {deal_count} deals matching your signal. "
-                "Here are the best prices:"
-            ))
-            parts.append(_multi_deal_list(deals))
-        else:
-            # Fallback for legacy context without deal objects
-            best_price = context.get("best_price", "")
-            price_text = f" The best price is <strong>{best_price}</strong>." if best_price else ""
-            parts.append(para(f"We found {deal_count} deals matching your signal.{price_text}"))
-        parts.append(button("View all deals →", "https://tripsignal.ca/signals"))
+    # ── Zone 1: Signal ID ──
+    parts.append(
+        f'<p style="margin:0 0 4px;font-size:12px;color:#999;text-transform:uppercase;'
+        f'letter-spacing:0.5px;font-weight:600;">{signal_name}</p>'
+    )
+    if route:
+        parts.append(
+            f'<p style="margin:0 0 20px;font-size:14px;color:#666;">{route}</p>'
+        )
 
+    # ── Zone 2: Hero stat ──
+    hero = _build_hero_stat(context)
+    if hero:
+        parts.append(
+            f'<p style="margin:0 0 20px;font-size:18px;font-weight:600;color:#111;">{hero}</p>'
+        )
+
+    # ── Zone 3: Deal card(s) ──
+    if deal_count == 1 and deals:
+        parts.append(_single_deal_card(deals[0], route))
+    elif deals:
+        parts.append(_multi_deal_list(deals))
+
+    # ── Zone 4: One-line intel ──
+    if intel_sentence:
+        parts.append(
+            f'<p style="margin:0 0 20px;font-size:14px;color:#666;font-style:italic;">'
+            f'{intel_sentence}</p>'
+        )
+
+    # ── Zone 5: Single CTA ──
+    parts.append(button("See deal details \u2192", "https://tripsignal.ca/signals"))
+
+    # ── Urgency note + disclaimer ──
     parts.append(para(
         '<span style="font-size:13px;color:#666;">'
-        "Prices can change quickly — check availability soon."
+        "Prices can change quickly \u2014 check availability soon."
         "</span>"
     ))
     parts.append(pricing_disclaimer())
 
     body = "".join(parts)
-    return subject, wrap(body, preheader=preview, unsub_url=_unsub(context))
+    return subject, wrap(
+        body,
+        preheader=preview,
+        footer_note=(
+            '<a href="https://tripsignal.ca/signals" style="color:#999;text-decoration:underline;">'
+            'Manage signal</a> &middot; '
+            '<a href="https://tripsignal.ca/account/settings" style="color:#999;text-decoration:underline;">'
+            'Preferences</a>'
+        ),
+        unsub_url=_unsub(context),
+    )
 
 
 def major_drop_alert(*, user: "User", context: dict) -> tuple[str, str]:
@@ -467,37 +495,270 @@ def no_match_update(*, user: "User", context: dict) -> tuple[str, str]:
 
 
 def inactive_reengagement(*, user: "User", context: dict) -> tuple[str, str]:
-    days_inactive = context.get("days_inactive", 21)
-    subject = "Your Trip Signal signals are still running"
-    body = (
-        heading("Your signals are still active")
-        + para(
-            f"It's been {days_inactive} days since you last checked in. Your signals "
-            "are still running and we're monitoring prices on your behalf."
-        )
-        + para(
-            "If your travel plans have changed, you can update or archive your signals "
-            "anytime."
-        )
-        + button("Check your signals", "https://tripsignal.ca/signals")
+    """Re-engagement email — proof-of-value zones.
+
+    Context: total_deals_found, best_missed_deal (dict), min_price_ever_cents,
+             max_price_ever_cents, trend_direction, current_best_deal (dict),
+             days_inactive, best_missed_price_cents
+    """
+    from app.services.email_templates.subject_preview import (
+        build_reengagement_subject, build_reengagement_preview,
     )
+
+    subject = build_reengagement_subject(context)
+    preview = build_reengagement_preview(context)
+
+    total_deals = context.get("total_deals_found", 0)
+    best_missed = context.get("best_missed_deal", {})
+    min_ever = context.get("min_price_ever_cents")
+    max_ever = context.get("max_price_ever_cents")
+    trend_dir = context.get("trend_direction", "stable")
+    current_best = context.get("current_best_deal", {})
+    days_inactive = context.get("days_inactive", 21)
+
+    parts: list[str] = []
+
+    # ── Zone 1: Proof header ──
+    if total_deals and total_deals > 0:
+        parts.append(heading(f"Your signal found {total_deals} deals while you were away"))
+    else:
+        parts.append(heading("Your signals are still running"))
+
+    parts.append(para(
+        f"It's been {days_inactive} days since you last checked in. "
+        "Here's what you missed."
+    ))
+
+    # ── Zone 2: Best missed deal ──
+    if best_missed and best_missed.get("price_cents"):
+        missed_price = format_price(best_missed["price_cents"])
+        missed_hotel = best_missed.get("hotel_name", "")
+        missed_nights = best_missed.get("duration_nights", 7)
+        missed_depart = best_missed.get("depart_date", "")
+
+        detail_parts = []
+        if missed_hotel:
+            detail_parts.append(missed_hotel)
+        if missed_depart:
+            detail_parts.append(str(missed_depart))
+        if missed_nights:
+            detail_parts.append(f"{missed_nights} nights")
+        detail = " \u00b7 ".join(detail_parts)
+
+        parts.append(
+            '<div style="border:1px solid #e5e7eb;border-radius:12px;'
+            'overflow:hidden;margin-bottom:24px;">'
+            '<div style="padding:20px;">'
+            '<p style="margin:0 0 4px;font-size:12px;color:#999;'
+            'text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">'
+            'Best deal you missed</p>'
+            f'<p style="margin:0 0 4px;font-size:28px;font-weight:700;color:#111;">'
+            f'{missed_price}</p>'
+            f'<p style="margin:0;font-size:13px;color:#666;">{detail}</p>'
+            '</div></div>'
+        )
+
+    # ── Zone 3: Price range + trend ──
+    range_parts = []
+    if min_ever:
+        range_parts.append(f"Lowest: <strong>{format_price(min_ever)}</strong>")
+    if max_ever:
+        range_parts.append(f"Highest: <strong>{format_price(max_ever)}</strong>")
+    if trend_dir == "down":
+        range_parts.append("Trend: prices dropping")
+    elif trend_dir == "up":
+        range_parts.append("Trend: prices rising")
+
+    if range_parts:
+        parts.append(info_box(
+            '<p style="margin:0;font-size:14px;color:#333;">'
+            + " &middot; ".join(range_parts)
+            + '</p>'
+        ))
+
+    # ── Zone 4: Current best deal ──
+    if current_best and current_best.get("price_cents"):
+        cur_price = format_price(current_best["price_cents"])
+        cur_hotel = current_best.get("hotel_name", "")
+        cur_nights = current_best.get("duration_nights", 7)
+        parts.append(para(
+            f'<strong>Right now:</strong> {cur_price} '
+            f'{"at " + cur_hotel + " " if cur_hotel else ""}'
+            f'\u00b7 {cur_nights} nights'
+        ))
+
+    # ── Zone 5: CTA ──
+    parts.append(button("Your signal is still running \u2192", "https://tripsignal.ca/signals"))
+
+    # ── Zone 6: Quiet unsubscribe nudge ──
+    parts.append(para(
+        '<span style="font-size:13px;color:#999;">'
+        'Too many emails? '
+        '<a href="https://tripsignal.ca/account/settings" style="color:#999;text-decoration:underline;">'
+        'Switch to weekly only</a>.'
+        '</span>'
+    ))
+
+    body = "".join(parts)
     return subject, wrap(
         body,
-        preheader="We're still watching prices for you",
+        preheader=preview,
         footer_note=(
-            'You\'re receiving this because you have active signals on Trip Signal.<br>'
-            '<a href="https://tripsignal.ca" style="color:#999;">tripsignal.ca</a>'
+            '<a href="https://tripsignal.ca/signals" style="color:#999;text-decoration:underline;">'
+            'Manage signals</a> &middot; '
+            '<a href="https://tripsignal.ca/account/settings" style="color:#999;text-decoration:underline;">'
+            'Preferences</a>'
+        ),
+        unsub_url=_unsub(context),
+    )
+
+
+def weekly_digest(*, user: "User", context: dict) -> tuple[str, str]:
+    """Weekly digest — zone-structured for passive users.
+
+    Context: deal_count, deals (list), trend_direction, trend_weeks,
+             best_value_nights, best_value_pct_saving, total_matches,
+             days_monitoring, signal_name, route, destination, best_price_cents
+    """
+    from app.services.email_templates.subject_preview import (
+        build_digest_subject, build_digest_preview,
+    )
+
+    subject = build_digest_subject(context)
+    preview = build_digest_preview(context)
+
+    deal_count = context.get("deal_count", 0)
+    deals = context.get("deals", [])
+    best_deal = deals[0] if deals else {}
+    trend_dir = context.get("trend_direction", "stable")
+    trend_weeks = context.get("trend_weeks", 0)
+    best_value_nights = context.get("best_value_nights")
+    best_value_pct = context.get("best_value_pct_saving")
+    total_matches = context.get("total_matches", 0)
+    days_monitoring = context.get("days_monitoring", 0)
+    signal_name = context.get("signal_name", "your signal")
+
+    parts: list[str] = []
+
+    # ── Zone 1: Week summary ──
+    parts.append(heading(f"This week on {signal_name}"))
+
+    summary_items = []
+    if deal_count:
+        summary_items.append(f"<strong>{deal_count}</strong> deal{'s' if deal_count != 1 else ''} found")
+    if trend_dir == "down" and trend_weeks >= 2:
+        summary_items.append(f"prices dropped {trend_weeks} weeks in a row")
+    elif trend_dir == "up" and trend_weeks >= 2:
+        summary_items.append(f"prices rising for {trend_weeks} weeks")
+
+    if summary_items:
+        parts.append(para(" \u00b7 ".join(summary_items).capitalize()))
+
+    # ── Zone 2: Best deal card ──
+    if best_deal and best_deal.get("price_cents"):
+        parts.append(_single_deal_card(best_deal, context.get("route", "")))
+
+    # ── Zone 3: Night length insight (Module 3) ──
+    if best_value_nights and best_value_pct and best_value_pct > 5:
+        parts.append(info_box(
+            f'<p style="margin:0;font-size:14px;color:#333;">'
+            f'\U0001f4a1 <strong>{best_value_nights}-night trips</strong> are currently '
+            f'{int(best_value_pct)}% cheaper per night than other durations on this route.'
+            f'</p>'
+        ))
+
+    # ── Zone 4: Signal health ──
+    if total_matches > 0 or days_monitoring > 0:
+        health_parts = []
+        if total_matches:
+            health_parts.append(f"{total_matches} total matches")
+        if days_monitoring:
+            health_parts.append(f"{days_monitoring} days monitoring")
+        parts.append(para(
+            '<span style="font-size:13px;color:#999;">'
+            + " \u00b7 ".join(health_parts)
+            + '</span>'
+        ))
+
+    # ── Zone 5: Soft CTA ──
+    parts.append(button("Review this week's deals \u2192", "https://tripsignal.ca/signals"))
+
+    # ── Zone 6: Preferences nudge ──
+    parts.append(para(
+        '<span style="font-size:13px;color:#999;">'
+        'Getting too many emails? '
+        '<a href="https://tripsignal.ca/account/settings" style="color:#999;text-decoration:underline;">'
+        'Adjust your alert threshold</a>.'
+        '</span>'
+    ))
+
+    body = "".join(parts)
+    return subject, wrap(
+        body,
+        preheader=preview,
+        footer_note=(
+            '<a href="https://tripsignal.ca/signals" style="color:#999;text-decoration:underline;">'
+            'Manage signals</a> &middot; '
+            '<a href="https://tripsignal.ca/account/settings" style="color:#999;text-decoration:underline;">'
+            'Preferences</a>'
         ),
         unsub_url=_unsub(context),
     )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PRIVATE: Deal card renderers (used by match_alert, major_drop_alert)
+# PRIVATE: Deal card renderers (used by match_alert, major_drop_alert, digest)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _build_hero_stat(context: dict) -> str:
+    """Build the single most compelling number for the hero zone."""
+    is_top_25 = context.get("is_top_25", False)
+    days_monitoring = context.get("days_monitoring", 0)
+    pct_drop = context.get("pct_drop", 0)
+    best_price_delta = context.get("best_price_delta", 0)
+    trend_direction = context.get("trend_direction", "stable")
+    trend_weeks = context.get("trend_weeks", 0)
+    best_price_cents = context.get("best_price_cents")
+    is_new_low = context.get("new_low", False)
+
+    price = format_price(best_price_cents) if best_price_cents else ""
+
+    # Priority: percentile rank > price delta > trend
+    if is_top_25 and days_monitoring > 7:
+        weeks = max(1, days_monitoring // 7)
+        return f"{price} \u2014 cheapest in {weeks} weeks"
+
+    if is_new_low and price:
+        return f"{price} \u2014 all-time low for this signal"
+
+    if pct_drop and pct_drop >= 8 and best_price_delta:
+        delta_str = format_price(abs(best_price_delta))
+        return f"\u2193 {delta_str} since yesterday"
+
+    if trend_direction == "up" and trend_weeks >= 2 and pct_drop and pct_drop > 0:
+        return f"First drop in {trend_weeks} weeks of rising prices"
+
+    return ""
+
+
+def _deal_delta_html(deal: dict) -> str:
+    """Render a price delta indicator if the deal has a meaningful delta (> 5%)."""
+    delta = deal.get("price_delta", 0)
+    price = deal.get("price_cents", 0)
+    if not delta or not price or delta <= 0:
+        return ""
+    pct = int(round(delta / (price + delta) * 100))
+    if pct < 5:
+        return ""
+    delta_str = format_price(delta)
+    return (
+        f' <span style="color:#166534;font-size:12px;font-weight:600;">'
+        f'\u2193 {delta_str}</span>'
+    )
+
+
 def _single_deal_card(deal: dict, route: str) -> str:
-    """Render a prominent single-deal card with star rating and price."""
+    """Render a prominent single-deal card with star rating, price, and delta."""
     hotel = deal.get("hotel_name", "Hotel")
     rating = deal.get("star_rating")
     price = format_price(deal.get("price_cents"))
@@ -505,12 +766,13 @@ def _single_deal_card(deal: dict, route: str) -> str:
     depart = deal.get("depart_date", "")
 
     stars = stars_html(rating)
+    delta = _deal_delta_html(deal)
 
     dates_info = f"{duration} nights"
     if depart:
-        dates_info += f" · {depart}"
+        dates_info += f" \u00b7 {depart}"
 
-    route_line = f"{route} · {dates_info}" if route else dates_info
+    route_line = f"{route} \u00b7 {dates_info}" if route else dates_info
 
     card_inner = (
         f'<p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#111;">'
@@ -520,7 +782,7 @@ def _single_deal_card(deal: dict, route: str) -> str:
     if price:
         card_inner += (
             f'<p style="margin:0 0 4px;font-size:28px;font-weight:700;color:#111;">'
-            f'{price}</p>'
+            f'{price}{delta}</p>'
             '<p style="margin:0;font-size:12px;color:#666;">'
             'per person (based on double occupancy)</p>'
         )
@@ -532,7 +794,7 @@ def _single_deal_card(deal: dict, route: str) -> str:
 
 
 def _multi_deal_list(deals: list[dict]) -> str:
-    """Render a stacked list of deal rows."""
+    """Render a stacked list of deal rows with delta indicators."""
     rows: list[str] = []
     for i, deal in enumerate(deals):
         hotel = deal.get("hotel_name", "Hotel")
@@ -542,10 +804,11 @@ def _multi_deal_list(deals: list[dict]) -> str:
         depart = deal.get("depart_date", "")
 
         stars = stars_html(rating)
+        delta = _deal_delta_html(deal)
 
         dates_info = f"{duration} nights"
         if depart:
-            dates_info += f" · {depart}"
+            dates_info += f" \u00b7 {depart}"
 
         is_last = i == len(deals) - 1
         border = "" if is_last else "border-bottom:1px solid #f3f4f6;"
@@ -554,8 +817,8 @@ def _multi_deal_list(deals: list[dict]) -> str:
             f'<div style="padding:14px 20px;{border}">'
             f'<p style="margin:0 0 2px;font-size:14px;font-weight:600;color:#111;">'
             f'{hotel}{stars}</p>'
-            f'<p style="margin:0;font-size:13px;color:#666;">{dates_info} · '
-            f'<strong style="color:#111;">{price}/person</strong></p>'
+            f'<p style="margin:0;font-size:13px;color:#666;">{dates_info} \u00b7 '
+            f'<strong style="color:#111;">{price}/person</strong>{delta}</p>'
             '</div>'
         )
     return (

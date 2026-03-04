@@ -118,13 +118,18 @@ def pricing_disclaimer() -> str:
     )
 
 
-def new_low_banner() -> str:
+def new_low_banner(days_monitoring: int = 0) -> str:
     """Yellow banner for all-time low price alerts."""
+    if days_monitoring and days_monitoring > 7:
+        weeks = max(1, days_monitoring // 7)
+        copy = f"Cheapest we\u2019ve seen in {weeks} weeks"
+    else:
+        copy = "All-time low price for this signal"
     return (
         '<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;'
         'padding:12px 16px;margin-bottom:20px;">'
-        '<p style="margin:0;font-size:14px;font-weight:600;color:#92400E;">'
-        "All-time low price for this signal"
+        f'<p style="margin:0;font-size:14px;font-weight:600;color:#92400E;">'
+        f"{copy}"
         "</p></div>"
     )
 

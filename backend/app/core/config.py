@@ -18,9 +18,10 @@ class Settings(BaseSettings):
     CLERK_SECRET_KEY: str = ""
 
     # Email feature flags
-    EMAIL_V2_ENABLED: bool = False
+    EMAIL_V2_ENABLED: bool = True  # V2 is now the only email path
     EMAIL_DRY_RUN: bool = False
     EMAIL_SUSPEND_NONCRITICAL: bool = False
+    RESEND_WEBHOOK_SECRET: str = ""
 
     # Database Settings
     POSTGRES_USER: str = "postgres"
