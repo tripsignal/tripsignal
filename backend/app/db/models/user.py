@@ -111,6 +111,17 @@ class User(Base):
         Text, nullable=True, server_default=text("'America/Toronto'"),
     )
 
+    # Quiet hours
+    quiet_hours_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false"),
+    )
+    quiet_hours_start: Mapped[str | None] = mapped_column(
+        Text, nullable=True, server_default=text("'21:00'"),
+    )
+    quiet_hours_end: Mapped[str | None] = mapped_column(
+        Text, nullable=True, server_default=text("'08:00'"),
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()"),
     )

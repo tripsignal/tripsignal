@@ -169,6 +169,10 @@ def get_prefs(
         "sms_enabled": user.sms_enabled,
         "email_opt_out": user.email_opt_out,
         "alert_threshold": user.alert_threshold,
+        "timezone": user.timezone,
+        "quiet_hours_enabled": user.quiet_hours_enabled,
+        "quiet_hours_start": user.quiet_hours_start,
+        "quiet_hours_end": user.quiet_hours_end,
     }
 
 
@@ -179,6 +183,10 @@ class UpdatePrefsRequest(BaseModel):
     email_enabled: bool | None = None
     sms_enabled: bool | None = None
     alert_threshold: str | None = None
+    timezone: str | None = None
+    quiet_hours_enabled: bool | None = None
+    quiet_hours_start: str | None = None
+    quiet_hours_end: str | None = None
     complete_activation: bool = False
 
 
@@ -206,6 +214,14 @@ def update_prefs(
                 detail=f"alert_threshold must be one of: {', '.join(sorted(_VALID_THRESHOLDS))}",
             )
         user.alert_threshold = body.alert_threshold
+    if body.timezone is not None:
+        user.timezone = body.timezone
+    if body.quiet_hours_enabled is not None:
+        user.quiet_hours_enabled = body.quiet_hours_enabled
+    if body.quiet_hours_start is not None:
+        user.quiet_hours_start = body.quiet_hours_start
+    if body.quiet_hours_end is not None:
+        user.quiet_hours_end = body.quiet_hours_end
 
     if body.complete_activation and user.pro_activation_completed_at is None:
         user.pro_activation_completed_at = datetime.now(timezone.utc)

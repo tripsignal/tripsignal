@@ -311,7 +311,12 @@ def _check_suppression(
                 logger.info("3-strike: user %s downgraded to passive", user.id)
                 return "three_strike_downgrade"
 
-    # 10. Re-engagement cap: max 1 re-engagement email per 60 days.
+    # 10. Quiet hours: suppress ALERT emails during user's quiet hours.
+    if category == EmailCategory.ALERT and email_type != EmailType.WEEKLY_DIGEST:
+        if _in_quiet_hours(user):
+            return "quiet_hours"
+
+    # 11. Re-engagement cap: max 1 re-engagement email per 60 days.
     if email_type == EmailType.INACTIVE_REENGAGEMENT:
         recent_reengage = db.execute(
             select(EmailLog).where(
@@ -467,3 +472,28 @@ def _log_suppressed(
     except Exception:
         db.rollback()
     logger.info("orchestrator: SUPPRESSED %s → %s reason=%s", email_type.value, user.email, reason)
+
+
+def _in_quiet_hours(user: User) -> bool:
+    """Check if the current time falls within the user's quiet hours."""
+    if not user.quiet_hours_enabled:
+        return False
+
+    try:
+        import zoneinfo
+        tz = zoneinfo.ZoneInfo(user.timezone or "America/Toronto")
+    except Exception:
+        return False
+
+    now_local = datetime.now(timezone.utc).astimezone(tz)
+    current_hour = now_local.hour
+
+    start = int((user.quiet_hours_start or "21:00").split(":")[0])
+    end = int((user.quiet_hours_end or "08:00").split(":")[0])
+
+    if start <= end:
+        # Same-day range (e.g., 09:00–17:00)
+        return start <= current_hour < end
+    else:
+        # Overnight range (e.g., 21:00–08:00)
+        return current_hour >= start or current_hour < end
