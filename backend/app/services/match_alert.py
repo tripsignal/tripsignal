@@ -281,15 +281,13 @@ def process_signal_matches(
         # ── 3b2. Fetch route intel cache ─────────────────────────────────
         best_deal_for_route = sorted(deals, key=lambda d: d["price_cents"])[0]
         route_intel = None
-        if best_deal_for_route.get("origin") and best_deal_for_route.get("destination_str"):
+        deal_origin = best_deal_for_route.get("origin", "")
+        deal_destination = best_deal_for_route.get("destination", "")
+        if deal_origin and deal_destination:
             route_intel = db.execute(
                 select(RouteIntelCache).where(
-                    RouteIntelCache.origin == best_deal_for_route["origin"],
-                    RouteIntelCache.destination_region == (
-                        best_deal_for_route.get("destination_str", "").split(",")[0].strip().lower()
-                        if best_deal_for_route.get("destination_str")
-                        else ""
-                    ),
+                    RouteIntelCache.origin == deal_origin,
+                    RouteIntelCache.destination_region == deal_destination,
                 )
             ).scalar_one_or_none()
 

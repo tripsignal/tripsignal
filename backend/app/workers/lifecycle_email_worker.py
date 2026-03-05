@@ -633,6 +633,17 @@ def _run_weekly_digests(db: Session, now: datetime) -> int:
         if first_signal and first_signal.created_at:
             days_monitoring = (now - first_signal.created_at).days
 
+        # Get destination price index for the user's primary departure airport
+        dest_index = None
+        primary_airport = None
+        for sig in signals:
+            if sig.departure_airports:
+                primary_airport = sig.departure_airports[0]
+                break
+        if primary_airport:
+            from app.services.signal_intel import get_destination_index
+            dest_index = get_destination_index(db, primary_airport, limit=5)
+
         context = {
             "deal_count": len(all_deals),
             "deals": all_deals[:5],  # Top 5 deals
@@ -647,6 +658,7 @@ def _run_weekly_digests(db: Session, now: datetime) -> int:
             "total_matches": best_intel.total_matches if best_intel else 0,
             "days_monitoring": days_monitoring,
             "week_iso": week_iso,
+            "destination_index": dest_index or None,
         }
 
         try:

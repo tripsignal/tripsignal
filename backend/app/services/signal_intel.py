@@ -522,24 +522,17 @@ def get_airport_arbitrage(
         return None
 
     result = db.execute(
-        sa_text("""
-            SELECT origin, MIN(price_cents) AS min_price
-            FROM deals
-            WHERE hotel_id = :hotel_id
-              AND depart_date = :depart_date
-              AND is_active = true
-              AND origin != :current_origin
-              AND origin = ANY(:nearby)
-            GROUP BY origin
-            ORDER BY min_price ASC
-            LIMIT 1
-        """),
-        {
-            "hotel_id": hotel_id,
-            "depart_date": depart_date,
-            "current_origin": current_origin,
-            "nearby": nearby,
-        },
+        select(Deal.origin, func.min(Deal.price_cents).label("min_price"))
+        .where(
+            Deal.hotel_id == hotel_id,
+            Deal.depart_date == depart_date,
+            Deal.is_active == True,  # noqa: E712
+            Deal.origin != current_origin,
+            Deal.origin.in_(nearby),
+        )
+        .group_by(Deal.origin)
+        .order_by(func.min(Deal.price_cents).asc())
+        .limit(1)
     ).fetchone()
 
     if not result:

@@ -922,6 +922,9 @@ def users_unified(
             "notification_delivery_frequency": u.notification_delivery_frequency,
             "email_enabled": u.email_enabled,
             "email_opt_out": u.email_opt_out,
+            "alert_threshold": u.alert_threshold,
+            "timezone": u.timezone,
+            "email_mode": u.email_mode,
             # Soft-delete fields
             "deleted_at": u.deleted_at.isoformat() if u.deleted_at else None,
             "deleted_by": u.deleted_by,
