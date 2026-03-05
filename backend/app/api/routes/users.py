@@ -63,6 +63,7 @@ def sync_user(
     x_clerk_user_id: str = Header(..., alias="x-clerk-user-id"),
     x_forwarded_for: str | None = Header(None, alias="x-forwarded-for"),
     user_agent: str | None = Header(None, alias="user-agent"),
+    x_timezone: str | None = Header(None, alias="x-timezone"),
 ):
     """Ensure user row exists for the given Clerk ID. Called on sign-in."""
     # Extract first IP from X-Forwarded-For (client IP before proxies)
@@ -77,6 +78,9 @@ def sync_user(
         user.login_count = (user.login_count or 0) + 1
         user.last_login_ip = client_ip
         user.last_login_user_agent = user_agent
+        # Auto-set timezone from browser if user hasn't manually chosen one
+        if x_timezone and not user.timezone:
+            user.timezone = x_timezone
         db.commit()
         return {"id": str(user.id), "synced": True, "created": False}
 
@@ -87,6 +91,7 @@ def sync_user(
         login_count=1,
         last_login_ip=client_ip,
         last_login_user_agent=user_agent,
+        timezone=x_timezone,
     )
     db.add(new_user)
     db.commit()
