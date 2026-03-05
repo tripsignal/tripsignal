@@ -37,9 +37,6 @@ class User(Base):
     privacy_version: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Notification preferences
-    notification_delivery_speed: Mapped[str] = mapped_column(
-        Text, nullable=False, server_default=text("'immediate'"),
-    )
     email_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true"),
     )
@@ -102,9 +99,6 @@ class User(Base):
     )
     last_email_clicked_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True,
-    )
-    alert_threshold: Mapped[str] = mapped_column(
-        Text, nullable=False, server_default=text("'any'"),
     )
     notification_delivery_frequency: Mapped[str] = mapped_column(
         Text, nullable=False, server_default=text("'all'"),
