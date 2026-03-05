@@ -170,17 +170,20 @@ async def create_signal(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Enforce per-user signal limits
+    # Enforce per-user signal limits (Free: 1, Pro: 10)
+    SIGNAL_CAPS = {"free": 1, "pro": 10}
+    cap = SIGNAL_CAPS.get(user.plan_type, 1)
     active_count = db.query(func.count(Signal.id)).filter(
-        Signal.user_id == user.id, Signal.status == "active"
-    ).scalar()
-    max_signals = 25 if user.plan_type == "pro" else 3
-    if active_count >= max_signals:
+        Signal.user_id == user.id, Signal.status != "deleted"
+    ).scalar() or 0
+    if active_count >= cap:
         raise HTTPException(
-            status_code=429,
-            detail=f"Signal limit reached ({max_signals}). Upgrade to Pro for more signals."
-            if user.plan_type != "pro"
-            else f"Signal limit reached ({max_signals}).",
+            status_code=403,
+            detail={
+                "error": "SIGNAL_LIMIT_REACHED",
+                "message": f"You've reached your limit of {cap} signal{'s' if cap > 1 else ''}.",
+                "cap": cap,
+            },
         )
 
     # Convert Pydantic models to dict for JSONB storage

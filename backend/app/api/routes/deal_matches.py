@@ -37,7 +37,7 @@ def _verify_signal_owner(signal_id: UUID, x_user_id: str, db: Session) -> Signal
 
 
 def get_price_trend(db: Session, deal_id: UUID):
-    """Return (price_trend, previous_price_cents, delta_cents) comparing current vs first-seen price."""
+    """Return (price_trend, previous_price_cents, delta_cents) comparing current vs previous price."""
     history = (
         db.query(DealPriceHistory)
         .filter(DealPriceHistory.deal_id == deal_id)
@@ -47,22 +47,22 @@ def get_price_trend(db: Session, deal_id: UUID):
     if len(history) < 2:
         return None, None, None
 
-    first_price = history[0].price_cents
+    previous_price = history[-2].price_cents
     current_price = history[-1].price_cents
-    delta_cents = current_price - first_price
+    delta_cents = current_price - previous_price
 
     if delta_cents < 0:
-        return "down", first_price, abs(delta_cents)
+        return "down", previous_price, abs(delta_cents)
     elif delta_cents > 0:
-        return "up", first_price, delta_cents
+        return "up", previous_price, delta_cents
     else:
-        return "stable", first_price, 0
+        return "stable", previous_price, 0
 
 
 def _batch_price_trends(db: Session, deal_ids: list[UUID]) -> dict[UUID, tuple]:
     """Batch-fetch price trends for multiple deals in a single query.
 
-    Returns {deal_id: (trend, first_price_cents, abs_delta_cents)}.
+    Returns {deal_id: (trend, previous_price_cents, abs_delta_cents)}.
     """
     if not deal_ids:
         return {}
@@ -84,15 +84,15 @@ def _batch_price_trends(db: Session, deal_ids: list[UUID]) -> dict[UUID, tuple]:
         if len(history) < 2:
             result[did] = (None, None, None)
             continue
-        first_price = history[0].price_cents
+        previous_price = history[-2].price_cents
         current_price = history[-1].price_cents
-        delta = current_price - first_price
+        delta = current_price - previous_price
         if delta < 0:
-            result[did] = ("down", first_price, abs(delta))
+            result[did] = ("down", previous_price, abs(delta))
         elif delta > 0:
-            result[did] = ("up", first_price, delta)
+            result[did] = ("up", previous_price, delta)
         else:
-            result[did] = ("stable", first_price, 0)
+            result[did] = ("stable", previous_price, 0)
 
     return result
 
