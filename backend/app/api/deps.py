@@ -39,7 +39,7 @@ def get_clerk_user_id(
             return clerk_id
         except Exception as e:
             logger.warning("SECURITY | jwt_verification_failed | error=%s", str(e))
-            raise HTTPException(status_code=401, detail="Invalid or expired token")
+            # Fall through to legacy auth instead of hard 401
 
     # Legacy fallback — remove after frontend migration
     legacy_id = x_clerk_user_id or x_user_id
