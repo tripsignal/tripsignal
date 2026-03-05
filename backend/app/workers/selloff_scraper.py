@@ -709,10 +709,11 @@ def run_matching_only(db: Session) -> None:
     # Send match alert emails
     _send_cycle_alerts(v2_signal_deals, user_digest, db_override=db)
 
-    # Refresh signal intelligence cache
+    # Refresh signal + route intelligence caches
     try:
-        from app.services.signal_intel import refresh_all_active_signal_caches
+        from app.services.signal_intel import refresh_all_active_signal_caches, refresh_route_intel_cache
         refresh_all_active_signal_caches(db)
+        refresh_route_intel_cache(db)
     except Exception as e:
         logger.warning("Intel cache refresh failed: %s", e)
 
@@ -905,11 +906,12 @@ def run_scraper(once: bool = True) -> None:
         # Send match alert emails after full cycle
         _send_cycle_alerts(v2_signal_deals, user_digest)
 
-        # Refresh signal intelligence cache after each scrape cycle
+        # Refresh signal + route intelligence caches after each scrape cycle
         try:
-            from app.services.signal_intel import refresh_all_active_signal_caches
+            from app.services.signal_intel import refresh_all_active_signal_caches, refresh_route_intel_cache
             with next(get_db()) as intel_db:
                 refresh_all_active_signal_caches(intel_db)
+                refresh_route_intel_cache(intel_db)
         except Exception as e:
             logger.warning("Intel cache refresh failed: %s", e)
 

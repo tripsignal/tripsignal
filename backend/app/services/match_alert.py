@@ -22,10 +22,12 @@ from sqlalchemy.orm import Session
 
 from app.db.models.deal import Deal
 from app.db.models.deal_match import DealMatch
+from app.db.models.route_intel_cache import RouteIntelCache
 from app.db.models.signal import Signal
 from app.db.models.signal_intel_cache import SignalIntelCache
 from app.db.models.user import User
 from app.services.email_orchestrator import trigger as email_trigger, EmailType
+from app.services.signal_intel import get_airport_arbitrage
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +37,101 @@ def _build_intel_sentence(
     signal: Signal,
     is_new_low: bool,
     pct_drop: int,
+    route_intel: RouteIntelCache | None = None,
+    hero_deal: dict | None = None,
 ) -> str:
-    """Build the 'one sentence nobody else can say' for email copy."""
+    """Build the 'one sentence nobody else can say' for email copy.
+
+    Priority order (first matching condition wins):
+    1. Rising Early Warning (inflection)
+    2. Price Floor (within 5% of all-time low)
+    3. Value Score (>= 90)
+    4. Star-Price Anomaly (>= 0.6)
+    5. Momentum Velocity (accelerating decline)
+    6. Original: Top 25% percentile
+    7. Original: Dropping + new low
+    8. Original: Bucking uptrend
+    9. Original: Consecutive weekly drops
+    10. Booking Countdown (late booking premium > 10%)
+    11. Fallback
+    """
     days_monitoring = (datetime.now(timezone.utc) - signal.created_at).days if signal.created_at else 0
 
     if intel and intel.total_matches and intel.total_matches > 1:
+        from app.services.email_templates.base import format_price
+
+        # ── Priority 1: Trend inflection (prices just reversed from decline) ──
+        if intel.trend_inflection and intel.inflection_pct_change:
+            weeks = intel.trend_consecutive_weeks or 1
+            return (
+                f"Prices ticked up {intel.inflection_pct_change:.0f}% after "
+                f"{weeks} weeks of decline. Today\u2019s deals may be as good as it gets."
+            )
+
+        # ── Priority 2: Near price floor ──
+        if (
+            intel.floor_proximity_pct is not None
+            and intel.floor_proximity_pct <= 5
+            and intel.total_matches >= 20
+        ):
+            pct = intel.floor_proximity_pct
+            if pct == 0:
+                return "This is the lowest price we\u2019ve ever tracked on this route."
+            return (
+                f"Within {pct:.0f}% of the lowest price we\u2019ve ever tracked. "
+                "Rarely goes lower."
+            )
+
+        # ── Priority 3: Value Score >= 90 ──
+        if intel.value_score is not None and intel.value_score >= 90:
+            top_pct = 100 - intel.value_score
+            return (
+                f"Value Score: {intel.value_score}/100 \u2014 "
+                f"top {max(1, top_pct)}% for price-to-quality on this route."
+            )
+
+        # ── Priority 4: Star-price anomaly ──
+        if (
+            intel.star_price_anomaly_pct is not None
+            and intel.star_price_anomaly_pct >= 0.5
+            and intel.hero_star_rating is not None
+        ):
+            anomaly_pct = int(intel.star_price_anomaly_pct * 100)
+            stars = intel.hero_star_rating
+            # Format star rating nicely: 4.0 -> "4", 4.5 -> "4.5"
+            stars_str = f"{stars:.1f}".rstrip("0").rstrip(".")
+            return (
+                f"This {stars_str}-star resort is cheaper than {anomaly_pct}% "
+                "of lower-rated hotels on this route."
+            )
+
+        # ── Priority 5: Momentum velocity (accelerating decline) ──
+        if (
+            intel.trend_velocity == "accelerating"
+            and intel.trend_direction == "down"
+            and intel.trend_last_week_delta_cents is not None
+            and intel.trend_prev_week_delta_cents is not None
+        ):
+            last_drop = format_price(abs(intel.trend_last_week_delta_cents))
+            prev_drop = format_price(abs(intel.trend_prev_week_delta_cents))
+            return (
+                f"Prices dropped {prev_drop}/pp last week and {last_drop}/pp this week "
+                "\u2014 the decline is accelerating."
+            )
+
+        # ── Priority 5b: Decelerating decline ──
+        if (
+            intel.trend_velocity == "decelerating"
+            and intel.trend_direction == "down"
+            and intel.trend_last_week_delta_cents is not None
+        ):
+            last_drop = format_price(abs(intel.trend_last_week_delta_cents))
+            return (
+                f"Prices dropped {last_drop}/pp this week but the decline is slowing "
+                "\u2014 may be close to the floor."
+            )
+
+        # ── Priority 6-9: Original sentences ──
         pct = intel.current_deal_percentile
         if pct is not None and pct <= 0.25:
             rank_pct = max(1, int(pct * 100))
@@ -56,6 +148,24 @@ def _build_intel_sentence(
             weeks = intel.trend_consecutive_weeks
             return f"Prices on this route have dropped {weeks} weeks in a row."
 
+    # ── Priority 10: Booking countdown (route-level) ──
+    if route_intel and route_intel.late_booking_premium_pct and route_intel.late_booking_premium_pct > 10:
+        if hero_deal and hero_deal.get("depart_date"):
+            try:
+                depart = hero_deal["depart_date"]
+                if isinstance(depart, str):
+                    from datetime import date as date_type
+                    depart = date_type.fromisoformat(depart)
+                days_until = (depart - datetime.now(timezone.utc).date()).days
+                if days_until > 21:
+                    premium = int(route_intel.late_booking_premium_pct)
+                    return (
+                        f"Prices typically jump {premium}% in the final 3 weeks before departure. "
+                        f"You have {days_until} days \u2014 this is the sweet spot."
+                    )
+            except (ValueError, TypeError):
+                pass
+
     # Fallback for new signals with insufficient history
     if days_monitoring < 7:
         return "New deal \u2014 no price history yet, but it fits your criteria."
@@ -68,11 +178,11 @@ def _filter_repeat_deals(
     deals: list[dict],
     current_run_id: str,
 ) -> list[dict]:
-    """Remove deals already alerted in recent cycles at similar price (±3%).
+    """Remove deals already alerted in recent cycles at similar price (\u00b13%).
 
     Checks DealMatch+Deal records from the last 7 days for the same signal,
     excluding the current run. If same hotel_name + depart_date appeared at
-    a price within ±3%, the deal is suppressed from the alert.
+    a price within \u00b13%, the deal is suppressed from the alert.
     """
     cutoff = datetime.now(timezone.utc) - timedelta(days=7)
 
@@ -168,7 +278,26 @@ def process_signal_matches(
             select(SignalIntelCache).where(SignalIntelCache.signal_id == signal.id)
         ).scalar_one_or_none()
 
-        intel_sentence = _build_intel_sentence(intel, signal, is_new_low, pct_drop)
+        # ── 3b2. Fetch route intel cache ─────────────────────────────────
+        best_deal_for_route = sorted(deals, key=lambda d: d["price_cents"])[0]
+        route_intel = None
+        if best_deal_for_route.get("origin") and best_deal_for_route.get("destination_str"):
+            route_intel = db.execute(
+                select(RouteIntelCache).where(
+                    RouteIntelCache.origin == best_deal_for_route["origin"],
+                    RouteIntelCache.destination_region == (
+                        best_deal_for_route.get("destination_str", "").split(",")[0].strip().lower()
+                        if best_deal_for_route.get("destination_str")
+                        else ""
+                    ),
+                )
+            ).scalar_one_or_none()
+
+        intel_sentence = _build_intel_sentence(
+            intel, signal, is_new_low, pct_drop,
+            route_intel=route_intel,
+            hero_deal=best_deal_for_route,
+        )
         days_monitoring = (datetime.now(timezone.utc) - signal.created_at).days if signal.created_at else 0
         is_top_25 = bool(intel and intel.current_deal_percentile is not None and intel.current_deal_percentile <= 0.25)
 
@@ -265,7 +394,34 @@ def process_signal_matches(
                 if deals and deals[0].get("destination_str")
                 else signal.name
             ),
+            # New intelligence fields
+            "value_score": intel.value_score if intel else None,
+            "star_price_anomaly_pct": intel.star_price_anomaly_pct if intel else None,
+            "floor_proximity_pct": intel.floor_proximity_pct if intel else None,
+            "trend_inflection": intel.trend_inflection if intel else False,
         }
+
+        # ── 4b. Airport arbitrage (computed per-email, not cached) ──────
+        if best_deal.get("hotel_id") and best_deal.get("depart_date") and best_deal.get("origin"):
+            arbitrage = get_airport_arbitrage(
+                db,
+                hotel_id=best_deal.get("hotel_id"),
+                depart_date=best_deal.get("depart_date"),
+                current_origin=best_deal["origin"],
+                current_price_cents=best_deal["price_cents"],
+            )
+            if arbitrage:
+                context["arbitrage"] = arbitrage
+
+        # ── 4c. Departure window context (from route intel) ──────────────
+        if route_intel:
+            context["route_intel"] = {
+                "cheapest_depart_week": str(route_intel.cheapest_depart_week) if route_intel.cheapest_depart_week else None,
+                "cheapest_week_avg_cents": route_intel.cheapest_week_avg_cents,
+                "priciest_depart_week": str(route_intel.priciest_depart_week) if route_intel.priciest_depart_week else None,
+                "priciest_week_avg_cents": route_intel.priciest_week_avg_cents,
+                "late_booking_premium_pct": route_intel.late_booking_premium_pct,
+            }
 
         # ── 5. Trigger via orchestrator (one email per signal per run) ───
         try:
@@ -307,5 +463,5 @@ def _build_route(signal: Signal, deals: list[dict]) -> str:
         dest_str = signal.name
 
     if origin:
-        return f"{origin} → {dest_str}"
+        return f"{origin} \u2192 {dest_str}"
     return dest_str

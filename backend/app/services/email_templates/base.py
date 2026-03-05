@@ -106,6 +106,81 @@ def format_price(price_cents: int | None) -> str:
     return f"${price_cents // 100:,}"
 
 
+def value_score_badge(score: int) -> str:
+    """Render a value score badge (0-100). Only show for scores >= 75."""
+    if score < 75:
+        return ""
+    top_pct = max(1, 100 - score)
+    # Color: green for 90+, blue for 75-89
+    if score >= 90:
+        bg, border, text_color = "#dcfce7", "#86efac", "#166534"
+    else:
+        bg, border, text_color = "#f0f7ff", "#dbeafe", "#1D4ED8"
+    return (
+        f'<div style="display:inline-block;background:{bg};border:1px solid {border};'
+        f'border-radius:20px;padding:6px 14px;margin-bottom:16px;">'
+        f'<span style="font-size:13px;font-weight:600;color:{text_color};">'
+        f'Value Score: {score}/100 \u2014 top {top_pct}%</span></div>'
+    )
+
+
+def arbitrage_line(airport: str, savings_cents: int) -> str:
+    """Render an airport arbitrage savings line."""
+    savings = format_price(savings_cents)
+    return (
+        '<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;'
+        'padding:12px 16px;margin-bottom:20px;">'
+        f'<p style="margin:0;font-size:13px;color:#92400E;">'
+        f'\u2708\ufe0f Same resort is <strong>{savings}/pp cheaper</strong> from '
+        f'<strong>{airport}</strong></p></div>'
+    )
+
+
+def destination_index_html(destinations: list[dict]) -> str:
+    """Render a destination price index leaderboard table.
+
+    Each dict: {destination_region, current_week_avg_cents, week_over_week_pct}
+    """
+    if not destinations:
+        return ""
+
+    rows = []
+    for i, d in enumerate(destinations):
+        region = d["destination_region"].replace("_", " ").title()
+        price = format_price(d["current_week_avg_cents"])
+        wow = d.get("week_over_week_pct")
+
+        if wow is not None:
+            if wow < -1:
+                trend = f'<span style="color:#166534;">\u2193{abs(wow):.0f}%</span>'
+            elif wow > 1:
+                trend = f'<span style="color:#991b1b;">\u2191{wow:.0f}%</span>'
+            else:
+                trend = '<span style="color:#666;">stable</span>'
+        else:
+            trend = ""
+
+        border = "border-bottom:1px solid #f3f4f6;" if i < len(destinations) - 1 else ""
+        rows.append(
+            f'<div style="display:flex;justify-content:space-between;align-items:center;'
+            f'padding:10px 16px;{border}">'
+            f'<span style="font-size:14px;color:#333;">'
+            f'<strong>{i+1}.</strong> {region}</span>'
+            f'<span style="font-size:14px;color:#111;font-weight:600;">'
+            f'{price}/pp {trend}</span></div>'
+        )
+
+    return (
+        '<div style="border:1px solid #e5e7eb;border-radius:12px;'
+        'overflow:hidden;margin-bottom:24px;">'
+        '<div style="padding:12px 16px;background:#f9fafb;border-bottom:1px solid #e5e7eb;">'
+        '<p style="margin:0;font-size:13px;font-weight:600;color:#666;text-transform:uppercase;'
+        'letter-spacing:0.5px;">This week\u2019s best value destinations</p></div>'
+        + "".join(rows)
+        + "</div>"
+    )
+
+
 def pricing_disclaimer() -> str:
     """Standard pricing disclaimer for deal-related emails."""
     return (

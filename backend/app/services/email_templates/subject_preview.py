@@ -42,8 +42,35 @@ def build_match_subject(context: dict) -> str:
     trend_direction = context.get("trend_direction", "stable")
     trend_weeks = context.get("trend_weeks", 0)
     days_monitoring = context.get("days_monitoring", 0)
+    trend_inflection = context.get("trend_inflection", False)
+    value_score = context.get("value_score")
+    floor_proximity = context.get("floor_proximity_pct")
+    star_anomaly = context.get("star_price_anomaly_pct")
+    arbitrage = context.get("arbitrage")
 
     price = _fmt_price(best_price_cents)
+
+    # Priority 0: Trend inflection — urgent, time-sensitive
+    if trend_inflection and price:
+        return _truncate(f"{price} to {destination}. Prices just started rising.")
+
+    # Priority 0b: Near price floor
+    if floor_proximity is not None and floor_proximity <= 5 and price:
+        return _truncate(f"{price} to {destination}. Near the all-time low.")
+
+    # Priority 0c: High value score
+    if value_score is not None and value_score >= 90 and price:
+        return _truncate(f"{price} to {destination}. Top {max(1, 100-value_score)}% value.")
+
+    # Priority 0d: Airport arbitrage with big savings
+    if arbitrage and arbitrage.get("arbitrage_savings_cents", 0) >= 20000 and price:
+        savings = _fmt_price(arbitrage["arbitrage_savings_cents"])
+        airport = arbitrage["arbitrage_airport"]
+        return _truncate(f"{price} to {destination}. Save {savings}/pp from {airport}.")
+
+    # Priority 0e: Star-price anomaly
+    if star_anomaly is not None and star_anomaly >= 0.7 and price:
+        return _truncate(f"{price} to {destination}. Higher-star, lower price.")
 
     # Priority 1: Module 1 — deal in top 25% percentile
     if is_top_25 and price and days_monitoring > 7:

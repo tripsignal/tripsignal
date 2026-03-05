@@ -14,3 +14,4 @@ import app.db.models.deal_match  # noqa: F401
 import app.db.models.signal_run  # noqa: F401
 
 import app.db.models.notification_outbox  # noqa: F401
+import app.db.models.route_intel_cache  # noqa: F401

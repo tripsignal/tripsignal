@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from app.services.email_templates.base import (
     wrap, button, para, heading, info_box,
     stars_html, format_price, pricing_disclaimer, new_low_banner, price_drop_banner,
+    value_score_badge, arbitrage_line, destination_index_html,
 )
 
 if TYPE_CHECKING:
@@ -157,11 +158,21 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
             f'<p style="margin:0 0 20px;font-size:18px;font-weight:600;color:#111;">{hero}</p>'
         )
 
+    # ── Value Score badge (above deal card) ──
+    vs = context.get("value_score")
+    if vs is not None and vs >= 75:
+        parts.append(value_score_badge(vs))
+
     # ── Zone 3: Deal card(s) ──
     if deal_count == 1 and deals:
         parts.append(_single_deal_card(deals[0], route))
     elif deals:
         parts.append(_multi_deal_list(deals))
+
+    # ── Airport arbitrage (below deal card) ──
+    arb = context.get("arbitrage")
+    if arb:
+        parts.append(arbitrage_line(arb["arbitrage_airport"], arb["arbitrage_savings_cents"]))
 
     # ── Zone 4: One-line intel ──
     if intel_sentence:
@@ -666,6 +677,11 @@ def weekly_digest(*, user: "User", context: dict) -> tuple[str, str]:
             f'{int(best_value_pct)}% cheaper per night than other durations on this route.'
             f'</p>'
         ))
+
+    # ── Zone 3b: Destination Price Index ──
+    dest_index = context.get("destination_index")
+    if dest_index:
+        parts.append(destination_index_html(dest_index))
 
     # ── Zone 4: Signal health ──
     if total_matches > 0 or days_monitoring > 0:
