@@ -48,7 +48,7 @@ def wrap(
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111;background:#fff;max-width:560px;margin:0 auto;padding:40px 24px;">
 {preheader_block}
 <div style="margin-bottom:24px;">
-  <img src="https://tripsignal.ca/new-logo-email.png" alt="Trip Signal" style="height:70px;width:auto;border-radius:8px;" />
+  <img src="https://tripsignal.ca/new-logo-email.png" alt="Trip Signal" style="height:50px;width:auto;border-radius:8px;" />
 </div>
 {body_html}
 <hr style="border:none;border-top:1px solid #eee;margin:32px 0;">
