@@ -30,7 +30,6 @@ from app.db.session import get_db
 logger = logging.getLogger("selloff_scraper")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 
-RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 UNSUB_SECRET = os.getenv("UNSUB_SECRET", "tripsignal-unsub-default-key")
 NEXT_SCAN_FILE = "/tmp/next_scan.json"
 
