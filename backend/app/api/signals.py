@@ -4,10 +4,11 @@ import logging
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_clerk_user_id
 from app.core.rate_limit import limiter
 from app.db.models.deal import Deal
 from app.db.models.deal_match import DealMatch
@@ -160,13 +161,10 @@ async def create_signal(
     request: Request,
     signal_data: SignalCreate,
     db: Session = Depends(get_db),
-    x_user_id: str = Header(None),
+    clerk_user_id: str = Depends(get_clerk_user_id),
 ) -> SignalOut:
     """Create a new signal and immediately match against existing deals."""
-    if not x_user_id:
-        raise HTTPException(status_code=401, detail="Missing user ID")
-
-    user = db.query(User).filter(User.clerk_id == x_user_id).first()
+    user = db.query(User).filter(User.clerk_id == clerk_user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -236,13 +234,10 @@ async def create_signal(
 @router.get("", response_model=List[SignalOut])
 async def list_signals(
     db: Session = Depends(get_db),
-    x_user_id: str = Header(None),
+    clerk_user_id: str = Depends(get_clerk_user_id),
 ) -> List[SignalOut]:
     """List signals for the current user (with match counts)."""
-    if not x_user_id:
-        raise HTTPException(status_code=401, detail="Missing user ID")
-
-    user = db.query(User).filter(User.clerk_id == x_user_id).first()
+    user = db.query(User).filter(User.clerk_id == clerk_user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -273,13 +268,10 @@ async def list_signals(
 async def get_signal(
     signal_id: UUID,
     db: Session = Depends(get_db),
-    x_user_id: str = Header(None),
+    clerk_user_id: str = Depends(get_clerk_user_id),
 ) -> SignalOut:
     """Get a signal by ID."""
-    if not x_user_id:
-        raise HTTPException(status_code=401, detail="Missing user ID")
-
-    user = db.query(User).filter(User.clerk_id == x_user_id).first()
+    user = db.query(User).filter(User.clerk_id == clerk_user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -293,13 +285,10 @@ async def get_signal(
 async def delete_signal(
     signal_id: UUID,
     db: Session = Depends(get_db),
-    x_user_id: str = Header(None),
+    clerk_user_id: str = Depends(get_clerk_user_id),
 ) -> None:
     """Delete a signal."""
-    if not x_user_id:
-        raise HTTPException(status_code=401, detail="Missing user ID")
-
-    user = db.query(User).filter(User.clerk_id == x_user_id).first()
+    user = db.query(User).filter(User.clerk_id == clerk_user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -316,13 +305,10 @@ async def update_signal(
     signal_id: UUID,
     signal_update: SignalUpdate,
     db: Session = Depends(get_db),
-    x_user_id: str = Header(None),
+    clerk_user_id: str = Depends(get_clerk_user_id),
 ) -> SignalOut:
     """Update a signal."""
-    if not x_user_id:
-        raise HTTPException(status_code=401, detail="Missing user ID")
-
-    user = db.query(User).filter(User.clerk_id == x_user_id).first()
+    user = db.query(User).filter(User.clerk_id == clerk_user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 

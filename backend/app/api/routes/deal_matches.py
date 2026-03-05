@@ -4,10 +4,11 @@ from uuid import UUID
 from typing import List
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
+from app.api.deps import get_clerk_user_id
 from app.db.session import get_db
 from app.db.models.signal import Signal
 from app.db.models.signal_run import SignalRun
@@ -23,11 +24,9 @@ from app.schemas.deals import DealMatchCreate
 router = APIRouter(prefix="/signals", tags=["matches"])
 
 
-def _verify_signal_owner(signal_id: UUID, x_user_id: str, db: Session) -> Signal:
+def _verify_signal_owner(signal_id: UUID, clerk_user_id: str, db: Session) -> Signal:
     """Verify the caller owns the signal. Returns the signal or raises 404."""
-    if not x_user_id:
-        raise HTTPException(status_code=401, detail="Missing user ID")
-    user = db.query(User).filter(User.clerk_id == x_user_id).first()
+    user = db.query(User).filter(User.clerk_id == clerk_user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     signal = db.query(Signal).filter(Signal.id == signal_id, Signal.user_id == user.id).first()
@@ -101,10 +100,10 @@ def _batch_price_trends(db: Session, deal_ids: list[UUID]) -> dict[UUID, tuple]:
 def list_signal_matches(
     signal_id: UUID,
     db: Session = Depends(get_db),
-    x_user_id: str = Header(None),
+    clerk_user_id: str = Depends(get_clerk_user_id),
 ):
     """Return active deals matched to a given signal, favourites first."""
-    _verify_signal_owner(signal_id, x_user_id, db)
+    _verify_signal_owner(signal_id, clerk_user_id, db)
     matches = (
         db.query(DealMatch)
         .join(Deal)
@@ -174,10 +173,10 @@ def toggle_favourite(
     signal_id: UUID,
     match_id: UUID,
     db: Session = Depends(get_db),
-    x_user_id: str = Header(None),
+    clerk_user_id: str = Depends(get_clerk_user_id),
 ):
     """Toggle the favourite status of a deal match."""
-    _verify_signal_owner(signal_id, x_user_id, db)
+    _verify_signal_owner(signal_id, clerk_user_id, db)
     match = db.query(DealMatch).filter(
         DealMatch.id == match_id,
         DealMatch.signal_id == signal_id,

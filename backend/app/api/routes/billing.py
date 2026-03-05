@@ -7,11 +7,12 @@ import logging
 from datetime import datetime, timezone
 
 import stripe
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_clerk_user_id
 from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.db.models.signal import Signal
@@ -28,8 +29,8 @@ router = APIRouter(prefix="/api/billing", tags=["billing"])
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
-def get_current_user(x_clerk_user_id: str = Header(...), db: Session = Depends(get_db)) -> User:
-    user = db.query(User).filter(User.clerk_id == x_clerk_user_id).first()
+def get_current_user(clerk_user_id: str = Depends(get_clerk_user_id), db: Session = Depends(get_db)) -> User:
+    user = db.query(User).filter(User.clerk_id == clerk_user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user

@@ -4,11 +4,12 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_clerk_user_id
 from app.core.rate_limit import limiter
 from app.db.models.user import User
 from app.db.session import get_db
@@ -36,9 +37,9 @@ def _get_user_by_clerk(clerk_id: str, db: Session) -> User:
 def get_user_by_clerk_id(
     clerk_id: str,
     db: Session = Depends(get_db),
-    x_clerk_user_id: str = Header(..., alias="x-clerk-user-id"),
+    clerk_user_id: str = Depends(get_clerk_user_id),
 ):
-    if x_clerk_user_id != clerk_id:
+    if clerk_user_id != clerk_id:
         raise HTTPException(status_code=403, detail="Forbidden")
     user = _get_user_by_clerk(clerk_id, db)
     return {
@@ -69,17 +70,22 @@ def get_user_by_clerk_id(
 def sync_user(
     request: Request,
     db: Session = Depends(get_db),
-    x_clerk_user_id: str = Header(..., alias="x-clerk-user-id"),
-    x_forwarded_for: str | None = Header(None, alias="x-forwarded-for"),
-    user_agent: str | None = Header(None, alias="user-agent"),
-    x_timezone: str | None = Header(None, alias="x-timezone"),
+    clerk_user_id: str = Depends(get_clerk_user_id),
+    x_forwarded_for: str | None = None,
+    user_agent: str | None = None,
+    x_timezone: str | None = None,
 ):
     """Ensure user row exists for the given Clerk ID. Called on sign-in."""
+    # Extract headers that aren't part of auth
+    x_forwarded_for = x_forwarded_for or request.headers.get("x-forwarded-for")
+    user_agent = user_agent or request.headers.get("user-agent")
+    x_timezone = x_timezone or request.headers.get("x-timezone")
+
     # Extract first IP from X-Forwarded-For (client IP before proxies)
     client_ip = x_forwarded_for.split(",")[0].strip() if x_forwarded_for else None
 
     user = db.execute(
-        select(User).where(User.clerk_id == x_clerk_user_id)
+        select(User).where(User.clerk_id == clerk_user_id)
     ).scalar_one_or_none()
 
     if user:
@@ -95,7 +101,7 @@ def sync_user(
 
     # User doesn't exist — create with defaults
     new_user = User(
-        clerk_id=x_clerk_user_id,
+        clerk_id=clerk_user_id,
         email="",  # Will be updated by webhook
         login_count=1,
         last_login_ip=client_ip,
@@ -167,9 +173,9 @@ def accept_terms(body: AcceptTermsRequest, db: Session = Depends(get_db)):
 @router.get("/prefs")
 def get_prefs(
     db: Session = Depends(get_db),
-    x_clerk_user_id: str = Header(..., alias="x-clerk-user-id"),
+    clerk_user_id: str = Depends(get_clerk_user_id),
 ):
-    user = _get_user_by_clerk(x_clerk_user_id, db)
+    user = _get_user_by_clerk(clerk_user_id, db)
     return {
         "plan_type": user.plan_type,
         "plan_status": user.plan_status,
@@ -203,9 +209,9 @@ _VALID_FREQUENCIES = {"all", "morning", "noon", "evening"}
 def update_prefs(
     body: UpdatePrefsRequest,
     db: Session = Depends(get_db),
-    x_clerk_user_id: str = Header(..., alias="x-clerk-user-id"),
+    clerk_user_id: str = Depends(get_clerk_user_id),
 ):
-    user = _get_user_by_clerk(x_clerk_user_id, db)
+    user = _get_user_by_clerk(clerk_user_id, db)
 
     if body.notification_delivery_frequency is not None:
         windows = [w.strip() for w in body.notification_delivery_frequency.split(",")]
@@ -244,9 +250,9 @@ class DeleteMeRequest(BaseModel):
 def delete_user(
     body: DeleteMeRequest | None = None,
     db: Session = Depends(get_db),
-    x_clerk_user_id: str = Header(..., alias="x-clerk-user-id"),
+    clerk_user_id: str = Depends(get_clerk_user_id),
 ):
-    user = _get_user_by_clerk(x_clerk_user_id, db)
+    user = _get_user_by_clerk(clerk_user_id, db)
     result = _delete_account(
         db=db,
         user=user,
@@ -259,7 +265,7 @@ def delete_user(
 
     logger.info(
         "SECURITY | account_deleted | clerk_id=%s | email=%s | reason=%s",
-        x_clerk_user_id,
+        clerk_user_id,
         user.email,
         body.reason if body else "none",
     )
@@ -279,9 +285,9 @@ def delete_user(
 @router.post("/cancel-subscription")
 def cancel_subscription(
     db: Session = Depends(get_db),
-    x_clerk_user_id: str = Header(..., alias="x-clerk-user-id"),
+    clerk_user_id: str = Depends(get_clerk_user_id),
 ):
-    user = _get_user_by_clerk(x_clerk_user_id, db)
+    user = _get_user_by_clerk(clerk_user_id, db)
     # Just mark locally — Stripe webhook handles the actual cancellation
     user.plan_status = "cancelled"
     db.commit()

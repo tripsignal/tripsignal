@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     # Clerk
     CLERK_SECRET_KEY: str = ""
+    CLERK_JWKS_URL: str = ""
 
     # Email feature flags
     EMAIL_V2_ENABLED: bool = True  # V2 is now the only email path
