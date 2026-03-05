@@ -103,11 +103,12 @@ services:
     healthcheck:
       disable: true
 
-  selloff_scraper:
+  # Orchestrator runs SellOff + RedTag scrapers in staggered sequence
+  scrape_orchestrator:
     build:
       context: /opt/tripsignal
       dockerfile: /opt/tripsignal/Dockerfile
-    container_name: tripsignal-selloff-scraper
+    container_name: tripsignal-scrape-orchestrator
     working_dir: /app/backend
     env_file:
       - .env
@@ -122,7 +123,7 @@ services:
       PROXY_USER: ${PROXY_USER:?set in .env}
       PROXY_PASS: ${PROXY_PASS:?set in .env}
       PROXY_COUNTRY: cr.ca
-    command: ["python", "-c", "import sys; sys.path.insert(0, '/app/backend'); from app.workers.selloff_scraper import run_scraper; run_scraper(once=False)"]
+    command: ["python", "-m", "app.workers.scrape_orchestrator"]
     depends_on:
       postgres:
         condition: service_healthy

@@ -66,7 +66,7 @@ def _match_signal_against_deals(db: Session, signal: Signal) -> int:
     """
     from datetime import datetime, timedelta
 
-    from app.workers.selloff_scraper import deal_matches_signal_region
+    from app.workers.shared.regions import deal_matches_signal_region
 
     config = signal.config or {}
     budget = config.get("budget", {})

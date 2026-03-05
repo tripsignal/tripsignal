@@ -778,6 +778,7 @@ def list_deals(
                 "deactivated_at": d.deactivated_at.isoformat() if d.deactivated_at else None,
                 "deeplink_url": d.deeplink_url,
                 "dedupe_key": d.dedupe_key,
+                "provider": d.provider,
             }
             for d in deals
         ],

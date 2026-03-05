@@ -25,6 +25,7 @@ class ScrapeRun(Base):
     deals_expired: Mapped[int | None] = mapped_column(Integer, nullable=True)
     proxy_ip: Mapped[str | None] = mapped_column(Text, nullable=True)
     proxy_geo: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     def __repr__(self) -> str:
-        return f"<ScrapeRun(id={self.id}, started_at={self.started_at}, status={self.status})>"
+        return f"<ScrapeRun(id={self.id}, started_at={self.started_at}, status={self.status}, provider={self.provider})>"

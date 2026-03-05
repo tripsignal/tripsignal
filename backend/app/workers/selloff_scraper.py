@@ -161,115 +161,14 @@ AIRPORT_CITY_MAP = {
     "YAM": "Sault Ste. Marie",
 }
 
-DESTINATION_REGION_MAP = {
-    # Sub-regions MUST come before parent catch-alls (first match wins)
-    "riviera maya": "riviera_maya",
-    "cancun": "cancun",
-    "puerto vallarta": "puerto_vallarta",
-    "los cabos": "los_cabos",
-    "mazatlan": "mazatlan",
-    "huatulco": "huatulco",
-    "ixtapa": "ixtapa",
-    "puerto escondido": "puerto_escondido",
-    "mexico": "mexico",
-    "punta cana": "punta_cana",
-    "puerto plata": "puerto_plata",
-    "la romana": "la_romana",
-    "samana": "samana",
-    "santo domingo": "santo_domingo",
-    "dominican republic": "dominican_republic",
-    "varadero": "varadero",
-    "holguin": "holguin",
-    "havana": "havana",
-    "cayo coco": "cayo_coco",
-    "santa clara": "cuba",
-    "cuba": "cuba",
-    "montego bay": "montego_bay",
-    "negril": "negril",
-    "ocho rios": "ocho_rios",
-    "jamaica": "jamaica",
-    "aruba": "aruba",
-    "barbados": "barbados",
-    "curacao": "curacao",
-    "cayman islands": "cayman_islands",
-    "saint lucia": "saint_lucia",
-    "st. lucia": "saint_lucia",
-    "st maarten": "st_maarten",
-    "st. maarten": "st_maarten",
-    "turks and caicos": "turks_caicos",
-    "bahamas": "bahamas",
-    "nassau": "bahamas",
-    "antigua": "antigua",
-    "grenada": "grenada",
-    "costa rica": "costa_rica",
-    "liberia": "costa_rica",
-    "belize": "belize",
-    "panama": "panama",
-    "roatan": "roatan",
-    "honduras": "central_america",
-}
-
-PARENT_REGION_MAP = {
-    "cancun": "mexico",
-    "riviera_maya": "mexico",
-    "puerto_vallarta": "mexico",
-    "los_cabos": "mexico",
-    "mazatlan": "mexico",
-    "huatulco": "mexico",
-    "ixtapa": "mexico",
-    "puerto_escondido": "mexico",
-    "punta_cana": "dominican_republic",
-    "puerto_plata": "dominican_republic",
-    "la_romana": "dominican_republic",
-    "samana": "dominican_republic",
-    "santo_domingo": "dominican_republic",
-    "montego_bay": "jamaica",
-    "negril": "jamaica",
-    "ocho_rios": "jamaica",
-    "varadero": "cuba",
-    "holguin": "cuba",
-    "havana": "cuba",
-    "cayo_coco": "cuba",
-    "aruba": "caribbean",
-    "barbados": "caribbean",
-    "curacao": "caribbean",
-    "cayman_islands": "caribbean",
-    "saint_lucia": "caribbean",
-    "st_maarten": "caribbean",
-    "turks_caicos": "caribbean",
-    "bahamas": "caribbean",
-    "antigua": "caribbean",
-    "grenada": "caribbean",
-    "costa_rica": "central_america",
-    "panama": "central_america",
-    "belize": "central_america",
-    "roatan": "central_america",
-}
-
-
-def deal_matches_signal_region(deal_region, signal_regions):
-    if not deal_region:
-        return False
-    # Exact match
-    if deal_region in signal_regions:
-        return True
-    # Parent match — deal is sub-region, signal has parent catch-all
-    parent = PARENT_REGION_MAP.get(deal_region)
-    if parent and parent in signal_regions:
-        return True
-    # Reverse match — deal is parent catch-all, signal has a sub-region of that parent
-    for sr in signal_regions:
-        if PARENT_REGION_MAP.get(sr) == deal_region:
-            return True
-    return False
-
-
-def map_destination_to_region(destination: str) -> Optional[str]:
-    dest_lower = destination.lower()
-    for keyword, region in DESTINATION_REGION_MAP.items():
-        if keyword in dest_lower:
-            return region
-    return None
+from app.workers.shared.regions import (
+    DESTINATION_REGION_MAP,
+    PARENT_REGION_MAP,
+    deal_matches_signal_region,
+    map_destination_to_region,
+)
+from app.workers.shared.matching import match_deal_to_signals as _shared_match_deal_to_signals
+from app.workers.shared.upsert import upsert_deal as _shared_upsert_deal
 
 
 def parse_duration_days(duration_str: str) -> int:
@@ -384,125 +283,12 @@ def fetch_deals_from_page(url: str) -> list[dict]:
 
 
 def upsert_deal(db: Session, deal: dict) -> Optional[Deal]:
-    dedupe_key = f"selloff:{deal['gateway']}:{deal['hotel_id']}:{deal['depart_date']}:{deal['duration_days']}"
-
-    existing = db.execute(
-        select(Deal).where(Deal.dedupe_key == dedupe_key)
-    ).scalar_one_or_none()
-
-    if existing:
-        old_price = existing.price_cents
-        # Mark as seen this cycle
-        existing.last_seen_at = datetime.now(timezone.utc)
-        existing.missed_cycles = 0
-        if not existing.is_active:
-            existing.is_active = True
-            existing.deactivated_at = None
-        if existing.price_cents != deal["price_cents"]:
-            existing.price_cents = deal["price_cents"]
-            db.commit()
-        # Track price delta for email hero selection (positive = drop)
-        delta = old_price - deal["price_cents"]
-        existing._price_dropped = delta > 0
-        existing._price_delta = delta
-        db.add(DealPriceHistory(deal_id=existing.id, price_cents=deal["price_cents"]))
-        db.commit()
-        return existing
-
-    new_deal = Deal(
-        provider="selloff",
-        origin=deal["gateway"],
-        destination=deal["region"] or deal["destination_str"],
-        depart_date=deal["depart_date"],
-        return_date=deal["return_date"],
-        price_cents=deal["price_cents"],
-        currency="CAD",
-        deeplink_url=deal["deeplink_url"],
-        dedupe_key=dedupe_key,
-        hotel_name=deal.get("hotel_name"),
-        hotel_id=deal.get("hotel_id"),
-        discount_pct=deal.get("discount_pct"),
-        destination_str=deal.get("destination_str"),
-        star_rating=deal.get("star_rating"),
-    )
-    db.add(new_deal)
-    db.commit()
-    db.refresh(new_deal)
-    new_deal._price_dropped = False
-    new_deal._price_delta = 0
-    db.add(DealPriceHistory(deal_id=new_deal.id, price_cents=new_deal.price_cents))
-    db.commit()
-    return new_deal
+    deal["dedupe_key"] = f"selloff:{deal['gateway']}:{deal['hotel_id']}:{deal['depart_date']}:{deal['duration_days']}"
+    return _shared_upsert_deal(db, "selloff", deal)
 
 
 def match_deal_to_signals(db: Session, deal: Deal, deal_meta: dict) -> list[Signal]:
-    signals = db.execute(
-        select(Signal).where(Signal.status == "active")
-    ).scalars().all()
-
-    matches = []
-    for signal in signals:
-        try:
-            config = signal.config
-            budget = config.get("budget", {})
-            travel_window = config.get("travel_window", {})
-            config.get("travellers", {})
-
-            if deal_meta["gateway"] not in signal.departure_airports:
-                continue
-            if not deal_matches_signal_region(deal_meta["region"], signal.destination_regions):
-                continue
-
-            start_date_str = travel_window.get("start_date")
-            end_date_str = travel_window.get("end_date")
-            if start_date_str and end_date_str:
-                start_dt = datetime.strptime(start_date_str, "%Y-%m-%d").date()
-                end_dt = datetime.strptime(end_date_str, "%Y-%m-%d").date()
-                # start_date = earliest departure, end_date = latest return
-                if deal.depart_date < start_dt:
-                    continue
-                deal_return = deal.return_date or (deal.depart_date + timedelta(days=deal_meta.get("duration_days", 7)))
-                if deal_return > end_dt:
-                    continue
-            else:
-                start_month_str = travel_window.get("start_month")
-                end_month_str = travel_window.get("end_month")
-                if start_month_str and end_month_str:
-                    start_month = datetime.strptime(start_month_str, "%Y-%m").date().replace(day=1)
-                    end_month_dt = datetime.strptime(end_month_str, "%Y-%m")
-                    if end_month_dt.month == 12:
-                        end_month = end_month_dt.replace(day=31).date()
-                    else:
-                        end_month = (end_month_dt.replace(month=end_month_dt.month + 1, day=1) - timedelta(days=1)).date()
-                    if not (start_month <= deal.depart_date <= end_month):
-                        continue
-
-            min_nights = travel_window.get("min_nights")
-            max_nights = travel_window.get("max_nights")
-            if min_nights and deal_meta["duration_days"] < min_nights:
-                continue
-            if max_nights and deal_meta["duration_days"] > max_nights:
-                continue
-
-            preferences = config.get("preferences", {})
-            min_star_rating = preferences.get("min_star_rating")
-            if min_star_rating and deal.star_rating is not None:
-                if deal.star_rating < float(min_star_rating):
-                    continue
-
-            # Budget check (deal prices are per-person, target_pp is per-person)
-            target_pp = budget.get("target_pp")
-            if target_pp:
-                budget_cents = int(target_pp) * 100
-                if deal.price_cents > budget_cents:
-                    continue
-
-            matches.append(signal)
-        except Exception as e:
-            logger.warning("Error matching signal %s: %s", signal.id, e)
-            continue
-
-    return matches
+    return _shared_match_deal_to_signals(db, deal, deal_meta)
 
 
 
