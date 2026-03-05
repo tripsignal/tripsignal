@@ -99,9 +99,9 @@ def system_health(
 ):
     verify_admin(x_admin_token)
 
-    total_users = db.execute(select(func.count()).select_from(User).where(not User.is_test_user)).scalar()
-    free_users = db.execute(select(func.count()).select_from(User).where(User.plan_type == "free", not User.is_test_user)).scalar()
-    pro_users = db.execute(select(func.count()).select_from(User).where(User.plan_type == "pro", not User.is_test_user)).scalar()
+    total_users = db.execute(select(func.count()).select_from(User).where(User.is_test_user.is_(False))).scalar()
+    free_users = db.execute(select(func.count()).select_from(User).where(User.plan_type == "free", User.is_test_user.is_(False))).scalar()
+    pro_users = db.execute(select(func.count()).select_from(User).where(User.plan_type == "pro", User.is_test_user.is_(False))).scalar()
     active_signals = db.execute(select(func.count()).select_from(Signal).where(Signal.status == "active")).scalar()
     runs_24h = db.execute(
         select(func.count()).select_from(SignalRun).where(
@@ -240,8 +240,8 @@ def list_users(
     query = select(User)
     count_query = select(func.count()).select_from(User)
     if not include_test_users:
-        query = query.where(not User.is_test_user)
-        count_query = count_query.where(not User.is_test_user)
+        query = query.where(User.is_test_user.is_(False))
+        count_query = count_query.where(User.is_test_user.is_(False))
     if search:
         query = query.where(User.email.ilike(f"%{search}%"))
         count_query = count_query.where(User.email.ilike(f"%{search}%"))
@@ -812,8 +812,8 @@ def users_unified(
 
     # New status_filter takes priority over include_test_users
     if status_filter == "active":
-        query = query.where(User.deleted_at.is_(None), not User.is_test_user)
-        count_query = count_query.where(User.deleted_at.is_(None), not User.is_test_user)
+        query = query.where(User.deleted_at.is_(None), User.is_test_user.is_(False))
+        count_query = count_query.where(User.deleted_at.is_(None), User.is_test_user.is_(False))
     elif status_filter == "deleted":
         query = query.where(User.deleted_at.isnot(None))
         count_query = count_query.where(User.deleted_at.isnot(None))
@@ -824,8 +824,8 @@ def users_unified(
         pass  # No filtering — show everyone
     elif not include_test_users:
         # Legacy: exclude test users and deleted users by default
-        query = query.where(not User.is_test_user, User.deleted_at.is_(None))
-        count_query = count_query.where(not User.is_test_user, User.deleted_at.is_(None))
+        query = query.where(User.is_test_user.is_(False), User.deleted_at.is_(None))
+        count_query = count_query.where(User.is_test_user.is_(False), User.deleted_at.is_(None))
     if search:
         query = query.where(User.email.ilike(f"%{search}%"))
         count_query = count_query.where(User.email.ilike(f"%{search}%"))
