@@ -399,6 +399,7 @@ def run_once(dry_run: bool = False) -> dict:
                                 "destination_str": deal_obj.destination_str or deal_obj.destination or "",
                                 "origin": deal_obj.origin or "",
                                 "deeplink_url": deal_obj.deeplink_url or "",
+                                "provider": "redtag",
                             })
 
                     except Exception as e:

@@ -343,6 +343,7 @@ def process_signal_matches(
                 "depart_date": str(d.get("depart_date", "")),
                 "deeplink_url": d.get("deeplink_url", "https://tripsignal.ca/signals"),
                 "price_delta": d.get("price_delta", 0),
+                "provider": d.get("provider", ""),
             }
             for d in sorted_deals
         ]

@@ -487,6 +487,7 @@ def run_matching_only(db: Session) -> None:
                 "destination_str": deal.destination_str or deal.destination or "",
                 "origin": deal.origin or "",
                 "deeplink_url": deal.deeplink_url or "",
+                "provider": "selloff",
             })
 
     # Send match alert emails
@@ -653,6 +654,7 @@ def run_scraper(once: bool = True) -> None:
                                         "destination_str": deal.destination_str or deal.destination or "",
                                         "origin": deal.origin or "",
                                         "deeplink_url": deal.deeplink_url or "",
+                                        "provider": "selloff",
                                     })
 
                             except Exception as e:

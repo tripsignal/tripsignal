@@ -780,9 +780,15 @@ def _single_deal_card(deal: dict, route: str) -> str:
 
     route_line = f"{route} \u00b7 {dates_info}" if route else dates_info
 
+    provider = deal.get("provider", "")
+    via = ""
+    if provider:
+        label = "RedTag" if provider == "redtag" else "SellOff"
+        via = f' <span style="color:#aaa;font-size:11px;font-weight:400;">via {label}</span>'
+
     card_inner = (
         f'<p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#111;">'
-        f'{hotel}{stars}</p>'
+        f'{hotel}{stars}{via}</p>'
         f'<p style="margin:0 0 16px;font-size:13px;color:#666;">{route_line}</p>'
     )
     if price:
@@ -812,6 +818,12 @@ def _multi_deal_list(deals: list[dict]) -> str:
         stars = stars_html(rating)
         delta = _deal_delta_html(deal)
 
+        provider = deal.get("provider", "")
+        via = ""
+        if provider:
+            label = "RedTag" if provider == "redtag" else "SellOff"
+            via = f' <span style="color:#aaa;font-size:11px;font-weight:400;">via {label}</span>'
+
         dates_info = f"{duration} nights"
         if depart:
             dates_info += f" \u00b7 {depart}"
@@ -822,7 +834,7 @@ def _multi_deal_list(deals: list[dict]) -> str:
         rows.append(
             f'<div style="padding:14px 20px;{border}">'
             f'<p style="margin:0 0 2px;font-size:14px;font-weight:600;color:#111;">'
-            f'{hotel}{stars}</p>'
+            f'{hotel}{stars}{via}</p>'
             f'<p style="margin:0;font-size:13px;color:#666;">{dates_info} \u00b7 '
             f'<strong style="color:#111;">{price}/person</strong>{delta}</p>'
             '</div>'
