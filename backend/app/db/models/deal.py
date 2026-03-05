@@ -44,6 +44,12 @@ class Deal(Base):
     deactivated_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True, index=True
     )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()"),
+    )
+    missed_cycles: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0"),
+    )
     hotel_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     hotel_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     discount_pct: Mapped[int | None] = mapped_column(Integer, nullable=True)

@@ -391,6 +391,9 @@ def upsert_deal(db: Session, deal: dict) -> Optional[Deal]:
 
     if existing:
         old_price = existing.price_cents
+        # Mark as seen this cycle
+        existing.last_seen_at = datetime.now(timezone.utc)
+        existing.missed_cycles = 0
         if not existing.is_active:
             existing.is_active = True
             existing.deactivated_at = None
@@ -871,22 +874,31 @@ def run_scraper(once: bool = True) -> None:
 
                     time.sleep(random.uniform(8, 20))
 
-            # Mark stale deals inactive
+            # Graduated staleness: increment missed_cycles, only deactivate after 3+ misses
+            DEACTIVATION_THRESHOLD = 3
             try:
                 if seen_dedupe_keys:
                     with next(get_db()) as db:
-                        stale = db.query(Deal).filter(
+                        unseen = db.query(Deal).filter(
                             Deal.is_active,
                             Deal.dedupe_key.notin_(seen_dedupe_keys)
                         ).all()
                         deactivated_now = datetime.now(timezone.utc)
-                        for deal in stale:
-                            deal.is_active = False
-                            deal.deactivated_at = deactivated_now
+                        newly_deactivated = 0
+                        for deal in unseen:
+                            deal.missed_cycles = (deal.missed_cycles or 0) + 1
+                            if deal.missed_cycles >= DEACTIVATION_THRESHOLD:
+                                deal.is_active = False
+                                deal.deactivated_at = deactivated_now
+                                newly_deactivated += 1
                         db.commit()
-                        deals_deactivated = len(stale)
-                        if stale:
-                            logger.info("Marked %d deals inactive", len(stale))
+                        deals_deactivated = newly_deactivated
+                        if unseen:
+                            logger.info(
+                                "Staleness: %d unseen (%d incremented, %d deactivated after %d+ misses)",
+                                len(unseen), len(unseen) - newly_deactivated,
+                                newly_deactivated, DEACTIVATION_THRESHOLD,
+                            )
             except Exception as e:
                 logger.error("Stale deal deactivation failed: %s", e)
                 cycle_errors.append({"error": str(e), "type": "stale_deactivation"})
