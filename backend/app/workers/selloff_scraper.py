@@ -27,6 +27,7 @@ logger = logging.getLogger("selloff_scraper")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 NEXT_SCAN_FILE = "/tmp/next_scan.json"
 _SYSTEM_API_HEADERS = {"X-Admin-Token": os.getenv("ADMIN_TOKEN", "")}
+MAX_CYCLE_SECONDS = int(os.getenv("MAX_CYCLE_SECONDS", "7200"))  # 2 hours default
 
 # Graceful shutdown — finish current cycle before exiting
 _shutdown_requested = False
@@ -804,6 +805,7 @@ def run_scraper(once: bool = True) -> None:
             # V2 match alert accumulator: {signal_id_str: [deal_dict, ...]}
             v2_signal_deals: dict = defaultdict(list)
 
+            elapsed = 0
             for category in CATEGORIES:
                 for gateway_code, city_slug in GATEWAY_SLUGS.items():
                     url = f"https://www.selloffvacations.com/en/vacation-packages/{category}/from-{city_slug}"
@@ -873,6 +875,22 @@ def run_scraper(once: bool = True) -> None:
                                 continue
 
                     time.sleep(random.uniform(8, 20))
+
+                    # Internal timeout: bail if cycle has been running too long
+                    elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
+                    if elapsed > MAX_CYCLE_SECONDS:
+                        logger.warning(
+                            "CYCLE TIMEOUT: %d seconds elapsed (limit %d). "
+                            "Stopping early with %d deals scraped so far.",
+                            int(elapsed), MAX_CYCLE_SECONDS, total_deals,
+                        )
+                        cycle_errors.append({
+                            "error": f"Cycle timeout after {int(elapsed)}s",
+                            "type": "timeout",
+                        })
+                        break
+                if elapsed > MAX_CYCLE_SECONDS:
+                    break
 
             # Graduated staleness: increment missed_cycles, only deactivate after 3+ misses
             DEACTIVATION_THRESHOLD = 3
