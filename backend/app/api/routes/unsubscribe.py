@@ -9,7 +9,6 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models.signal import Signal
 from app.db.models.user import User
 from app.db.session import get_db
 from app.workers.selloff_scraper import validate_unsub_token
@@ -46,38 +45,29 @@ def _get_user_from_token(token: str, db: Session) -> User:
 
 @router.get("")
 def get_preferences(token: str, db: Session = Depends(get_db)):
-    """Return masked email, opt-out status, and per-signal email settings."""
+    """Return masked email, opt-out status, and preference settings."""
     user = _get_user_from_token(token, db)
-
-    # Fetch active signals for this user
-    signals = db.execute(
-        select(Signal).where(Signal.user_id == user.id, Signal.status == "active")
-    ).scalars().all()
-
-    signal_list = []
-    for sig in signals:
-        notif = sig.config.get("notifications", {}) if sig.config else {}
-        signal_list.append({
-            "id": str(sig.id),
-            "name": sig.name,
-            "email_enabled": notif.get("email_enabled", True),
-        })
 
     return {
         "email": _mask_email(user.email),
         "email_opt_out": user.email_opt_out,
+        "email_enabled": user.email_enabled,
         "plan_type": user.plan_type,
         "notification_delivery_frequency": user.notification_delivery_frequency,
-        "signals": signal_list,
+        "timezone": user.timezone,
     }
 
 
 # ── POST /api/unsubscribe ──────────────────────────────────────────────────
 
+_VALID_FREQUENCIES = {"all", "morning", "noon", "evening"}
+
+
 class UnsubscribeRequest(BaseModel):
     token: str
-    action: str  # "opt_out" | "pause_all" | "update_signals"
-    signal_updates: Optional[list[dict]] = None  # [{"id": "...", "email_enabled": bool}]
+    action: str  # "opt_out" | "resubscribe" | "change_frequency" | "update_prefs"
+    email_enabled: Optional[bool] = None
+    notification_delivery_frequency: Optional[str] = None
 
 
 @router.post("")
@@ -88,50 +78,33 @@ def update_preferences(body: UnsubscribeRequest, db: Session = Depends(get_db)):
     if body.action == "opt_out":
         user.email_opt_out = True
         db.commit()
-        return {"ok": True, "message": "You have been unsubscribed from all emails."}
+        return {"ok": True, "message": "You have been unsubscribed from deal alert emails."}
 
     elif body.action == "resubscribe":
         user.email_opt_out = False
         db.commit()
-        return {"ok": True, "message": "Email notifications re-enabled."}
+        return {"ok": True, "message": "Deal alert emails re-enabled."}
 
     elif body.action in ("change_speed", "change_frequency"):
         user.notification_delivery_frequency = "morning"
         db.commit()
         return {"ok": True, "message": "Delivery changed to morning digest."}
 
-    elif body.action == "pause_all":
-        # Disable email on every signal (reversible from dashboard)
-        signals = db.execute(
-            select(Signal).where(Signal.user_id == user.id, Signal.status == "active")
-        ).scalars().all()
-        for sig in signals:
-            config = dict(sig.config) if sig.config else {}
-            notif = dict(config.get("notifications", {}))
-            notif["email_enabled"] = False
-            config["notifications"] = notif
-            sig.config = config
+    elif body.action == "update_prefs":
+        if body.email_enabled is not None:
+            user.email_enabled = body.email_enabled
+        if body.notification_delivery_frequency is not None:
+            windows = [w.strip() for w in body.notification_delivery_frequency.split(",")]
+            if not all(w in _VALID_FREQUENCIES for w in windows):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"frequency values must be: {', '.join(sorted(_VALID_FREQUENCIES))}",
+                )
+            if "all" in windows and len(windows) > 1:
+                raise HTTPException(status_code=400, detail="'all' cannot be combined with other windows")
+            user.notification_delivery_frequency = body.notification_delivery_frequency
         db.commit()
-        return {"ok": True, "message": "Email notifications paused for all signals."}
-
-    elif body.action == "update_signals":
-        if not body.signal_updates:
-            raise HTTPException(status_code=400, detail="signal_updates required")
-        # Update specific signals
-        sig_map = {str(s.id): s for s in db.execute(
-            select(Signal).where(Signal.user_id == user.id)
-        ).scalars().all()}
-        for update in body.signal_updates:
-            sig = sig_map.get(update.get("id"))
-            if not sig:
-                continue
-            config = dict(sig.config) if sig.config else {}
-            notif = dict(config.get("notifications", {}))
-            notif["email_enabled"] = bool(update.get("email_enabled", True))
-            config["notifications"] = notif
-            sig.config = config
-        db.commit()
-        return {"ok": True, "message": "Signal preferences updated."}
+        return {"ok": True, "message": "Preferences saved."}
 
     else:
         raise HTTPException(status_code=400, detail=f"Unknown action: {body.action}")

@@ -314,28 +314,13 @@ def process_signal_matches(
             logger.debug("match_alert: signal %s skipped — user is passive", signal_id_str)
             continue
 
-        # ── 3e. Alert threshold gate ───────────────────────────────────
-        threshold = user.alert_threshold or "any"
-        if threshold == "drops" and pct_drop < 8:
-            logger.debug(
-                "match_alert: signal %s skipped — threshold='drops' pct_drop=%d",
-                signal_id_str, pct_drop,
-            )
-            continue
-        if threshold == "records" and not is_new_low:
-            logger.debug(
-                "match_alert: signal %s skipped — threshold='records' not new low",
-                signal_id_str,
-            )
-            continue
-
-        # ── 3f. Repeat deal filter ─────────────────────────────────────
+        # ── 3e. Repeat deal filter ─────────────────────────────────────
         deals = _filter_repeat_deals(db, signal.id, deals, run_id)
         if not deals:
             logger.debug("match_alert: signal %s — all deals filtered as repeats", signal_id_str)
             continue
 
-        # ── 3g. Noise filter ──────────────────────────────────────────
+        # ── 3f. Noise filter ──────────────────────────────────────────
         # Skip instant alert if min price barely changed (±3%) and deal isn't notable
         if previous_min and previous_min > 0 and not is_new_low and not is_top_25:
             price_change_pct = abs(min_price_cents - previous_min) / previous_min * 100
