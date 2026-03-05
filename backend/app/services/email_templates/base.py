@@ -6,7 +6,7 @@ def wrap(
     body_html: str,
     *,
     preheader: str = "",
-    footer_note: str = "",
+    show_daily_summary_nudge: bool = False,
     unsub_url: str = "",
 ) -> str:
     """Wrap body content in the standard TripSignal email shell."""
@@ -17,30 +17,36 @@ def wrap(
     )
 
     # Build footer — this is fixed and NOT editable via the admin template editor.
-    footer_parts = []
+    footer_lines = []
 
-    # Tagline or custom contextual note
-    if footer_note:
-        footer_parts.append(footer_note)
-    else:
-        footer_parts.append(
-            '<a href="https://tripsignal.ca" style="color:#999;text-decoration:none;">Trip Signal</a>'
-            ' &middot; Vacation deal monitoring for Canadians'
+    # Conditional daily-summary nudge (only for users on "all emails")
+    if show_daily_summary_nudge:
+        footer_lines.append(
+            'Want fewer emails? '
+            '<a href="https://tripsignal.ca/account/notifications" '
+            'style="color:#999;text-decoration:underline;">Switch to a daily summary</a>.'
         )
 
-    # Physical address (required by CASL on commercial emails)
-    footer_parts.append(
-        '<span style="font-size:11px;color:#bbb;">[Mailing address]</span>'
+    # Notification preferences link
+    prefs_url = unsub_url or "https://tripsignal.ca/account/notifications"
+    footer_lines.append(
+        f'<a href="{prefs_url}" '
+        f'style="color:#999;text-decoration:underline;">Notification preferences</a>'
     )
 
-    # Unsubscribe link with tap-friendly spacing
-    if unsub_url:
-        footer_parts.append(
-            f'<a href="{unsub_url}" style="color:#999;text-decoration:underline;">'
-            f'Manage email preferences</a>'
-        )
+    # Brand + address
+    footer_lines.append(
+        'Trip Signal<br>'
+        '<span style="font-size:11px;color:#bbb;">[Mailing Address]</span>'
+    )
 
-    footer_html = '<br style="line-height:28px;">'.join(footer_parts)
+    # Legal copy
+    footer_lines.append(
+        "You\u2019re receiving this email because you created one or more Trip Signal alerts.<br>"
+        "Trip Signal monitors travel prices and notifies you when deals match your criteria."
+    )
+
+    footer_html = '<br style="line-height:24px;">'.join(footer_lines)
 
     return f"""<!DOCTYPE html>
 <html>
@@ -52,7 +58,7 @@ def wrap(
 </div>
 {body_html}
 <hr style="border:none;border-top:1px solid #eee;margin:32px 0;">
-<p style="font-size:12px;color:#999;margin:0;text-align:center;">
+<p style="font-size:12px;color:#999;margin:0;text-align:center;line-height:1.6;">
   {footer_html}
 </p>
 </body>

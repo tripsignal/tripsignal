@@ -157,6 +157,8 @@ def trigger(
         except Exception:
             logger.warning("orchestrator: failed to generate unsub token for %s", user_id)
 
+    context.setdefault("_notification_frequency", getattr(user, "notification_delivery_frequency", "all") or "all")
+
     from app.services.email_templates import render_template
     subject, html = render_template(email_type, user=user, context=context, db=db)
 
@@ -552,6 +554,8 @@ def drain_deferred_emails(db: Session) -> int:
                 context["_unsub_url"] = f"https://tripsignal.ca/unsubscribe?token={token}"
             except Exception:
                 logger.warning("drain_deferred: failed to generate unsub token for %s", user.id)
+
+        context.setdefault("_notification_frequency", getattr(user, "notification_delivery_frequency", "all") or "all")
 
         try:
             from app.services.email_templates import render_template

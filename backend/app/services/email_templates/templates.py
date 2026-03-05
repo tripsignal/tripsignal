@@ -23,6 +23,11 @@ def _unsub(context: dict) -> str:
     return context.get("_unsub_url", "")
 
 
+def _is_instant(context: dict) -> bool:
+    """Return True if the user is on 'all emails' (instant) delivery."""
+    return context.get("_notification_frequency", "all") == "all"
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # A) ONBOARDING
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -89,10 +94,6 @@ def no_signal_reminder(*, user: "User", context: dict) -> tuple[str, str]:
     return subject, wrap(
         body,
         preheader="Set up deal monitoring in 30 seconds",
-        footer_note=(
-            'You\'re receiving this because you signed up for Trip Signal.<br>'
-            '<a href="https://tripsignal.ca" style="color:#999;">tripsignal.ca</a>'
-        ),
         unsub_url=_unsub(context),
     )
 
@@ -202,12 +203,7 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
     return subject, wrap(
         body,
         preheader=preview,
-        footer_note=(
-            '<a href="https://tripsignal.ca/signals" style="color:#999;text-decoration:underline;">'
-            'Manage signal</a> &middot; '
-            '<a href="https://tripsignal.ca/account/settings" style="color:#999;text-decoration:underline;">'
-            'Preferences</a>'
-        ),
+        show_daily_summary_nudge=_is_instant(context),
         unsub_url=_unsub(context),
     )
 
@@ -280,7 +276,12 @@ def major_drop_alert(*, user: "User", context: dict) -> tuple[str, str]:
         )
         + pricing_disclaimer()
     )
-    return subject, wrap(body, preheader=f"{drop_amount} price drop", unsub_url=_unsub(context))
+    return subject, wrap(
+        body,
+        preheader=f"{drop_amount} price drop",
+        show_daily_summary_nudge=_is_instant(context),
+        unsub_url=_unsub(context),
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -313,10 +314,6 @@ def trial_expiring_soon(*, user: "User", context: dict) -> tuple[str, str]:
     return subject, wrap(
         body,
         preheader=f"Trial ends in {days_left} days",
-        footer_note=(
-            'You\'re receiving this because your Trip Signal free trial is ending soon.<br>'
-            '<a href="https://tripsignal.ca" style="color:#999;">tripsignal.ca</a>'
-        ),
         unsub_url=_unsub(context),
     )
 
@@ -343,10 +340,6 @@ def trial_expired_upsell(*, user: "User", context: dict) -> tuple[str, str]:
     return subject, wrap(
         body,
         preheader="Your signals are paused",
-        footer_note=(
-            'You\'re receiving this because your Trip Signal free trial ended.<br>'
-            '<a href="https://tripsignal.ca" style="color:#999;">tripsignal.ca</a>'
-        ),
         unsub_url=_unsub(context),
     )
 
@@ -503,10 +496,6 @@ def no_match_update(*, user: "User", context: dict) -> tuple[str, str]:
     return subject, wrap(
         body,
         preheader=f"No matches after {days_active} days",
-        footer_note=(
-            'You\'re receiving this because you have an active signal on Trip Signal.<br>'
-            '<a href="https://tripsignal.ca" style="color:#999;">tripsignal.ca</a>'
-        ),
         unsub_url=_unsub(context),
     )
 
@@ -620,12 +609,7 @@ def inactive_reengagement(*, user: "User", context: dict) -> tuple[str, str]:
     return subject, wrap(
         body,
         preheader=preview,
-        footer_note=(
-            '<a href="https://tripsignal.ca/signals" style="color:#999;text-decoration:underline;">'
-            'Manage signals</a> &middot; '
-            '<a href="https://tripsignal.ca/account/settings" style="color:#999;text-decoration:underline;">'
-            'Preferences</a>'
-        ),
+        show_daily_summary_nudge=_is_instant(context),
         unsub_url=_unsub(context),
     )
 
@@ -723,12 +707,7 @@ def weekly_digest(*, user: "User", context: dict) -> tuple[str, str]:
     return subject, wrap(
         body,
         preheader=preview,
-        footer_note=(
-            '<a href="https://tripsignal.ca/signals" style="color:#999;text-decoration:underline;">'
-            'Manage signals</a> &middot; '
-            '<a href="https://tripsignal.ca/account/settings" style="color:#999;text-decoration:underline;">'
-            'Preferences</a>'
-        ),
+        show_daily_summary_nudge=_is_instant(context),
         unsub_url=_unsub(context),
     )
 
