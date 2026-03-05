@@ -207,12 +207,19 @@ async def collection_complete(payload: dict):
     """Called by scraper when a cycle finishes. Updates or creates a ScrapeRun row."""
     db = next(get_db())
     try:
-        run = db.execute(
-            select(ScrapeRun)
-            .where(ScrapeRun.status == "running")
-            .order_by(ScrapeRun.started_at.desc())
-            .limit(1)
-        ).scalar_one_or_none()
+        # Prefer explicit run_id correlation; fall back to latest running
+        payload_run_id = payload.get("run_id")
+        if payload_run_id:
+            run = db.execute(
+                select(ScrapeRun).where(ScrapeRun.id == payload_run_id)
+            ).scalar_one_or_none()
+        else:
+            run = db.execute(
+                select(ScrapeRun)
+                .where(ScrapeRun.status == "running")
+                .order_by(ScrapeRun.started_at.desc())
+                .limit(1)
+            ).scalar_one_or_none()
 
         completed_at_str = payload.get("completed_at")
         completed_at = datetime.fromisoformat(completed_at_str) if completed_at_str else datetime.now(timezone.utc)

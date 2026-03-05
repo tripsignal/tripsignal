@@ -4,7 +4,9 @@ import logging
 import os
 import random
 import re
+import signal as _signal
 import time
+import traceback
 import urllib.request
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
@@ -25,6 +27,19 @@ logger = logging.getLogger("selloff_scraper")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 NEXT_SCAN_FILE = "/tmp/next_scan.json"
 _SYSTEM_API_HEADERS = {"X-Admin-Token": os.getenv("ADMIN_TOKEN", "")}
+
+# Graceful shutdown — finish current cycle before exiting
+_shutdown_requested = False
+
+
+def _handle_sigterm(signum, frame):
+    global _shutdown_requested
+    _shutdown_requested = True
+    logger.info("SIGTERM received — will finish current cycle then exit")
+
+
+_signal.signal(_signal.SIGTERM, _handle_sigterm)
+_signal.signal(_signal.SIGINT, _handle_sigterm)
 
 # Proxy configuration (DataImpulse residential proxy)
 PROXY_ENABLED = os.getenv("PROXY_ENABLED", "false").lower() in ("true", "1", "yes")
@@ -728,197 +743,236 @@ def run_scraper(once: bool = True) -> None:
         total_deals = 0
         total_matches = 0
         deals_deactivated = 0
+        deals_expired = 0
         seen_dedupe_keys: set[str] = set()
         started_at = datetime.now(timezone.utc)
+        run_id = None
 
-        # Proxy setup for this cycle
-        global _cycle_proxy_opener
-        _cycle_proxy_opener = None
-        proxy_ip = None
-        proxy_url = _build_proxy_url()
-        if proxy_url:
-            logger.info("Using residential proxy (Canada) via DataImpulse")
-            try:
-                test_opener = _build_proxy_opener(proxy_url)
-                test_req = urllib.request.Request("https://api.ipify.org?format=json")
-                resp = test_opener.open(test_req, timeout=10)
-                ip_data = json.loads(resp.read().decode())
-                proxy_ip = ip_data.get("ip")
-                logger.info("Proxy check passed: scraping from IP %s", proxy_ip)
-                _cycle_proxy_opener = test_opener
-            except Exception as e:
-                logger.warning("Proxy check FAILED — falling back to direct connection: %s", e)
-        else:
-            logger.info("Proxy not configured — using direct connection")
-
-        # Geo-locate the proxy IP
-        proxy_geo = None
-        if proxy_ip:
-            try:
-                geo_req = urllib.request.Request(f"http://ip-api.com/json/{proxy_ip}?fields=city,regionName,countryCode")
-                opener = _cycle_proxy_opener or urllib.request.build_opener()
-                geo_resp = opener.open(geo_req, timeout=5)
-                geo = json.loads(geo_resp.read().decode())
-                if geo.get("city"):
-                    proxy_geo = f"{geo['city']}, {geo.get('regionName', '')}, {geo.get('countryCode', '')}".strip(", ")
-                    logger.info("Proxy geo: %s", proxy_geo)
-            except Exception as e:
-                logger.debug("Proxy geo lookup failed: %s", e)
-
-        # Post cycle start to API
         try:
-            import requests as _req
-            _req.post("http://api:8000/api/system/scrape-started", json={
-                "started_at": started_at.isoformat(),
-                "proxy_enabled": _cycle_proxy_opener is not None,
-                "proxy_ip": proxy_ip,
-                "proxy_geo": proxy_geo,
-            }, headers=_SYSTEM_API_HEADERS, timeout=5)
-        except Exception as e:
-            logger.warning("Failed to post scrape-started: %s", e)
+            # Proxy setup for this cycle
+            global _cycle_proxy_opener
+            _cycle_proxy_opener = None
+            proxy_ip = None
+            proxy_url = _build_proxy_url()
+            if proxy_url:
+                logger.info("Using residential proxy (Canada) via DataImpulse")
+                try:
+                    test_opener = _build_proxy_opener(proxy_url)
+                    test_req = urllib.request.Request("https://api.ipify.org?format=json")
+                    resp = test_opener.open(test_req, timeout=10)
+                    ip_data = json.loads(resp.read().decode())
+                    proxy_ip = ip_data.get("ip")
+                    logger.info("Proxy check passed: scraping from IP %s", proxy_ip)
+                    _cycle_proxy_opener = test_opener
+                except Exception as e:
+                    logger.warning("Proxy check FAILED — falling back to direct connection: %s", e)
+            else:
+                logger.info("Proxy not configured — using direct connection")
 
-        user_digest: dict = defaultdict(dict)
-        # V2 match alert accumulator: {signal_id_str: [deal_dict, ...]}
-        v2_signal_deals: dict = defaultdict(list)
+            # Geo-locate the proxy IP
+            proxy_geo = None
+            if proxy_ip:
+                try:
+                    geo_req = urllib.request.Request(f"http://ip-api.com/json/{proxy_ip}?fields=city,regionName,countryCode")
+                    opener = _cycle_proxy_opener or urllib.request.build_opener()
+                    geo_resp = opener.open(geo_req, timeout=5)
+                    geo = json.loads(geo_resp.read().decode())
+                    if geo.get("city"):
+                        proxy_geo = f"{geo['city']}, {geo.get('regionName', '')}, {geo.get('countryCode', '')}".strip(", ")
+                        logger.info("Proxy geo: %s", proxy_geo)
+                except Exception as e:
+                    logger.debug("Proxy geo lookup failed: %s", e)
 
-        for category in CATEGORIES:
-            for gateway_code, city_slug in GATEWAY_SLUGS.items():
-                url = f"https://www.selloffvacations.com/en/vacation-packages/{category}/from-{city_slug}"
-                logger.info("Scraping %s", url)
+            # Post cycle start to API and capture run_id for correlation
+            try:
+                import requests as _req
+                resp = _req.post("http://api:8000/api/system/scrape-started", json={
+                    "started_at": started_at.isoformat(),
+                    "proxy_enabled": _cycle_proxy_opener is not None,
+                    "proxy_ip": proxy_ip,
+                    "proxy_geo": proxy_geo,
+                }, headers=_SYSTEM_API_HEADERS, timeout=5)
+                if resp.ok:
+                    run_id = resp.json().get("run_id")
+            except Exception as e:
+                logger.warning("Failed to post scrape-started: %s", e)
 
-                deals = fetch_deals_from_page(url)
-                logger.info("Found %d deals on %s", len(deals), url)
-                if not deals:
-                    cycle_errors.append({"url": url, "error": "No deals found", "type": "empty"})
+            user_digest: dict = defaultdict(dict)
+            # V2 match alert accumulator: {signal_id_str: [deal_dict, ...]}
+            v2_signal_deals: dict = defaultdict(list)
 
-                with next(get_db()) as db:
-                    for deal_meta in deals:
-                        try:
-                            deal = upsert_deal(db, deal_meta)
-                            if not deal:
-                                continue
+            for category in CATEGORIES:
+                for gateway_code, city_slug in GATEWAY_SLUGS.items():
+                    url = f"https://www.selloffvacations.com/en/vacation-packages/{category}/from-{city_slug}"
+                    logger.info("Scraping %s", url)
 
-                            seen_dedupe_keys.add(deal.dedupe_key)
-                            total_deals += 1
-                            matched_signals = match_deal_to_signals(db, deal, deal_meta)
+                    deals = fetch_deals_from_page(url)
+                    logger.info("Found %d deals on %s", len(deals), url)
+                    if not deals:
+                        cycle_errors.append({"url": url, "error": "No deals found", "type": "empty"})
 
-                            for signal in matched_signals:
-                                existing = db.execute(
-                                    select(DealMatch).where(
-                                        DealMatch.signal_id == signal.id,
-                                        DealMatch.deal_id == deal.id,
-                                    )
-                                ).scalar_one_or_none()
-
-                                if existing:
+                    with next(get_db()) as db:
+                        for deal_meta in deals:
+                            try:
+                                deal = upsert_deal(db, deal_meta)
+                                if not deal:
                                     continue
 
-                                duration_days = deal_meta.get("duration_days", 7)
-                                ppn = deal.price_cents // duration_days if duration_days > 0 else None
-                                match = DealMatch(
-                                    signal_id=signal.id,
-                                    deal_id=deal.id,
-                                    price_per_night_cents=ppn,
-                                )
-                                db.add(match)
-                                db.commit()
-                                total_matches += 1
-                                logger.info("Match: %s -> %s %s $%d", signal.name, deal.destination, deal.depart_date, deal.price_cents // 100)
+                                seen_dedupe_keys.add(deal.dedupe_key)
+                                total_deals += 1
+                                matched_signals = match_deal_to_signals(db, deal, deal_meta)
 
-                                # Accumulate for V2 match alerts
-                                sig_key = str(signal.id)
-                                v2_signal_deals[sig_key].append({
-                                    "deal_id": str(deal.id),
-                                    "price_cents": deal.price_cents,
-                                    "price_dropped": getattr(deal, "_price_dropped", False),
-                                    "price_delta": getattr(deal, "_price_delta", 0),
-                                    "hotel_name": deal.hotel_name or "",
-                                    "hotel_id": deal.hotel_id or "",
-                                    "star_rating": deal.star_rating,
-                                    "depart_date": deal.depart_date,
-                                    "return_date": deal.return_date,
-                                    "duration_nights": duration_days,
-                                    "destination": deal.destination or "",
-                                    "destination_str": deal.destination_str or deal.destination or "",
-                                    "origin": deal.origin or "",
-                                    "deeplink_url": deal.deeplink_url or "",
-                                })
+                                for signal in matched_signals:
+                                    existing = db.execute(
+                                        select(DealMatch).where(
+                                            DealMatch.signal_id == signal.id,
+                                            DealMatch.deal_id == deal.id,
+                                        )
+                                    ).scalar_one_or_none()
 
-                        except Exception as e:
-                            logger.error("Error processing deal: %s", e)
-                            cycle_errors.append({"url": url, "error": str(e), "type": "error"})
-                            continue
+                                    if existing:
+                                        continue
 
-                time.sleep(random.uniform(8, 20))
+                                    duration_days = deal_meta.get("duration_days", 7)
+                                    ppn = deal.price_cents // duration_days if duration_days > 0 else None
+                                    match = DealMatch(
+                                        signal_id=signal.id,
+                                        deal_id=deal.id,
+                                        price_per_night_cents=ppn,
+                                    )
+                                    db.add(match)
+                                    db.commit()
+                                    total_matches += 1
+                                    logger.info("Match: %s -> %s %s $%d", signal.name, deal.destination, deal.depart_date, deal.price_cents // 100)
 
-        # Mark stale deals inactive
-        if seen_dedupe_keys:
-            with next(get_db()) as db:
-                stale = db.query(Deal).filter(
-                    Deal.is_active,
-                    Deal.dedupe_key.notin_(seen_dedupe_keys)
-                ).all()
-                deactivated_now = datetime.now(timezone.utc)
-                for deal in stale:
-                    deal.is_active = False
-                    deal.deactivated_at = deactivated_now
-                db.commit()
-                deals_deactivated = len(stale)
-                if stale:
-                    logger.info("Marked %d deals inactive", len(stale))
+                                    # Accumulate for V2 match alerts
+                                    sig_key = str(signal.id)
+                                    v2_signal_deals[sig_key].append({
+                                        "deal_id": str(deal.id),
+                                        "price_cents": deal.price_cents,
+                                        "price_dropped": getattr(deal, "_price_dropped", False),
+                                        "price_delta": getattr(deal, "_price_delta", 0),
+                                        "hotel_name": deal.hotel_name or "",
+                                        "hotel_id": deal.hotel_id or "",
+                                        "star_rating": deal.star_rating,
+                                        "depart_date": deal.depart_date,
+                                        "return_date": deal.return_date,
+                                        "duration_nights": duration_days,
+                                        "destination": deal.destination or "",
+                                        "destination_str": deal.destination_str or deal.destination or "",
+                                        "origin": deal.origin or "",
+                                        "deeplink_url": deal.deeplink_url or "",
+                                    })
 
-        # Mark expired deals (past departure date) inactive
-        deals_expired = 0
-        with next(get_db()) as db:
-            expired = db.query(Deal).filter(
-                Deal.is_active,
-                Deal.depart_date < date.today()
-            ).all()
-            if expired:
-                deactivated_now = datetime.now(timezone.utc)
-                for deal in expired:
-                    deal.is_active = False
-                    deal.deactivated_at = deactivated_now
-                db.commit()
-                deals_expired = len(expired)
-                logger.info("Marked %d expired deals inactive", deals_expired)
+                            except Exception as e:
+                                logger.error("Error processing deal: %s", e)
+                                cycle_errors.append({"url": url, "error": str(e), "type": "error"})
+                                continue
 
-        # Send match alert emails after full cycle
-        _send_cycle_alerts(v2_signal_deals, user_digest)
+                    time.sleep(random.uniform(8, 20))
 
-        # Refresh signal + route intelligence caches after each scrape cycle
-        try:
-            from app.services.signal_intel import refresh_all_active_signal_caches, refresh_route_intel_cache
-            with next(get_db()) as intel_db:
-                refresh_all_active_signal_caches(intel_db)
-                refresh_route_intel_cache(intel_db)
+            # Mark stale deals inactive
+            try:
+                if seen_dedupe_keys:
+                    with next(get_db()) as db:
+                        stale = db.query(Deal).filter(
+                            Deal.is_active,
+                            Deal.dedupe_key.notin_(seen_dedupe_keys)
+                        ).all()
+                        deactivated_now = datetime.now(timezone.utc)
+                        for deal in stale:
+                            deal.is_active = False
+                            deal.deactivated_at = deactivated_now
+                        db.commit()
+                        deals_deactivated = len(stale)
+                        if stale:
+                            logger.info("Marked %d deals inactive", len(stale))
+            except Exception as e:
+                logger.error("Stale deal deactivation failed: %s", e)
+                cycle_errors.append({"error": str(e), "type": "stale_deactivation"})
+
+            # Mark expired deals (past departure date) inactive
+            try:
+                with next(get_db()) as db:
+                    expired = db.query(Deal).filter(
+                        Deal.is_active,
+                        Deal.depart_date < date.today()
+                    ).all()
+                    if expired:
+                        deactivated_now = datetime.now(timezone.utc)
+                        for deal in expired:
+                            deal.is_active = False
+                            deal.deactivated_at = deactivated_now
+                        db.commit()
+                        deals_expired = len(expired)
+                        logger.info("Marked %d expired deals inactive", deals_expired)
+            except Exception as e:
+                logger.error("Expired deal cleanup failed: %s", e)
+                cycle_errors.append({"error": str(e), "type": "expired_cleanup"})
+
+            # Send match alert emails after full cycle
+            try:
+                _send_cycle_alerts(v2_signal_deals, user_digest)
+            except Exception as e:
+                logger.error("Match alert sending failed: %s", e)
+                cycle_errors.append({"error": str(e), "type": "alert_send"})
+
+            # Refresh signal + route intelligence caches after each scrape cycle
+            try:
+                from app.services.signal_intel import refresh_all_active_signal_caches, refresh_route_intel_cache
+                with next(get_db()) as intel_db:
+                    refresh_all_active_signal_caches(intel_db)
+                    refresh_route_intel_cache(intel_db)
+            except Exception as e:
+                logger.warning("Intel cache refresh failed: %s", e)
+
+            completed_at = datetime.now(timezone.utc)
+            logger.info("Scrape complete. Deals: %d, Matches: %d", total_deals, total_matches)
+
+            # Post completion summary to API
+            try:
+                import requests as _req
+                _req.post("http://api:8000/api/system/collection-complete", json={
+                    "run_id": run_id,
+                    "started_at": started_at.isoformat(),
+                    "completed_at": completed_at.isoformat(),
+                    "total_deals": total_deals,
+                    "total_matches": total_matches,
+                    "error_count": sum(1 for e in cycle_errors if e.get("type") == "error"),
+                    "errors": cycle_errors,
+                    "deals_deactivated": deals_deactivated,
+                    "deals_expired": deals_expired,
+                    "status": "completed",
+                    "proxy_enabled": _cycle_proxy_opener is not None,
+                    "proxy_ip": proxy_ip,
+                    "proxy_geo": proxy_geo,
+                }, headers=_SYSTEM_API_HEADERS, timeout=5)
+            except Exception as e:
+                logger.warning("Failed to post collection summary: %s", e)
+
         except Exception as e:
-            logger.warning("Intel cache refresh failed: %s", e)
+            logger.error("SCRAPE CYCLE CRASHED: %s\n%s", e, traceback.format_exc())
+            # Report crash so the ScrapeRun row doesn't stay orphaned as "running"
+            try:
+                import requests as _req
+                _req.post("http://api:8000/api/system/collection-complete", json={
+                    "run_id": run_id,
+                    "started_at": started_at.isoformat(),
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "total_deals": total_deals,
+                    "total_matches": total_matches,
+                    "error_count": 1,
+                    "errors": [{"error": str(e), "type": "crash"}],
+                    "deals_deactivated": deals_deactivated,
+                    "deals_expired": deals_expired,
+                    "status": "crashed",
+                }, headers=_SYSTEM_API_HEADERS, timeout=5)
+            except Exception:
+                logger.error("Failed to report crash to API")
 
-        completed_at = datetime.now(timezone.utc)
-        logger.info("Scrape complete. Deals: %d, Matches: %d", total_deals, total_matches)
-
-        # Post completion summary to API
-        try:
-            import requests as _req
-            _req.post("http://api:8000/api/system/collection-complete", json={
-                "started_at": started_at.isoformat(),
-                "completed_at": completed_at.isoformat(),
-                "total_deals": total_deals,
-                "total_matches": total_matches,
-                "error_count": sum(1 for e in cycle_errors if e.get("type") == "error"),
-                "errors": cycle_errors,
-                "deals_deactivated": deals_deactivated,
-                "deals_expired": deals_expired,
-                "status": "completed",
-                "proxy_enabled": _cycle_proxy_opener is not None,
-                "proxy_ip": proxy_ip,
-                "proxy_geo": proxy_geo,
-            }, headers=_SYSTEM_API_HEADERS, timeout=5)
-        except Exception as e:
-            logger.warning("Failed to post collection summary: %s", e)
-
-        if once:
+        if once or _shutdown_requested:
+            if _shutdown_requested:
+                logger.info("Shutting down gracefully after completed cycle")
             return
 
         next_time = _next_scrape_time()
@@ -932,7 +986,7 @@ def run_scraper(once: bool = True) -> None:
             import requests as _req
             _req.post("http://api:8000/api/system/next-scan", json={
                 "next_scan_at": next_time.timestamp(),
-                "last_scan_at": completed_at.timestamp(),
+                "last_scan_at": datetime.now(timezone.utc).timestamp(),
             }, headers=_SYSTEM_API_HEADERS, timeout=5)
         except Exception as e:
             logger.warning("Failed to post next_scan time: %s", e)
