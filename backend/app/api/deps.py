@@ -34,7 +34,9 @@ def get_clerk_user_id(
         token = authorization[7:]
         try:
             from app.core.clerk_auth import verify_clerk_token
-            return verify_clerk_token(token)
+            clerk_id = verify_clerk_token(token)
+            logger.info("SECURITY | jwt_auth_ok | clerk_id=%s", clerk_id)
+            return clerk_id
         except Exception as e:
             logger.warning("SECURITY | jwt_verification_failed | error=%s", str(e))
             raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -42,7 +44,7 @@ def get_clerk_user_id(
     # Legacy fallback — remove after frontend migration
     legacy_id = x_clerk_user_id or x_user_id
     if legacy_id:
-        logger.debug("SECURITY | legacy_header_auth | clerk_id=%s", legacy_id)
+        logger.warning("SECURITY | legacy_header_auth | clerk_id=%s", legacy_id)
         return legacy_id
 
     raise HTTPException(status_code=401, detail="Authentication required")
