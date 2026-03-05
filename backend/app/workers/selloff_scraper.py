@@ -15,13 +15,12 @@ from zoneinfo import ZoneInfo
 from typing import Optional
 
 import urllib.request
-from sqlalchemy import func, null, select, text
+from sqlalchemy import null, select, text
 from sqlalchemy.orm import Session
 
 from app.db.models.deal import Deal
 from app.db.models.deal_match import DealMatch
 from app.db.models.deal_price_history import DealPriceHistory
-from app.db.models.notification_outbox import NotificationOutbox
 from app.db.models.signal import Signal
 from app.db.models.user import User
 from app.core.config import settings
@@ -530,25 +529,6 @@ def validate_user_for_email(db: Session, user_email: str) -> tuple[bool, bool]:
     if not is_pro and not is_trial_active:
         logger.info("Skipping digest for expired/inactive user %s", user_email)
         return False, False
-
-    # Respect notification_delivery_speed
-    speed = getattr(user, "notification_delivery_speed", "immediate") or "immediate"
-    if speed == "daily":
-        last_sent = db.execute(
-            select(func.max(NotificationOutbox.sent_at))
-            .where(
-                NotificationOutbox.to_email == user_email,
-                NotificationOutbox.status == "sent",
-            )
-        ).scalar()
-        if last_sent:
-            hours_since = (datetime.now(timezone.utc) - last_sent).total_seconds() / 3600
-            if hours_since < 20:
-                logger.info(
-                    "Skipping daily user %s — last email %.1fh ago",
-                    user_email, hours_since,
-                )
-                return False, is_pro
 
     return True, is_pro
 

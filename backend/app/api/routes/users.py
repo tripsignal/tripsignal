@@ -164,33 +164,28 @@ def get_prefs(
             if user.pro_activation_completed_at
             else None
         ),
-        "notification_delivery_speed": user.notification_delivery_speed,
+        "notification_delivery_frequency": user.notification_delivery_frequency,
         "email_enabled": user.email_enabled,
         "sms_enabled": user.sms_enabled,
         "email_opt_out": user.email_opt_out,
         "alert_threshold": user.alert_threshold,
         "timezone": user.timezone,
-        "quiet_hours_enabled": user.quiet_hours_enabled,
-        "quiet_hours_start": user.quiet_hours_start,
-        "quiet_hours_end": user.quiet_hours_end,
     }
 
 
 # ── PUT /users/prefs ────────────────────────────────────────────────────────
 
 class UpdatePrefsRequest(BaseModel):
-    notification_delivery_speed: str | None = None
+    notification_delivery_frequency: str | None = None
     email_enabled: bool | None = None
     sms_enabled: bool | None = None
     alert_threshold: str | None = None
     timezone: str | None = None
-    quiet_hours_enabled: bool | None = None
-    quiet_hours_start: str | None = None
-    quiet_hours_end: str | None = None
     complete_activation: bool = False
 
 
 _VALID_THRESHOLDS = {"any", "drops", "records"}
+_VALID_FREQUENCIES = {"all", "morning", "noon", "evening"}
 
 
 @router.put("/prefs")
@@ -201,8 +196,18 @@ def update_prefs(
 ):
     user = _get_user_by_clerk(x_clerk_user_id, db)
 
-    if body.notification_delivery_speed is not None:
-        user.notification_delivery_speed = body.notification_delivery_speed
+    if body.notification_delivery_frequency is not None:
+        windows = [w.strip() for w in body.notification_delivery_frequency.split(",")]
+        if not windows:
+            raise HTTPException(status_code=400, detail="At least one frequency window is required")
+        if not all(w in _VALID_FREQUENCIES for w in windows):
+            raise HTTPException(
+                status_code=400,
+                detail=f"frequency values must be: {', '.join(sorted(_VALID_FREQUENCIES))}",
+            )
+        if "all" in windows and len(windows) > 1:
+            raise HTTPException(status_code=400, detail="'all' cannot be combined with other windows")
+        user.notification_delivery_frequency = body.notification_delivery_frequency
     if body.email_enabled is not None:
         user.email_enabled = body.email_enabled
     if body.sms_enabled is not None:
@@ -216,12 +221,6 @@ def update_prefs(
         user.alert_threshold = body.alert_threshold
     if body.timezone is not None:
         user.timezone = body.timezone
-    if body.quiet_hours_enabled is not None:
-        user.quiet_hours_enabled = body.quiet_hours_enabled
-    if body.quiet_hours_start is not None:
-        user.quiet_hours_start = body.quiet_hours_start
-    if body.quiet_hours_end is not None:
-        user.quiet_hours_end = body.quiet_hours_end
 
     if body.complete_activation and user.pro_activation_completed_at is None:
         user.pro_activation_completed_at = datetime.now(timezone.utc)

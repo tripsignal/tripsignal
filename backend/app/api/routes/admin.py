@@ -919,7 +919,7 @@ def users_unified(
             "notification_count": notification_count,
             "notifications": notification_list,
             "last_email_opened_at": last_open.isoformat() if last_open else None,
-            "notification_delivery_speed": u.notification_delivery_speed,
+            "notification_delivery_frequency": u.notification_delivery_frequency,
             "email_enabled": u.email_enabled,
             "email_opt_out": u.email_opt_out,
             # Soft-delete fields

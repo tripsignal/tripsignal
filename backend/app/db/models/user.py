@@ -106,7 +106,9 @@ class User(Base):
     alert_threshold: Mapped[str] = mapped_column(
         Text, nullable=False, server_default=text("'any'"),
     )
-    email_send_hour: Mapped[int | None] = mapped_column(nullable=True)
+    notification_delivery_frequency: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'all'"),
+    )
     timezone: Mapped[str | None] = mapped_column(
         Text, nullable=True, server_default=text("'America/Toronto'"),
     )
@@ -129,3 +131,12 @@ class User(Base):
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()"),
         onupdate=text("now()"),
     )
+
+    @property
+    def frequency_windows(self) -> list[str]:
+        """Parse comma-separated frequency into list: ['morning', 'evening'] or ['all']."""
+        return [w.strip() for w in (self.notification_delivery_frequency or "all").split(",") if w.strip()]
+
+    @property
+    def is_instant_delivery(self) -> bool:
+        return "all" in self.frequency_windows

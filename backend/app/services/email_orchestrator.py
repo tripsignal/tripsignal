@@ -114,9 +114,9 @@ def trigger(
     # ── 2. Suppression checks ─────────────────────────────────────────────
     suppression = _check_suppression(db, user, email_type, category)
     if suppression:
-        if suppression == "quiet_hours":
+        if suppression in ("quiet_hours", "frequency_deferred"):
             _log_deferred(db, user, email_type, category, idempotency_key, context)
-            return {"status": "deferred", "reason": "quiet_hours"}
+            return {"status": "deferred", "reason": suppression}
         _log_suppressed(db, user, email_type, category, idempotency_key, suppression)
         return {"status": "suppressed", "reason": suppression}
 
@@ -314,10 +314,10 @@ def _check_suppression(
                 logger.info("3-strike: user %s downgraded to passive", user.id)
                 return "three_strike_downgrade"
 
-    # 10. Quiet hours: suppress ALERT emails during user's quiet hours.
+    # 10. Frequency-based deferral: non-"all" users get deferred for batch delivery.
     if category == EmailCategory.ALERT and email_type != EmailType.WEEKLY_DIGEST:
-        if _in_quiet_hours(user):
-            return "quiet_hours"
+        if not user.is_instant_delivery:
+            return "frequency_deferred"
 
     # 11. Re-engagement cap: max 1 re-engagement email per 60 days.
     if email_type == EmailType.INACTIVE_REENGAGEMENT:
@@ -485,8 +485,9 @@ def _log_deferred(
     idempotency_key: str | None,
     context: dict | None,
 ) -> None:
-    """Record a deferred email (quiet hours) with full context for later delivery."""
+    """Record a deferred email with full context for later delivery."""
     key = idempotency_key or _build_idempotency_key(email_type, str(user.id), context or {})
+    reason = "frequency_deferred" if not user.is_instant_delivery else "quiet_hours"
     try:
         stmt = pg_insert(EmailLog).values(
             user_id=user.id,
@@ -495,18 +496,21 @@ def _log_deferred(
             idempotency_key=key,
             to_email=user.email,
             status="deferred",
-            suppressed_reason="quiet_hours",
+            suppressed_reason=reason,
             metadata_json=context,
         ).on_conflict_do_nothing(index_elements=["idempotency_key"])
         db.execute(stmt)
         db.commit()
     except Exception:
         db.rollback()
-    logger.info("orchestrator: DEFERRED %s → %s reason=quiet_hours", email_type.value, user.email)
+    logger.info("orchestrator: DEFERRED %s → %s reason=%s", email_type.value, user.email, reason)
+
+
+FREQUENCY_HOURS = {"morning": 8, "noon": 12, "evening": 18}
 
 
 def drain_deferred_emails(db: Session) -> int:
-    """Send deferred quiet-hours emails whose quiet hours have ended.
+    """Send deferred frequency-window emails when the user's chosen window arrives.
 
     Called by the lifecycle worker every poll cycle (~5 min).
     Returns the number of emails sent.
@@ -514,7 +518,7 @@ def drain_deferred_emails(db: Session) -> int:
     rows = db.execute(
         select(EmailLog).where(
             EmailLog.status == "deferred",
-            EmailLog.suppressed_reason == "quiet_hours",
+            EmailLog.suppressed_reason.in_(["quiet_hours", "frequency_deferred"]),
         ).order_by(EmailLog.created_at.asc()).limit(50)
     ).scalars().all()
 
@@ -533,11 +537,11 @@ def drain_deferred_emails(db: Session) -> int:
             db.commit()
             continue
 
-        # Still in quiet hours — skip, will retry next cycle
-        if _in_quiet_hours(user):
+        # Not yet in a delivery window — skip, will retry next cycle
+        if not _in_delivery_window(user):
             continue
 
-        # Quiet hours ended — render and send
+        # Window matched — render and send
         email_type = EmailType(row.email_type)
         context = row.metadata_json or {}
 
@@ -576,26 +580,29 @@ def drain_deferred_emails(db: Session) -> int:
     return sent
 
 
-def _in_quiet_hours(user: User) -> bool:
-    """Check if the current time falls within the user's quiet hours."""
-    if not user.quiet_hours_enabled:
-        return False
+def _in_delivery_window(user: User) -> bool:
+    """Check if the current time matches one of the user's frequency windows.
+
+    For "all" users (instant delivery), always returns True (they shouldn't have
+    deferred emails, but handle gracefully).
+    For time-based windows, matches if the current hour in the user's timezone
+    equals the target hour (morning=8, noon=12, evening=18).
+    """
+    if user.is_instant_delivery:
+        return True
 
     try:
         import zoneinfo
         tz = zoneinfo.ZoneInfo(user.timezone or "America/Toronto")
     except Exception:
-        return False
+        tz = __import__("zoneinfo").ZoneInfo("America/Toronto")
 
     now_local = datetime.now(timezone.utc).astimezone(tz)
     current_hour = now_local.hour
 
-    start = int((user.quiet_hours_start or "21:00").split(":")[0])
-    end = int((user.quiet_hours_end or "08:00").split(":")[0])
+    for window in user.frequency_windows:
+        target_hour = FREQUENCY_HOURS.get(window)
+        if target_hour is not None and current_hour == target_hour:
+            return True
 
-    if start <= end:
-        # Same-day range (e.g., 09:00–17:00)
-        return start <= current_hour < end
-    else:
-        # Overnight range (e.g., 21:00–08:00)
-        return current_hour >= start or current_hour < end
+    return False

@@ -67,7 +67,7 @@ def get_preferences(token: str, db: Session = Depends(get_db)):
         "email": _mask_email(user.email),
         "email_opt_out": user.email_opt_out,
         "plan_type": user.plan_type,
-        "notification_delivery_speed": user.notification_delivery_speed,
+        "notification_delivery_frequency": user.notification_delivery_frequency,
         "signals": signal_list,
     }
 
@@ -95,10 +95,10 @@ def update_preferences(body: UnsubscribeRequest, db: Session = Depends(get_db)):
         db.commit()
         return {"ok": True, "message": "Email notifications re-enabled."}
 
-    elif body.action == "change_speed":
-        user.notification_delivery_speed = "daily"
+    elif body.action in ("change_speed", "change_frequency"):
+        user.notification_delivery_frequency = "morning"
         db.commit()
-        return {"ok": True, "message": "Delivery frequency changed to daily summary."}
+        return {"ok": True, "message": "Delivery changed to morning digest."}
 
     elif body.action == "pause_all":
         # Disable email on every signal (reversible from dashboard)
