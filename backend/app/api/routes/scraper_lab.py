@@ -1,9 +1,8 @@
 """Scraper Lab — test and diagnostic endpoints for the SellOff scraper."""
-import os
-import re
 import random
-import urllib.request
+import re
 import urllib.error
+import urllib.request
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -12,13 +11,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
-from app.db.models.signal import Signal
+from app.api.deps import verify_admin
 from app.db.models.deal import Deal
+from app.db.models.signal import Signal
+from app.db.session import get_db
 
 router = APIRouter(prefix="/admin/scraper-lab", tags=["scraper-lab"])
-
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 
 CATEGORIES = [
     "luxury-vacations",
@@ -148,10 +146,6 @@ def deal_matches_signal_region(deal_region, signal_regions):
     return False
 
 
-def verify_admin(x_admin_token: str | None):
-    token = os.getenv("ADMIN_TOKEN", "").strip()
-    if not token or not x_admin_token or x_admin_token != token:
-        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 def map_region(destination: str) -> Optional[str]:
@@ -263,7 +257,7 @@ def parse_deals_from_html(html: str) -> list[dict]:
                 "deeplink_url": clean_link,
                 "dedupe_key": f"selloff:{gateway}:{hotel_id}:{depart_date}:{duration_days}",
             })
-        except Exception as e:
+        except Exception:
             continue
 
     return deals
@@ -378,7 +372,6 @@ def health_check(
 
     regexes = run_regexes(html)
     all_ok = all(r["ok"] for r in regexes.values())
-    consistent = True  # counts vary by field, not used for ok status
     prices_count = regexes.get("prices", {}).get("count", 0)
 
     return {

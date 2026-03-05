@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 from app.core.config import settings
 from app.db.models.email_log import EmailLog
@@ -27,7 +27,8 @@ def _verify_signature(payload: bytes, signature: str | None) -> bool:
     If no secret is configured, skip verification (dev mode).
     """
     if not settings.RESEND_WEBHOOK_SECRET:
-        return True
+        logger.error("SECURITY | resend_webhook_secret_missing | Webhook verification skipped — RESEND_WEBHOOK_SECRET not configured")
+        return False
     if not signature:
         return False
 
@@ -85,6 +86,11 @@ async def resend_webhook(
     body = await request.body()
 
     if not _verify_signature(body, svix_signature):
+        logger.warning(
+            "SECURITY | resend_webhook_sig_failed | ip=%s | svix_id=%s",
+            request.client.host if request.client else "unknown",
+            svix_id,
+        )
         return JSONResponse(status_code=401, content={"error": "invalid signature"})
 
     try:

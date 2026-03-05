@@ -1,4 +1,4 @@
-.PHONY: help build up down restart logs shell db-shell test clean
+.PHONY: help build up down restart logs shell db-shell test lint typecheck fmt security-scan dep-audit ci clean
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -36,8 +36,30 @@ shell: ## Open shell in API container
 db-shell: ## Open PostgreSQL shell
 	docker compose exec postgres psql -U postgres -d tripsignal
 
-test: ## Run tests (placeholder)
-	@echo "Tests not yet implemented"
+test: ## Run pytest suite
+	python -m pytest backend/tests/ -v --tb=short
+
+lint: ## Run ruff linter
+	ruff check backend/app/
+
+typecheck: ## Run mypy type checker
+	mypy backend/app/ --ignore-missing-imports
+
+fmt: ## Auto-format and fix lint issues
+	ruff check --fix backend/app/
+	ruff format backend/app/
+
+security-scan: ## Run bandit security scanner
+	bandit -r backend/app/ -ll -ii
+
+dep-audit: ## Audit dependencies for known vulnerabilities
+	pip-audit -r requirements.txt
+
+ci: ## Run all checks (lint + typecheck + test + security-scan)
+	$(MAKE) lint
+	$(MAKE) typecheck
+	$(MAKE) test
+	$(MAKE) security-scan
 
 clean: ## Remove containers, volumes, and images
 	docker compose down -v

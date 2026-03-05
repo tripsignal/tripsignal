@@ -4,13 +4,15 @@ from uuid import UUID
 from typing import List
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.db.session import get_db
+from app.db.models.signal import Signal
 from app.db.models.signal_run import SignalRun
 from app.db.models.deal_match import DealMatch
+from app.db.models.user import User
 from app.db.models.deal import Deal
 from app.db.models.deal_price_history import DealPriceHistory
 from app.db.models.hotel_link import HotelLink
@@ -19,6 +21,19 @@ from app.schemas.deal_matches import DealMatchOut, DealOut
 from app.schemas.deals import DealMatchCreate
 
 router = APIRouter(prefix="/signals", tags=["matches"])
+
+
+def _verify_signal_owner(signal_id: UUID, x_user_id: str, db: Session) -> Signal:
+    """Verify the caller owns the signal. Returns the signal or raises 404."""
+    if not x_user_id:
+        raise HTTPException(status_code=401, detail="Missing user ID")
+    user = db.query(User).filter(User.clerk_id == x_user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    signal = db.query(Signal).filter(Signal.id == signal_id, Signal.user_id == user.id).first()
+    if not signal:
+        raise HTTPException(status_code=404, detail="Signal not found")
+    return signal
 
 
 def get_price_trend(db: Session, deal_id: UUID):
@@ -44,12 +59,52 @@ def get_price_trend(db: Session, deal_id: UUID):
         return "stable", first_price, 0
 
 
+def _batch_price_trends(db: Session, deal_ids: list[UUID]) -> dict[UUID, tuple]:
+    """Batch-fetch price trends for multiple deals in a single query.
+
+    Returns {deal_id: (trend, first_price_cents, abs_delta_cents)}.
+    """
+    if not deal_ids:
+        return {}
+
+    rows = (
+        db.query(DealPriceHistory)
+        .filter(DealPriceHistory.deal_id.in_(deal_ids))
+        .order_by(DealPriceHistory.deal_id, DealPriceHistory.recorded_at.asc())
+        .all()
+    )
+
+    # Group by deal_id
+    by_deal: dict[UUID, list] = {}
+    for row in rows:
+        by_deal.setdefault(row.deal_id, []).append(row)
+
+    result = {}
+    for did, history in by_deal.items():
+        if len(history) < 2:
+            result[did] = (None, None, None)
+            continue
+        first_price = history[0].price_cents
+        current_price = history[-1].price_cents
+        delta = current_price - first_price
+        if delta < 0:
+            result[did] = ("down", first_price, abs(delta))
+        elif delta > 0:
+            result[did] = ("up", first_price, delta)
+        else:
+            result[did] = ("stable", first_price, 0)
+
+    return result
+
+
 @router.get("/{signal_id}/matches", response_model=List[DealMatchOut])
 def list_signal_matches(
     signal_id: UUID,
     db: Session = Depends(get_db),
+    x_user_id: str = Header(None),
 ):
     """Return active deals matched to a given signal, favourites first."""
+    _verify_signal_owner(signal_id, x_user_id, db)
     matches = (
         db.query(DealMatch)
         .join(Deal)
@@ -72,9 +127,13 @@ def list_signal_matches(
         )
         ta_urls = {r.hotel_id: r.tripadvisor_url for r in rows}
 
+    # Batch-fetch price trends (fixes N+1)
+    deal_ids = [m.deal.id for m in matches]
+    price_trends = _batch_price_trends(db, deal_ids)
+
     result = []
     for match in matches:
-        trend, previous_price, delta_cents = get_price_trend(db, match.deal.id)
+        trend, previous_price, delta_cents = price_trends.get(match.deal.id, (None, None, None))
         deal_out = DealOut(
             id=match.deal.id,
             provider=match.deal.provider,
@@ -115,8 +174,10 @@ def toggle_favourite(
     signal_id: UUID,
     match_id: UUID,
     db: Session = Depends(get_db),
+    x_user_id: str = Header(None),
 ):
     """Toggle the favourite status of a deal match."""
+    _verify_signal_owner(signal_id, x_user_id, db)
     match = db.query(DealMatch).filter(
         DealMatch.id == match_id,
         DealMatch.signal_id == signal_id,

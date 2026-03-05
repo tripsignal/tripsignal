@@ -13,11 +13,13 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.db.session import get_db
+from app.core.rate_limit import limiter
 from app.db.models.signal import Signal
-from app.db.models.user import User
 from app.db.models.stripe_event import StripeEvent
-from app.services.email_orchestrator import trigger as email_trigger, EmailType
+from app.db.models.user import User
+from app.db.session import get_db
+from app.services.email_orchestrator import EmailType
+from app.services.email_orchestrator import trigger as email_trigger
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +36,9 @@ def get_current_user(x_clerk_user_id: str = Header(...), db: Session = Depends(g
 
 
 @router.post("/checkout")
+@limiter.limit("5/minute")
 async def create_checkout_session(
+    request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -78,6 +82,10 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
         )
     except stripe.error.SignatureVerificationError:
+        logger.warning(
+            "SECURITY | stripe_webhook_sig_failed | ip=%s",
+            request.client.host if request.client else "unknown",
+        )
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     event_id = event["id"]

@@ -4,10 +4,11 @@ import logging
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.rate_limit import limiter
 from app.db.models.deal import Deal
 from app.db.models.deal_match import DealMatch
 from app.db.models.signal import Signal
@@ -62,14 +63,15 @@ def _match_signal_against_deals(db: Session, signal: Signal) -> int:
     Returns the number of new matches created.
     No email is sent — deals just appear on the dashboard immediately.
     """
-    from app.workers.selloff_scraper import deal_matches_signal_region
     from datetime import datetime, timedelta
+
+    from app.workers.selloff_scraper import deal_matches_signal_region
 
     config = signal.config or {}
     budget = config.get("budget", {})
     travel_window = config.get("travel_window", {})
 
-    deals = db.execute(select(Deal).where(Deal.is_active == True)).scalars().all()
+    deals = db.execute(select(Deal).where(Deal.is_active)).scalars().all()
     new_matches = 0
     seen_deal_ids: set = set()
 
@@ -153,7 +155,9 @@ def _match_signal_against_deals(db: Session, signal: Signal) -> int:
 
 
 @router.post("", response_model=SignalOut, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
 async def create_signal(
+    request: Request,
     signal_data: SignalCreate,
     db: Session = Depends(get_db),
     x_user_id: str = Header(None),
@@ -165,6 +169,19 @@ async def create_signal(
     user = db.query(User).filter(User.clerk_id == x_user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    # Enforce per-user signal limits
+    active_count = db.query(func.count(Signal.id)).filter(
+        Signal.user_id == user.id, Signal.status == "active"
+    ).scalar()
+    max_signals = 25 if user.plan_type == "pro" else 3
+    if active_count >= max_signals:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Signal limit reached ({max_signals}). Upgrade to Pro for more signals."
+            if user.plan_type != "pro"
+            else f"Signal limit reached ({max_signals}).",
+        )
 
     # Convert Pydantic models to dict for JSONB storage
     config_dict = signal_data.model_dump()
@@ -198,7 +215,8 @@ async def create_signal(
             select(func.count(Signal.id)).where(Signal.user_id == user.id)
         ).scalar()
         if signal_count == 1:
-            from app.services.email_orchestrator import trigger as email_trigger, EmailType
+            from app.services.email_orchestrator import EmailType
+            from app.services.email_orchestrator import trigger as email_trigger
             email_trigger(
                 db=db,
                 email_type=EmailType.FIRST_SIGNAL,
@@ -252,14 +270,19 @@ async def list_signals(
 async def get_signal(
     signal_id: UUID,
     db: Session = Depends(get_db),
+    x_user_id: str = Header(None),
 ) -> SignalOut:
     """Get a signal by ID."""
-    signal = db.query(Signal).filter(Signal.id == signal_id).first()
+    if not x_user_id:
+        raise HTTPException(status_code=401, detail="Missing user ID")
+
+    user = db.query(User).filter(User.clerk_id == x_user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    signal = db.query(Signal).filter(Signal.id == signal_id, Signal.user_id == user.id).first()
     if not signal:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Signal with id {signal_id} not found",
-        )
+        raise HTTPException(status_code=404, detail="Signal not found")
     return _signal_to_out(signal)
 
 
@@ -290,14 +313,19 @@ async def update_signal(
     signal_id: UUID,
     signal_update: SignalUpdate,
     db: Session = Depends(get_db),
+    x_user_id: str = Header(None),
 ) -> SignalOut:
     """Update a signal."""
-    signal = db.query(Signal).filter(Signal.id == signal_id).first()
+    if not x_user_id:
+        raise HTTPException(status_code=401, detail="Missing user ID")
+
+    user = db.query(User).filter(User.clerk_id == x_user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    signal = db.query(Signal).filter(Signal.id == signal_id, Signal.user_id == user.id).first()
     if not signal:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Signal with id {signal_id} not found",
-        )
+        raise HTTPException(status_code=404, detail="Signal not found")
 
     # Update direct fields
     if signal_update.name is not None:

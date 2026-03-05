@@ -9,9 +9,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.tokens import validate_unsub_token
 from app.db.models.user import User
 from app.db.session import get_db
-from app.workers.selloff_scraper import validate_unsub_token
 
 router = APIRouter(prefix="/api/unsubscribe", tags=["unsubscribe"])
 

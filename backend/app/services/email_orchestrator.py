@@ -151,7 +151,7 @@ def trigger(
     # ── 5. Render template ────────────────────────────────────────────────
     if "_unsub_url" not in context:
         try:
-            from app.workers.selloff_scraper import generate_unsub_token
+            from app.core.tokens import generate_unsub_token
             token = generate_unsub_token(str(user.id))
             context["_unsub_url"] = f"https://tripsignal.ca/unsubscribe?token={token}"
         except Exception:
@@ -549,7 +549,7 @@ def drain_deferred_emails(db: Session) -> int:
 
         if "_unsub_url" not in context:
             try:
-                from app.workers.selloff_scraper import generate_unsub_token
+                from app.core.tokens import generate_unsub_token
                 token = generate_unsub_token(str(user.id))
                 context["_unsub_url"] = f"https://tripsignal.ca/unsubscribe?token={token}"
             except Exception:

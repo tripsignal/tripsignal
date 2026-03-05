@@ -1,29 +1,33 @@
 """FastAPI application entry point."""
+import hmac
+import logging
+import os
 import time
+import traceback
 from datetime import datetime, timezone
 
-import logging
-import traceback
-
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy import select, text
 
-from app.core.config import settings
-from app.core.logging import setup_logging
-from app.db.session import get_db
-from app.db.models.scrape_run import ScrapeRun
-from app.db.models.notification_outbox import NotificationOutbox
 from app.api.routes import health
-from app.api.routes.deal_matches import router as deal_matches_router
-from app.api.routes.billing import router as billing_router
 from app.api.routes.admin import router as admin_router
+from app.api.routes.billing import router as billing_router
+from app.api.routes.clerk_webhook import router as clerk_webhook_router
+from app.api.routes.deal_matches import router as deal_matches_router
+from app.api.routes.resend_webhooks import router as resend_webhook_router
 from app.api.routes.unsubscribe import router as unsubscribe_router
 from app.api.routes.users import router as users_router
-from app.api.routes.clerk_webhook import router as clerk_webhook_router
 from app.api.signals import router as signals_router
-from app.api.routes.resend_webhooks import router as resend_webhook_router
+from app.core.config import settings
+from app.core.logging import setup_logging
+from app.core.rate_limit import limiter
+from app.db.models.notification_outbox import NotificationOutbox
+from app.db.models.scrape_run import ScrapeRun
+from app.db.session import get_db
 
 # Setup logging
 setup_logging()
@@ -38,6 +42,10 @@ app = FastAPI(
     openapi_url="/openapi.json" if settings.DEBUG else None,
 )
 
+# Rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -47,8 +55,30 @@ app.add_middleware(
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "x-clerk-user-id",
+        "x-user-id",
+        "x-timezone",
+        "X-Admin-Token",
+    ],
 )
+
+
+# ── Security helpers ─────────────────────────────────────────────────────────
+
+_security_logger = logging.getLogger("tripsignal.security")
+
+
+def _verify_system_token(x_admin_token: str | None = Header(None, alias="X-Admin-Token")):
+    """Verify the admin token for internal system endpoints."""
+    admin_token = os.getenv("ADMIN_TOKEN", "").strip()
+    if not admin_token:
+        raise HTTPException(status_code=500, detail="ADMIN_TOKEN not configured")
+    if not x_admin_token or not hmac.compare_digest(x_admin_token, admin_token):
+        _security_logger.warning("SECURITY | system_auth_failed | token_present=%s", x_admin_token is not None)
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 # Request logging middleware
@@ -84,6 +114,16 @@ async def log_requests(request: Request, call_next):
 
     return response
 
+
+# Security response headers
+@app.middleware('http')
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 # Catch-all exception handler — log full traceback server-side, return generic error to client
 _logger = logging.getLogger(__name__)
 
@@ -111,7 +151,7 @@ app.include_router(users_router)
 app.include_router(clerk_webhook_router)
 app.include_router(resend_webhook_router)
 
-@app.post("/api/system/next-scan")
+@app.post("/api/system/next-scan", dependencies=[Depends(_verify_system_token)])
 async def set_next_scan(payload: dict):
     """Called by scraper to register next scan time. Persists to system_config."""
     next_scan_at = payload.get("next_scan_at")
@@ -146,7 +186,7 @@ async def next_scan():
         db.close()
 
 
-@app.post("/api/system/scrape-started")
+@app.post("/api/system/scrape-started", dependencies=[Depends(_verify_system_token)])
 async def scrape_started(payload: dict):
     """Called by scraper when a cycle begins. Creates a ScrapeRun row."""
     started_at_str = payload.get("started_at")
@@ -162,7 +202,7 @@ async def scrape_started(payload: dict):
         db.close()
 
 
-@app.post("/api/system/collection-complete")
+@app.post("/api/system/collection-complete", dependencies=[Depends(_verify_system_token)])
 async def collection_complete(payload: dict):
     """Called by scraper when a cycle finishes. Updates or creates a ScrapeRun row."""
     db = next(get_db())

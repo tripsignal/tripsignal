@@ -4,16 +4,17 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.rate_limit import limiter
 from app.db.models.user import User
-from app.db.models.signal import Signal
 from app.db.session import get_db
 from app.services.account import delete_account as _delete_account
-from app.services.email_orchestrator import trigger as email_trigger, EmailType
+from app.services.email_orchestrator import EmailType
+from app.services.email_orchestrator import trigger as email_trigger
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,13 @@ def _get_user_by_clerk(clerk_id: str, db: Session) -> User:
 # ── GET /users/by-clerk-id/{clerk_id} ───────────────────────────────────────
 
 @router.get("/by-clerk-id/{clerk_id}")
-def get_user_by_clerk_id(clerk_id: str, db: Session = Depends(get_db)):
+def get_user_by_clerk_id(
+    clerk_id: str,
+    db: Session = Depends(get_db),
+    x_clerk_user_id: str = Header(..., alias="x-clerk-user-id"),
+):
+    if x_clerk_user_id != clerk_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
     user = _get_user_by_clerk(clerk_id, db)
     return {
         "id": str(user.id),
@@ -58,7 +65,9 @@ def get_user_by_clerk_id(clerk_id: str, db: Session = Depends(get_db)):
 # ── POST /users/sync ────────────────────────────────────────────────────────
 
 @router.post("/sync")
+@limiter.limit("30/minute")
 def sync_user(
+    request: Request,
     db: Session = Depends(get_db),
     x_clerk_user_id: str = Header(..., alias="x-clerk-user-id"),
     x_forwarded_for: str | None = Header(None, alias="x-forwarded-for"),
@@ -247,6 +256,13 @@ def delete_user(
     )
     if not result.ok:
         raise HTTPException(status_code=500, detail=result.error or "Delete failed")
+
+    logger.info(
+        "SECURITY | account_deleted | clerk_id=%s | email=%s | reason=%s",
+        x_clerk_user_id,
+        user.email,
+        body.reason if body else "none",
+    )
 
     # Email sending is now handled inside delete_account() (between phase 1 and phase 2)
     return {

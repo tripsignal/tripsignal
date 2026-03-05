@@ -1,21 +1,17 @@
 """SellOff Vacations scraper and signal matcher."""
-import base64
-import hashlib
-import hmac
+import json
 import logging
 import os
 import random
-import json
 import re
 import time
-import uuid as _uuid
-from collections import defaultdict
-from datetime import date, datetime, timezone, timedelta
-from zoneinfo import ZoneInfo
-from typing import Optional
-
 import urllib.request
-from sqlalchemy import null, select, text
+from collections import defaultdict
+from datetime import date, datetime, timedelta, timezone
+from typing import Optional
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.db.models.deal import Deal
@@ -23,14 +19,12 @@ from app.db.models.deal_match import DealMatch
 from app.db.models.deal_price_history import DealPriceHistory
 from app.db.models.signal import Signal
 from app.db.models.user import User
-from app.core.config import settings
 from app.db.session import get_db
 
 logger = logging.getLogger("selloff_scraper")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
-
-UNSUB_SECRET = os.getenv("UNSUB_SECRET", "tripsignal-unsub-default-key")
 NEXT_SCAN_FILE = "/tmp/next_scan.json"
+_SYSTEM_API_HEADERS = {"X-Admin-Token": os.getenv("ADMIN_TOKEN", "")}
 
 # Proxy configuration (DataImpulse residential proxy)
 PROXY_ENABLED = os.getenv("PROXY_ENABLED", "false").lower() in ("true", "1", "yes")
@@ -433,7 +427,7 @@ def match_deal_to_signals(db: Session, deal: Deal, deal_meta: dict) -> list[Sign
             config = signal.config
             budget = config.get("budget", {})
             travel_window = config.get("travel_window", {})
-            travellers = config.get("travellers", {})
+            config.get("travellers", {})
 
             if deal_meta["gateway"] not in signal.departure_airports:
                 continue
@@ -491,24 +485,6 @@ def match_deal_to_signals(db: Session, deal: Deal, deal_meta: dict) -> list[Sign
 
     return matches
 
-
-def generate_unsub_token(user_id: str) -> str:
-    """Generate an HMAC-signed token encoding a user ID for unsubscribe links."""
-    sig = hmac.new(UNSUB_SECRET.encode(), user_id.encode(), hashlib.sha256).digest()
-    return base64.urlsafe_b64encode(f"{user_id}:{sig.hex()}".encode()).decode()
-
-
-def validate_unsub_token(token: str) -> str | None:
-    """Validate an unsubscribe token. Returns user_id (str UUID) if valid, None otherwise."""
-    try:
-        decoded = base64.urlsafe_b64decode(token).decode()
-        user_id, sig_hex = decoded.rsplit(":", 1)
-        expected = hmac.new(UNSUB_SECRET.encode(), user_id.encode(), hashlib.sha256).digest().hex()
-        if hmac.compare_digest(sig_hex, expected):
-            return user_id
-    except Exception:
-        pass
-    return None
 
 
 def validate_user_for_email(db: Session, user_email: str) -> tuple[bool, bool]:
@@ -588,7 +564,7 @@ def _send_cycle_alerts(
     if not v2_signal_deals:
         return
 
-    from app.db.models.signal_run import SignalRun, SignalRunType, SignalRunStatus
+    from app.db.models.signal_run import SignalRun, SignalRunStatus, SignalRunType
     from app.services.match_alert import process_signal_matches
 
     def _process(db: Session) -> None:
@@ -645,7 +621,7 @@ def _send_cycle_alerts(
 
 def run_matching_only(db: Session) -> None:
     logger.info("Running match-only mode against existing deals")
-    deals = db.execute(select(Deal).where(Deal.is_active == True)).scalars().all()
+    deals = db.execute(select(Deal).where(Deal.is_active)).scalars().all()
     logger.info("Matching %d active deals against active signals", len(deals))
 
     # Pre-compute price deltas from history for all deals
@@ -740,7 +716,7 @@ def run_scraper(once: bool = True) -> None:
                 _req.post("http://api:8000/api/system/next-scan", json={
                     "next_scan_at": next_time.timestamp(),
                     "last_scan_at": datetime.now(timezone.utc).timestamp(),
-                }, timeout=5)
+                }, headers=_SYSTEM_API_HEADERS, timeout=5)
             except Exception as e:
                 logger.warning("Failed to post next_scan time: %s", e)
             time.sleep(sleep_sec)
@@ -797,7 +773,7 @@ def run_scraper(once: bool = True) -> None:
                 "proxy_enabled": _cycle_proxy_opener is not None,
                 "proxy_ip": proxy_ip,
                 "proxy_geo": proxy_geo,
-            }, timeout=5)
+            }, headers=_SYSTEM_API_HEADERS, timeout=5)
         except Exception as e:
             logger.warning("Failed to post scrape-started: %s", e)
 
@@ -879,7 +855,7 @@ def run_scraper(once: bool = True) -> None:
         if seen_dedupe_keys:
             with next(get_db()) as db:
                 stale = db.query(Deal).filter(
-                    Deal.is_active == True,
+                    Deal.is_active,
                     Deal.dedupe_key.notin_(seen_dedupe_keys)
                 ).all()
                 deactivated_now = datetime.now(timezone.utc)
@@ -895,7 +871,7 @@ def run_scraper(once: bool = True) -> None:
         deals_expired = 0
         with next(get_db()) as db:
             expired = db.query(Deal).filter(
-                Deal.is_active == True,
+                Deal.is_active,
                 Deal.depart_date < date.today()
             ).all()
             if expired:
@@ -938,7 +914,7 @@ def run_scraper(once: bool = True) -> None:
                 "proxy_enabled": _cycle_proxy_opener is not None,
                 "proxy_ip": proxy_ip,
                 "proxy_geo": proxy_geo,
-            }, timeout=5)
+            }, headers=_SYSTEM_API_HEADERS, timeout=5)
         except Exception as e:
             logger.warning("Failed to post collection summary: %s", e)
 
@@ -957,7 +933,7 @@ def run_scraper(once: bool = True) -> None:
             _req.post("http://api:8000/api/system/next-scan", json={
                 "next_scan_at": next_time.timestamp(),
                 "last_scan_at": completed_at.timestamp(),
-            }, timeout=5)
+            }, headers=_SYSTEM_API_HEADERS, timeout=5)
         except Exception as e:
             logger.warning("Failed to post next_scan time: %s", e)
         time.sleep(sleep_seconds)

@@ -1,0 +1,8 @@
+# Dev/CI dependencies — not needed in production containers
+-r requirements.txt
+
+ruff>=0.4.0
+mypy>=1.10.0
+pytest>=8.0.0
+bandit>=1.7.8
+pip-audit>=2.7.0

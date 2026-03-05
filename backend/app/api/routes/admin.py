@@ -1,35 +1,30 @@
-from datetime import date as date_type, datetime, timedelta, timezone
 import logging
 import os
+from datetime import date as date_type
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException
-from fastapi.responses import Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import select, func, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
+from app.api.deps import verify_admin
+from app.core.rate_limit import limiter
+from app.db.models.deal import Deal
+from app.db.models.hotel_link import HotelLink
 from app.db.models.notification_outbox import NotificationOutbox
-from app.db.models.user import User
+from app.db.models.scrape_run import ScrapeRun
 from app.db.models.signal import Signal
 from app.db.models.signal_run import SignalRun
-from app.db.models.deal import Deal
-from app.db.models.scrape_run import ScrapeRun
-from app.db.models.hotel_link import HotelLink
-from app.services.account import delete_account, restore_account, VALID_REASONS
+from app.db.models.user import User
+from app.db.session import get_db
+from app.services.account import delete_account, restore_account
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-
-def verify_admin(x_admin_token: str | None):
-    admin_token = os.getenv("ADMIN_TOKEN", "").strip()
-    if not admin_token:
-        raise HTTPException(status_code=500, detail="ADMIN_TOKEN not configured")
-    if not x_admin_token or x_admin_token != admin_token:
-        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 class TestEmailIn(BaseModel):
@@ -41,7 +36,9 @@ class TestEmailIn(BaseModel):
 
 
 @router.post("/test-email", status_code=201)
+@limiter.limit("10/minute")
 def enqueue_test_email(
+    request: Request,
     payload: TestEmailIn,
     db: Session = Depends(get_db),
     x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
@@ -102,9 +99,9 @@ def system_health(
 ):
     verify_admin(x_admin_token)
 
-    total_users = db.execute(select(func.count()).select_from(User).where(User.is_test_user == False)).scalar()
-    free_users = db.execute(select(func.count()).select_from(User).where(User.plan_type == "free", User.is_test_user == False)).scalar()
-    pro_users = db.execute(select(func.count()).select_from(User).where(User.plan_type == "pro", User.is_test_user == False)).scalar()
+    total_users = db.execute(select(func.count()).select_from(User).where(not User.is_test_user)).scalar()
+    free_users = db.execute(select(func.count()).select_from(User).where(User.plan_type == "free", not User.is_test_user)).scalar()
+    pro_users = db.execute(select(func.count()).select_from(User).where(User.plan_type == "pro", not User.is_test_user)).scalar()
     active_signals = db.execute(select(func.count()).select_from(Signal).where(Signal.status == "active")).scalar()
     runs_24h = db.execute(
         select(func.count()).select_from(SignalRun).where(
@@ -174,7 +171,7 @@ def list_signals(
 
     rows = db.execute(
         select(Signal, User.email, User.plan_type)
-        
+
         .order_by(Signal.created_at.desc())
         .limit(limit)
         .offset(offset)
@@ -243,8 +240,8 @@ def list_users(
     query = select(User)
     count_query = select(func.count()).select_from(User)
     if not include_test_users:
-        query = query.where(User.is_test_user == False)
-        count_query = count_query.where(User.is_test_user == False)
+        query = query.where(not User.is_test_user)
+        count_query = count_query.where(not User.is_test_user)
     if search:
         query = query.where(User.email.ilike(f"%{search}%"))
         count_query = count_query.where(User.email.ilike(f"%{search}%"))
@@ -541,7 +538,6 @@ def run_trial_expiry(
     Safe to call repeatedly — each user only gets one email (guarded by
     trial_expired_email_sent_at).
     """
-    from app.core.config import settings
 
     verify_admin(x_admin_token)
     now = datetime.now(timezone.utc)
@@ -556,7 +552,7 @@ def run_trial_expiry(
             User.plan_type == "free",
             User.deleted_at.is_(None),
             User.trial_expired_email_sent_at.is_(None),
-            User.email_opt_out == False,
+            not User.email_opt_out,
             User.email != "",
         )
     ).scalars().all()
@@ -564,7 +560,8 @@ def run_trial_expiry(
     sent = 0
     failed = 0
     for user in expired_users:
-        from app.services.email_orchestrator import trigger as email_trigger, EmailType
+        from app.services.email_orchestrator import EmailType
+        from app.services.email_orchestrator import trigger as email_trigger
         result = email_trigger(
             db=db,
             email_type=EmailType.TRIAL_EXPIRED_UPSELL,
@@ -599,13 +596,13 @@ def list_notifications(
     query = (
         select(NotificationOutbox, User.email)
         .join(Signal, NotificationOutbox.signal_id == Signal.id)
-        
+
     )
     count_query = (
         select(func.count())
         .select_from(NotificationOutbox)
         .join(Signal, NotificationOutbox.signal_id == Signal.id)
-        
+
     )
 
     if status:
@@ -729,16 +726,16 @@ def list_deals(
         )
     elif view == "removed":
         query = select(Deal).where(
-            Deal.is_active == False,
+            not Deal.is_active,
             Deal.deactivated_at.isnot(None),
         )
         count_query = select(func.count()).select_from(Deal).where(
-            Deal.is_active == False,
+            not Deal.is_active,
             Deal.deactivated_at.isnot(None),
         )
     else:
-        query = select(Deal).where(Deal.is_active == True)
-        count_query = select(func.count()).select_from(Deal).where(Deal.is_active == True)
+        query = select(Deal).where(Deal.is_active)
+        count_query = select(func.count()).select_from(Deal).where(Deal.is_active)
 
     order = Deal.deactivated_at.desc() if view == "removed" else Deal.price_cents.asc()
     deals = db.execute(
@@ -753,12 +750,12 @@ def list_deals(
             func.count(func.distinct(Deal.destination)).label("destinations"),
             func.avg(Deal.discount_pct).label("avg_discount"),
             func.min(Deal.price_cents).label("min_price"),
-        ).select_from(Deal).where(Deal.is_active == True)
+        ).select_from(Deal).where(Deal.is_active)
     ).one()
 
     expired_active_count = db.execute(
         select(func.count()).select_from(Deal).where(
-            Deal.is_active == True,
+            Deal.is_active,
             Deal.depart_date < date_type.today(),
         )
     ).scalar()
@@ -815,20 +812,20 @@ def users_unified(
 
     # New status_filter takes priority over include_test_users
     if status_filter == "active":
-        query = query.where(User.deleted_at.is_(None), User.is_test_user == False)
-        count_query = count_query.where(User.deleted_at.is_(None), User.is_test_user == False)
+        query = query.where(User.deleted_at.is_(None), not User.is_test_user)
+        count_query = count_query.where(User.deleted_at.is_(None), not User.is_test_user)
     elif status_filter == "deleted":
         query = query.where(User.deleted_at.isnot(None))
         count_query = count_query.where(User.deleted_at.isnot(None))
     elif status_filter == "test":
-        query = query.where(User.is_test_user == True)
-        count_query = count_query.where(User.is_test_user == True)
+        query = query.where(User.is_test_user)
+        count_query = count_query.where(User.is_test_user)
     elif status_filter == "all":
         pass  # No filtering — show everyone
     elif not include_test_users:
         # Legacy: exclude test users and deleted users by default
-        query = query.where(User.is_test_user == False, User.deleted_at.is_(None))
-        count_query = count_query.where(User.is_test_user == False, User.deleted_at.is_(None))
+        query = query.where(not User.is_test_user, User.deleted_at.is_(None))
+        count_query = count_query.where(not User.is_test_user, User.deleted_at.is_(None))
     if search:
         query = query.where(User.email.ilike(f"%{search}%"))
         count_query = count_query.where(User.email.ilike(f"%{search}%"))
@@ -974,7 +971,7 @@ def list_hotels(
     # Count active deals per hotel
     deal_counts = dict(db.execute(
         select(Deal.hotel_id, func.count())
-        .where(Deal.is_active == True)
+        .where(Deal.is_active)
         .group_by(Deal.hotel_id)
     ).all())
 
@@ -1034,7 +1031,7 @@ def list_email_types(
 ):
     """Return all available email types with their categories."""
     verify_admin(x_admin_token)
-    from app.services.email_orchestrator import EmailType, EMAIL_TYPE_CATEGORY
+    from app.services.email_orchestrator import EMAIL_TYPE_CATEGORY, EmailType
 
     result = []
     for et in EmailType:
@@ -1055,9 +1052,9 @@ def send_test_email(
 ):
     """Render a template with a fake user and send it to the provided address."""
     verify_admin(x_admin_token)
-    from app.services.email_orchestrator import EmailType, EMAIL_TYPE_CATEGORY
-    from app.services.email_templates import render_template
     from app.services.email import send_email
+    from app.services.email_orchestrator import EmailType
+    from app.services.email_templates import render_template
 
     # Validate email type
     try:
@@ -1086,7 +1083,7 @@ def send_test_email(
 
     # Generate a real unsubscribe token if possible
     try:
-        from app.workers.selloff_scraper import generate_unsub_token
+        from app.core.tokens import generate_unsub_token
         token = generate_unsub_token(str(fake_user.id))
         context["_unsub_url"] = f"https://tripsignal.ca/unsubscribe?token={token}"
     except Exception:
@@ -1144,7 +1141,7 @@ def preview_email(
     context = _sample_context(email_type)
 
     try:
-        from app.workers.selloff_scraper import generate_unsub_token
+        from app.core.tokens import generate_unsub_token
         token = generate_unsub_token(str(preview_user.id))
         context["_unsub_url"] = f"https://tripsignal.ca/unsubscribe?token={token}"
     except Exception:
@@ -1201,9 +1198,9 @@ def list_email_templates(
 ):
     """List all email types with their override status and available variables."""
     verify_admin(x_admin_token)
-    from app.services.email_orchestrator import EmailType, EMAIL_TYPE_CATEGORY
-    from app.services.email_templates import TEMPLATE_VARIABLES
     from app.db.models.email_template_override import EmailTemplateOverride
+    from app.services.email_orchestrator import EMAIL_TYPE_CATEGORY, EmailType
+    from app.services.email_templates import TEMPLATE_VARIABLES
 
     overrides = {
         row.email_type: row
@@ -1234,9 +1231,9 @@ def get_email_template(
 ):
     """Get the default template and any DB override for a specific email type."""
     verify_admin(x_admin_token)
+    from app.db.models.email_template_override import EmailTemplateOverride
     from app.services.email_orchestrator import EmailType
     from app.services.email_templates import TEMPLATE_VARIABLES, get_default_body
-    from app.db.models.email_template_override import EmailTemplateOverride
 
     try:
         et = EmailType(email_type)
@@ -1271,8 +1268,8 @@ def upsert_email_template(
 ):
     """Create or update a template override."""
     verify_admin(x_admin_token)
-    from app.services.email_orchestrator import EmailType
     from app.db.models.email_template_override import EmailTemplateOverride
+    from app.services.email_orchestrator import EmailType
 
     try:
         et = EmailType(email_type)
@@ -1321,8 +1318,8 @@ def delete_email_template(
 ):
     """Delete a template override, reverting to the Python default."""
     verify_admin(x_admin_token)
-    from app.services.email_orchestrator import EmailType
     from app.db.models.email_template_override import EmailTemplateOverride
+    from app.services.email_orchestrator import EmailType
 
     try:
         et = EmailType(email_type)

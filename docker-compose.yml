@@ -118,8 +118,8 @@ services:
       PROXY_ENABLED: "true"
       PROXY_HOST: gw.dataimpulse.com
       PROXY_PORT: "823"
-      PROXY_USER: 8a5df76d9547a5a8410b
-      PROXY_PASS: 78a0ac5e257c2c22
+      PROXY_USER: ${PROXY_USER:?set in .env}
+      PROXY_PASS: ${PROXY_PASS:?set in .env}
       PROXY_COUNTRY: cr.ca
     command: ["python", "-c", "import sys; sys.path.insert(0, '/app/backend'); from app.workers.selloff_scraper import run_scraper; run_scraper(once=False)"]
     depends_on:

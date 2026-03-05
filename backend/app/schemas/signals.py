@@ -109,8 +109,8 @@ class TravelWindow(BaseModel):
 
     start_month: str = Field(description="Start month in YYYY-MM format")
     end_month: str = Field(description="End month in YYYY-MM format")
-    min_nights: int = Field(default=7, ge=1, description="Minimum nights")
-    max_nights: int = Field(default=10, ge=1, description="Maximum nights")
+    min_nights: int = Field(default=7, ge=1, le=30, description="Minimum nights")
+    max_nights: int = Field(default=10, ge=1, le=30, description="Maximum nights")
     start_date: Optional[str] = Field(default=None, description="Specific start date in YYYY-MM-DD format")
     end_date: Optional[str] = Field(default=None, description="Specific end date in YYYY-MM-DD format")
 
@@ -133,9 +133,9 @@ class TravelWindow(BaseModel):
 class Travellers(BaseModel):
     """Traveller specification."""
 
-    adults: int = Field(default=2, ge=1, description="Number of adults")
-    children_ages: list[int] = Field(default_factory=list, description="Ages of children")
-    rooms: int = Field(default=1, ge=1, description="Number of rooms")
+    adults: int = Field(default=2, ge=1, le=10, description="Number of adults")
+    children_ages: list[int] = Field(default_factory=list, max_length=10, description="Ages of children")
+    rooms: int = Field(default=1, ge=1, le=10, description="Number of rooms")
 
     @field_validator("children_ages")
     @classmethod
@@ -151,7 +151,7 @@ class BudgetSpec(BaseModel):
     """Budget specification."""
 
     currency: str = Field(default="CAD", description="Currency code")
-    target_pp: int = Field(description="Target price per person")
+    target_pp: int = Field(ge=0, le=100000, description="Target price per person in cents")
     strict: bool = Field(default=False, description="Whether to strictly enforce budget")
 
 
@@ -206,7 +206,7 @@ class Preferences(BaseModel):
 class SignalCreate(BaseModel):
     """Schema for creating a new signal."""
 
-    name: str = Field(description="Signal name")
+    name: str = Field(min_length=1, max_length=200, description="Signal name")
     departure: DepartureSpec
     destination: DestinationSpec
     travel_window: TravelWindow

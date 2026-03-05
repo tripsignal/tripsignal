@@ -23,17 +23,15 @@ class Settings(BaseSettings):
     EMAIL_SUSPEND_NONCRITICAL: bool = False
     RESEND_WEBHOOK_SECRET: str = ""
 
+    # Unsubscribe token signing
+    UNSUB_SECRET: str = ""
+
     # Database Settings
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_DB: str = "tripsignal"
     POSTGRES_HOST: str = "postgres"
     POSTGRES_PORT: int = 5432
-
-    # Stripe
-    STRIPE_SECRET_KEY: str = ""
-    STRIPE_WEBHOOK_SECRET: str = ""
-    STRIPE_PRO_PRICE_ID: str = ""
 
     @property
     def database_url(self) -> str:
