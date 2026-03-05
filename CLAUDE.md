@@ -46,12 +46,10 @@ PostgreSQL runs in Docker. Access via:
 docker exec tripsignal-postgres psql -U postgres -d tripsignal
 ```
 
-**Alembic migration chain is broken** (missing revision `52ad9123d649`). Apply schema changes via direct SQL:
+Apply migrations via Alembic:
 ```bash
-docker exec tripsignal-postgres psql -U postgres -d tripsignal -c "ALTER TABLE ..."
+docker exec tripsignal-api alembic upgrade head
 ```
-
-Then update the SQLAlchemy model to match.
 
 ## Key Files
 

@@ -1,6 +1,6 @@
 """add email orchestration tables and columns
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: a1b2c3d4e5f7
 Revises: f6a7b8c9d0e1
 Create Date: 2026-02-28
 
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
-revision = 'a1b2c3d4e5f6'
+revision = 'a1b2c3d4e5f7'
 down_revision = 'f6a7b8c9d0e1'
 branch_labels = None
 depends_on = None
