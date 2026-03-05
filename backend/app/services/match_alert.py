@@ -27,7 +27,7 @@ from app.db.models.signal import Signal
 from app.db.models.signal_intel_cache import SignalIntelCache
 from app.db.models.user import User
 from app.services.email_orchestrator import trigger as email_trigger, EmailType
-from app.services.signal_intel import get_airport_arbitrage
+from app.services.signal_intel import get_airport_arbitrage, get_departure_heatmap
 
 logger = logging.getLogger(__name__)
 
@@ -411,7 +411,13 @@ def process_signal_matches(
             if arbitrage:
                 context["arbitrage"] = arbitrage
 
-        # ── 4c. Departure window context (from route intel) ──────────────
+        # ── 4c. Departure heatmap (computed per-email) ──────────────────
+        if deal_origin and deal_destination:
+            heatmap = get_departure_heatmap(db, deal_origin, deal_destination)
+            if heatmap:
+                context["departure_heatmap"] = heatmap
+
+        # ── 4d. Departure window context (from route intel) ──────────────
         if route_intel:
             context["route_intel"] = {
                 "cheapest_depart_week": str(route_intel.cheapest_depart_week) if route_intel.cheapest_depart_week else None,

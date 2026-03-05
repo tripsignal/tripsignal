@@ -181,6 +181,54 @@ def destination_index_html(destinations: list[dict]) -> str:
     )
 
 
+def departure_heatmap_html(weeks: list[dict]) -> str:
+    """Render a departure window heatmap showing avg price by week.
+
+    Each dict: {week, avg_cents, deal_count, is_cheapest, is_priciest}
+    """
+    if not weeks:
+        return ""
+
+    rows = []
+    for w in weeks:
+        price = format_price(w["avg_cents"])
+        # Format week as "Mar 9" style
+        try:
+            from datetime import date as date_type
+            d = date_type.fromisoformat(w["week"])
+            label = d.strftime("%b %-d")
+        except (ValueError, TypeError):
+            label = str(w["week"])
+
+        if w.get("is_cheapest"):
+            bg = "background:#dcfce7;"
+            badge = ' <span style="color:#166534;font-size:11px;font-weight:600;">CHEAPEST</span>'
+        elif w.get("is_priciest"):
+            bg = "background:#fef2f2;"
+            badge = ' <span style="color:#991b1b;font-size:11px;font-weight:600;">PRICIEST</span>'
+        else:
+            bg = ""
+            badge = ""
+
+        rows.append(
+            f'<div style="display:flex;justify-content:space-between;align-items:center;'
+            f'padding:8px 16px;{bg}border-bottom:1px solid #f3f4f6;">'
+            f'<span style="font-size:13px;color:#333;">Week of {label}{badge}</span>'
+            f'<span style="font-size:13px;color:#111;font-weight:600;">'
+            f'{price}/pp</span></div>'
+        )
+
+    return (
+        '<div style="border:1px solid #e5e7eb;border-radius:12px;'
+        'overflow:hidden;margin-bottom:24px;">'
+        '<div style="padding:12px 16px;background:#f9fafb;border-bottom:1px solid #e5e7eb;">'
+        '<p style="margin:0;font-size:13px;font-weight:600;color:#666;text-transform:uppercase;'
+        'letter-spacing:0.5px;">Avg price by departure week</p></div>'
+        + "".join(rows)
+        + "</div>"
+    )
+
+
 def pricing_disclaimer() -> str:
     """Standard pricing disclaimer for deal-related emails."""
     return (

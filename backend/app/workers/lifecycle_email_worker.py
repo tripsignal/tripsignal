@@ -641,8 +641,16 @@ def _run_weekly_digests(db: Session, now: datetime) -> int:
                 primary_airport = sig.departure_airports[0]
                 break
         if primary_airport:
-            from app.services.signal_intel import get_destination_index
+            from app.services.signal_intel import get_destination_index, get_departure_heatmap
             dest_index = get_destination_index(db, primary_airport, limit=5)
+
+        # Departure heatmap for the user's primary route
+        heatmap = None
+        if primary_airport and first_signal:
+            # Use the first signal's destination regions to get a heatmap
+            dest_regions = first_signal.destination_regions or []
+            if dest_regions:
+                heatmap = get_departure_heatmap(db, primary_airport, dest_regions[0])
 
         context = {
             "deal_count": len(all_deals),
@@ -659,6 +667,7 @@ def _run_weekly_digests(db: Session, now: datetime) -> int:
             "days_monitoring": days_monitoring,
             "week_iso": week_iso,
             "destination_index": dest_index or None,
+            "departure_heatmap": heatmap,
         }
 
         try:

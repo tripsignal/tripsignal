@@ -11,6 +11,7 @@ from app.services.email_templates.base import (
     wrap, button, para, heading, info_box,
     stars_html, format_price, pricing_disclaimer, new_low_banner, price_drop_banner,
     value_score_badge, arbitrage_line, destination_index_html,
+    departure_heatmap_html,
 )
 
 if TYPE_CHECKING:
@@ -173,6 +174,11 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
     arb = context.get("arbitrage")
     if arb:
         parts.append(arbitrage_line(arb["arbitrage_airport"], arb["arbitrage_savings_cents"]))
+
+    # ── Departure heatmap (between deal card and intel) ──
+    heatmap = context.get("departure_heatmap")
+    if heatmap:
+        parts.append(departure_heatmap_html(heatmap))
 
     # ── Zone 4: One-line intel ──
     if intel_sentence:
@@ -682,6 +688,11 @@ def weekly_digest(*, user: "User", context: dict) -> tuple[str, str]:
     dest_index = context.get("destination_index")
     if dest_index:
         parts.append(destination_index_html(dest_index))
+
+    # ── Zone 3c: Departure Heatmap ──
+    heatmap = context.get("departure_heatmap")
+    if heatmap:
+        parts.append(departure_heatmap_html(heatmap))
 
     # ── Zone 4: Signal health ──
     if total_matches > 0 or days_monitoring > 0:

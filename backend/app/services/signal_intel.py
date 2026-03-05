@@ -551,6 +551,55 @@ def get_airport_arbitrage(
     }
 
 
+def get_departure_heatmap(
+    db: Session,
+    origin: str,
+    destination: str,
+    limit: int = 8,
+) -> list[dict] | None:
+    """Get average price by departure week for a route.
+
+    Returns a list of dicts sorted chronologically:
+    [{week: "2026-03-09", avg_cents: 118000, deal_count: 12, is_cheapest: bool, is_priciest: bool}, ...]
+    or None if insufficient data.
+    """
+    rows = db.execute(
+        sa_text("""
+            SELECT DATE_TRUNC('week', depart_date)::date AS week,
+                   AVG(price_cents)::int AS avg_price,
+                   COUNT(*) AS deal_count
+            FROM deals
+            WHERE origin = :origin AND destination = :dest
+              AND depart_date >= CURRENT_DATE
+              AND is_active = true
+            GROUP BY week
+            HAVING COUNT(*) >= 3
+            ORDER BY week ASC
+            LIMIT :lim
+        """),
+        {"origin": origin, "dest": destination, "lim": limit},
+    ).fetchall()
+
+    if len(rows) < 3:
+        return None
+
+    # Find min/max for labeling
+    prices = [r[1] for r in rows]
+    min_price = min(prices)
+    max_price = max(prices)
+
+    return [
+        {
+            "week": str(r[0]),
+            "avg_cents": r[1],
+            "deal_count": r[2],
+            "is_cheapest": r[1] == min_price,
+            "is_priciest": r[1] == max_price,
+        }
+        for r in rows
+    ]
+
+
 def get_destination_index(db: Session, origin: str, limit: int = 5) -> list[dict]:
     """Get the destination price index leaderboard for an airport.
 
