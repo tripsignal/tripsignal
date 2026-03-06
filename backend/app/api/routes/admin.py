@@ -116,22 +116,18 @@ def system_health(
         total_deals = 0
         last_scrape = None
 
+    from app.db.models.email_log import EmailLog
     emails_24h = db.execute(
-        select(func.count()).select_from(NotificationOutbox).where(
-            NotificationOutbox.channel == "email",
-            NotificationOutbox.created_at > text("NOW() - INTERVAL '24 hours'")
+        select(func.count()).select_from(EmailLog).where(
+            EmailLog.status.in_(["sent", "dry_run"]),
+            EmailLog.created_at > text("NOW() - INTERVAL '24 hours'")
         )
     ).scalar()
-    sms_24h = db.execute(
-        select(func.count()).select_from(NotificationOutbox).where(
-            NotificationOutbox.channel == "sms",
-            NotificationOutbox.created_at > text("NOW() - INTERVAL '24 hours'")
-        )
-    ).scalar()
+    sms_24h = 0  # SMS not implemented
     failures_24h = db.execute(
-        select(func.count()).select_from(NotificationOutbox).where(
-            NotificationOutbox.status == "dead",
-            NotificationOutbox.created_at > text("NOW() - INTERVAL '24 hours'")
+        select(func.count()).select_from(EmailLog).where(
+            EmailLog.status.in_(["failed", "suppressed"]),
+            EmailLog.created_at > text("NOW() - INTERVAL '24 hours'")
         )
     ).scalar()
     last_signal_run = db.execute(select(func.max(SignalRun.started_at))).scalar()
@@ -593,28 +589,21 @@ def list_notifications(
     offset = (page - 1) * limit
     limit = max(1, min(limit, 100))
 
-    query = (
-        select(NotificationOutbox, User.email)
-        .join(Signal, NotificationOutbox.signal_id == Signal.id)
+    from app.db.models.email_log import EmailLog
 
-    )
-    count_query = (
-        select(func.count())
-        .select_from(NotificationOutbox)
-        .join(Signal, NotificationOutbox.signal_id == Signal.id)
-
-    )
+    query = select(EmailLog)
+    count_query = select(func.count()).select_from(EmailLog)
 
     if status:
-        query = query.where(NotificationOutbox.status == status)
-        count_query = count_query.where(NotificationOutbox.status == status)
+        query = query.where(EmailLog.status == status)
+        count_query = count_query.where(EmailLog.status == status)
     if email:
-        query = query.where(User.email.ilike(f"%{email}%"))
-        count_query = count_query.where(User.email.ilike(f"%{email}%"))
+        query = query.where(EmailLog.to_email.ilike(f"%{email}%"))
+        count_query = count_query.where(EmailLog.to_email.ilike(f"%{email}%"))
 
     rows = db.execute(
-        query.order_by(NotificationOutbox.created_at.desc()).limit(limit).offset(offset)
-    ).all()
+        query.order_by(EmailLog.created_at.desc()).limit(limit).offset(offset)
+    ).scalars().all()
     total = db.execute(count_query).scalar()
 
     return {
@@ -622,19 +611,19 @@ def list_notifications(
             {
                 "id": str(n.id),
                 "created_at": n.created_at.isoformat(),
-                "user_email": user_email,
-                "signal_id": str(n.signal_id) if n.signal_id else None,
-                "type": n.channel,
+                "user_email": n.to_email,
+                "signal_id": None,
+                "type": n.email_type,
                 "status": n.status,
-                "error_message": n.last_error,
+                "error_message": n.suppressed_reason,
                 "to_email": n.to_email,
-                "opened_at": n.opened_at.isoformat() if n.opened_at else None,
-                "open_count": n.open_count or 0,
+                "opened_at": None,
+                "open_count": 0,
                 "subject": n.subject,
-                "body_text": n.body_text,
+                "body_text": None,
                 "sent_at": n.sent_at.isoformat() if n.sent_at else None,
             }
-            for n, user_email in rows
+            for n in rows
         ],
         "total": total,
     }
@@ -865,17 +854,18 @@ def users_unified(
                 "created_at": sig.created_at.isoformat(),
             })
 
-        # Notifications for this user (by email match, most recent 50)
+        # Email history for this user (from email_log, most recent 50)
+        from app.db.models.email_log import EmailLog
         notifs = db.execute(
-            select(NotificationOutbox)
-            .where(NotificationOutbox.to_email == u.email)
-            .order_by(NotificationOutbox.created_at.desc())
+            select(EmailLog)
+            .where(EmailLog.to_email == u.email)
+            .order_by(EmailLog.created_at.desc())
             .limit(50)
         ).scalars().all()
 
         notification_count = db.execute(
-            select(func.count()).select_from(NotificationOutbox)
-            .where(NotificationOutbox.to_email == u.email)
+            select(func.count()).select_from(EmailLog)
+            .where(EmailLog.to_email == u.email)
         ).scalar()
 
         notification_list = []
@@ -884,19 +874,15 @@ def users_unified(
                 "id": str(n.id),
                 "sent_at": n.sent_at.isoformat() if n.sent_at else None,
                 "created_at": n.created_at.isoformat() if n.created_at else None,
-                "type": n.channel,
+                "type": n.email_type,
                 "status": n.status,
-                "opened_at": n.opened_at.isoformat() if n.opened_at else None,
-                "open_count": n.open_count or 0,
-                "error": n.last_error,
+                "opened_at": None,
+                "open_count": 0,
+                "error": n.suppressed_reason,
                 "subject": n.subject,
             })
 
-        # Last email opened
-        last_open = db.execute(
-            select(func.max(NotificationOutbox.opened_at))
-            .where(NotificationOutbox.to_email == u.email)
-        ).scalar()
+        last_open = None
 
         results.append({
             "id": str(u.id),

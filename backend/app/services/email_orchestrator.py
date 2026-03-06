@@ -295,27 +295,6 @@ def _check_suppression(
         if alert_today >= 1:
             return "daily_cap"
 
-    # 9. 3-strike rule: 3 consecutive alert emails with no open -> downgrade to passive.
-    if category == EmailCategory.ALERT and email_type != EmailType.WEEKLY_DIGEST:
-        last_3_alerts = db.execute(
-            select(EmailLog).where(
-                EmailLog.user_id == user.id,
-                EmailLog.category == "alert",
-                EmailLog.status.in_(["sent", "delivered"]),
-            ).order_by(EmailLog.sent_at.desc()).limit(3)
-        ).scalars().all()
-
-        if len(last_3_alerts) >= 3:
-            all_unopened = all(
-                not (log.metadata_json or {}).get("opens")
-                for log in last_3_alerts
-            )
-            if all_unopened:
-                user.email_mode = "passive"
-                db.flush()
-                logger.info("3-strike: user %s downgraded to passive", user.id)
-                return "three_strike_downgrade"
-
     # 10. Frequency-based deferral: non-"all" users get deferred for batch delivery.
     if category == EmailCategory.ALERT and email_type != EmailType.WEEKLY_DIGEST:
         if not user.is_instant_delivery:
