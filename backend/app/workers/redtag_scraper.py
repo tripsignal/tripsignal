@@ -62,8 +62,6 @@ REDTAG_DEAL_CITIES = {
 
 # Regex to extract data-deal JSON from Continue buttons
 _DATA_DEAL_RE = re.compile(r'data-deal="([^"]+)"')
-# Regex to extract hotel detail page URLs
-_HOTEL_URL_RE = re.compile(r'href="(/hotel-resorts/[^"]+/)"')
 
 # Block detection: HTTP codes and page body markers
 _BLOCK_STATUS_CODES = {403, 429, 503}
@@ -185,51 +183,16 @@ def parse_date(date_str: str) -> Optional[date]:
     return None
 
 
-def _build_hotel_url_map(html_str: str) -> dict[str, str]:
-    """Build a map from hotel detail URL slug to full path.
-
-    Each deal card has an <a href="/hotel-resorts/{country}/{city}/{slug}/">
-    link near the hotel name, followed by a <button data-deal="..."> further
-    down. We collect all hotel-resorts URLs and map by slug for lookup.
-    Since slugs aren't in the data-deal JSON, we also build a positional
-    map: for each data-deal button position, find the nearest preceding
-    hotel-resorts URL.
-    """
-    hotel_urls: list[tuple[int, str]] = []
-    for m in _HOTEL_URL_RE.finditer(html_str):
-        hotel_urls.append((m.start(), m.group(1)))
-
-    deal_positions: list[tuple[int, str]] = []
-    for m in _DATA_DEAL_RE.finditer(html_str):
-        deal_positions.append((m.start(), m.group(1)))
-
-    # For each data-deal position, find the nearest preceding hotel URL
-    position_map: dict[str, str] = {}  # encoded_json -> hotel_url
-    for deal_pos, encoded_json in deal_positions:
-        best_url = None
-        for url_pos, url_path in hotel_urls:
-            if url_pos < deal_pos:
-                best_url = url_path
-            else:
-                break
-        if best_url:
-            position_map[encoded_json] = best_url
-
-    return position_map
-
 
 def parse_deals_from_html(html_str: str, city: str) -> list[dict]:
     """Extract deal metadata dicts from data-deal JSON attributes in listing HTML.
 
     Only returns All Inclusive (MealType == "AI") packages.
     Deduplicates by dedupe_key.
-    Pairs each deal with its hotel detail page URL from the same card.
     """
     raw_matches = _DATA_DEAL_RE.findall(html_str)
     if not raw_matches:
         return []
-
-    hotel_url_map = _build_hotel_url_map(html_str)
 
     deals = []
     seen_keys = set()
@@ -241,8 +204,7 @@ def parse_deals_from_html(html_str: str, city: str) -> list[dict]:
             logger.warning("Failed to parse data-deal JSON: %s", e)
             continue
 
-        hotel_path = hotel_url_map.get(encoded_json)
-        deal_meta = _parse_single_deal(deal, city, hotel_path)
+        deal_meta = _parse_single_deal(deal, city)
         if not deal_meta:
             continue
 
@@ -254,7 +216,7 @@ def parse_deals_from_html(html_str: str, city: str) -> list[dict]:
     return deals
 
 
-def _parse_single_deal(deal: dict, city: str, hotel_path: Optional[str] = None) -> Optional[dict]:
+def _parse_single_deal(deal: dict, city: str) -> Optional[dict]:
     """Parse a single data-deal JSON blob into a deal metadata dict."""
     # Only All Inclusive
     if deal.get("MealType") != "AI":
@@ -318,7 +280,7 @@ def _parse_single_deal(deal: dict, city: str, hotel_path: Optional[str] = None) 
         "destination_str": destination_str,
         "region": region,
         "star_rating": star_rating,
-        "deeplink_url": f"{BASE_URL}{hotel_path}" if hotel_path else f"{BASE_URL}/deals/{city}/",
+        "deeplink_url": f"{BASE_URL}/deals/{city}/",
         "dedupe_key": dedupe_key,
     }
 
