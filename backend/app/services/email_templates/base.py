@@ -8,6 +8,7 @@ def wrap(
     preheader: str = "",
     show_daily_summary_nudge: bool = False,
     unsub_url: str = "",
+    user_email: str = "",
 ) -> str:
     """Wrap body content in the standard TripSignal email shell."""
     preheader_block = (
@@ -17,36 +18,52 @@ def wrap(
     )
 
     # Build footer — this is fixed and NOT editable via the admin template editor.
-    footer_lines = []
-
     # Conditional daily-summary nudge (only for users on "all emails")
+    nudge_html = ""
     if show_daily_summary_nudge:
-        footer_lines.append(
+        nudge_html = (
+            '<p style="font-size:12px;color:#999;margin:0 0 16px;text-align:center;line-height:1.6;">'
             'Want fewer emails? '
             '<a href="https://tripsignal.ca/account/notifications" '
             'style="color:#999;text-decoration:underline;">Switch to a daily summary</a>.'
+            '</p>'
         )
 
-    # Notification preferences link
-    prefs_url = unsub_url or "https://tripsignal.ca/account/notifications"
-    footer_lines.append(
-        f'<a href="{prefs_url}" '
-        f'style="color:#999;text-decoration:underline;">Notification preferences</a>'
+    # "This email was sent to …"
+    sent_to_line = ""
+    if user_email:
+        sent_to_line = (
+            f'<p style="font-size:12px;color:#999;margin:0 0 12px;text-align:center;line-height:1.6;">'
+            f'This email was sent to {user_email}'
+            f'</p>'
+        )
+
+    # Links row: Email Notifications | Privacy Policy | Terms and Conditions
+    notif_url = unsub_url or "https://tripsignal.ca/account/notifications"
+    links_html = (
+        '<p style="font-size:12px;color:#999;margin:0 0 12px;text-align:center;line-height:1.6;">'
+        f'<a href="{notif_url}" style="color:#999;text-decoration:underline;">Email Notifications</a>'
+        ' &nbsp;|&nbsp; '
+        '<a href="https://tripsignal.ca/privacy" style="color:#999;text-decoration:underline;">Privacy Policy</a>'
+        ' &nbsp;|&nbsp; '
+        '<a href="https://tripsignal.ca/terms" style="color:#999;text-decoration:underline;">Terms and Conditions</a>'
+        '</p>'
     )
 
-    # Brand + address
-    footer_lines.append(
-        'Trip Signal<br>'
-        '<span style="font-size:11px;color:#bbb;">[Mailing Address]</span>'
+    # Address + copyright
+    brand_html = (
+        '<p style="font-size:11px;color:#bbb;margin:0 0 12px;text-align:center;line-height:1.5;">'
+        '[Mailing Address]<br>'
+        '\u00a9 2026 Trip Signal. All rights reserved.'
+        '</p>'
     )
 
     # Legal copy
-    footer_lines.append(
-        "You\u2019re receiving this email because you created one or more Trip Signal alerts.<br>"
-        "Trip Signal monitors travel prices and notifies you when deals match your criteria."
+    legal_html = (
+        '<p style="font-size:11px;color:#bbb;margin:0;text-align:center;line-height:1.5;">'
+        "You\u2019re receiving this email because you created one or more Trip Signal alerts."
+        '</p>'
     )
-
-    footer_html = '<br style="line-height:24px;">'.join(footer_lines)
 
     return f"""<!DOCTYPE html>
 <html>
@@ -58,9 +75,7 @@ def wrap(
 </div>
 {body_html}
 <hr style="border:none;border-top:1px solid #eee;margin:32px 0;">
-<p style="font-size:12px;color:#999;margin:0;text-align:center;line-height:1.6;">
-  {footer_html}
-</p>
+{nudge_html}{sent_to_line}{links_html}{brand_html}{legal_html}
 </body>
 </html>"""
 

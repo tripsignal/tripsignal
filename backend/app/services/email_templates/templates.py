@@ -23,6 +23,11 @@ def _unsub(context: dict) -> str:
     return context.get("_unsub_url", "")
 
 
+def _email(user: "User") -> str:
+    """Extract user email for footer."""
+    return getattr(user, "email", "") or ""
+
+
 def _is_instant(context: dict) -> bool:
     """Return True if the user is on 'all emails' (instant) delivery."""
     return context.get("_notification_frequency", "all") == "all"
@@ -47,7 +52,7 @@ def welcome(*, user: "User", context: dict) -> tuple[str, str]:
         + button("Create your first signal", "https://tripsignal.ca/signals/new")
         + para("No rush — your account is ready whenever you are.")
     )
-    return subject, wrap(body, preheader="Start monitoring vacation deals", unsub_url=_unsub(context))
+    return subject, wrap(body, preheader="Start monitoring vacation deals", unsub_url=_unsub(context), user_email=_email(user))
 
 
 def first_signal(*, user: "User", context: dict) -> tuple[str, str]:
@@ -69,7 +74,7 @@ def first_signal(*, user: "User", context: dict) -> tuple[str, str]:
             "and travel dates."
         )
     )
-    return subject, wrap(body, preheader=f"Monitoring started for {signal_name}", unsub_url=_unsub(context))
+    return subject, wrap(body, preheader=f"Monitoring started for {signal_name}", unsub_url=_unsub(context), user_email=_email(user))
 
 
 def no_signal_reminder(*, user: "User", context: dict) -> tuple[str, str]:
@@ -95,6 +100,7 @@ def no_signal_reminder(*, user: "User", context: dict) -> tuple[str, str]:
         body,
         preheader="Set up deal monitoring in 30 seconds",
         unsub_url=_unsub(context),
+        user_email=_email(user),
     )
 
 
@@ -205,6 +211,7 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
         preheader=preview,
         show_daily_summary_nudge=_is_instant(context),
         unsub_url=_unsub(context),
+        user_email=_email(user),
     )
 
 
@@ -281,6 +288,7 @@ def major_drop_alert(*, user: "User", context: dict) -> tuple[str, str]:
         preheader=f"{drop_amount} price drop",
         show_daily_summary_nudge=_is_instant(context),
         unsub_url=_unsub(context),
+        user_email=_email(user),
     )
 
 
@@ -315,6 +323,7 @@ def trial_expiring_soon(*, user: "User", context: dict) -> tuple[str, str]:
         body,
         preheader=f"Trial ends in {days_left} days",
         unsub_url=_unsub(context),
+        user_email=_email(user),
     )
 
 
@@ -341,6 +350,7 @@ def trial_expired_upsell(*, user: "User", context: dict) -> tuple[str, str]:
         body,
         preheader="Your signals are paused",
         unsub_url=_unsub(context),
+        user_email=_email(user),
     )
 
 
@@ -369,7 +379,7 @@ def pro_activated(*, user: "User", context: dict) -> tuple[str, str]:
             '<a href="https://tripsignal.ca/account/settings" style="color:#1D4ED8;">Account Settings</a>.'
         )
     )
-    return subject, wrap(body, preheader="Pro features are now active", unsub_url=_unsub(context))
+    return subject, wrap(body, preheader="Pro features are now active", unsub_url=_unsub(context), user_email=_email(user))
 
 
 def payment_failed(*, user: "User", context: dict) -> tuple[str, str]:
@@ -383,7 +393,7 @@ def payment_failed(*, user: "User", context: dict) -> tuple[str, str]:
         + button("Update payment method", "https://tripsignal.ca/account/settings")
         + para("If you've already resolved this, you can ignore this email.")
     )
-    return subject, wrap(body, preheader="Please update your payment method", unsub_url=_unsub(context))
+    return subject, wrap(body, preheader="Please update your payment method", unsub_url=_unsub(context), user_email=_email(user))
 
 
 def payment_failed_reminder(*, user: "User", context: dict) -> tuple[str, str]:
@@ -398,7 +408,7 @@ def payment_failed_reminder(*, user: "User", context: dict) -> tuple[str, str]:
         + button("Update payment method", "https://tripsignal.ca/account/settings")
         + para("Need help? Reply to this email and we'll sort it out.")
     )
-    return subject, wrap(body, preheader="Payment update needed", unsub_url=_unsub(context))
+    return subject, wrap(body, preheader="Payment update needed", unsub_url=_unsub(context), user_email=_email(user))
 
 
 def subscription_canceled(*, user: "User", context: dict) -> tuple[str, str]:
@@ -424,7 +434,7 @@ def subscription_canceled(*, user: "User", context: dict) -> tuple[str, str]:
             '<a href="https://tripsignal.ca/account/settings" style="color:#1D4ED8;">Account Settings</a>.'
         )
     )
-    return subject, wrap(body, preheader="Pro canceled" + (f" — access until {period_end}" if period_end else ""), unsub_url=_unsub(context))
+    return subject, wrap(body, preheader="Pro canceled" + (f" — access until {period_end}" if period_end else ""), unsub_url=_unsub(context), user_email=_email(user))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -444,7 +454,7 @@ def account_deleted_free(*, user: "User", context: dict) -> tuple[str, str]:
             'a new account at <a href="https://tripsignal.ca" style="color:#1D4ED8;">tripsignal.ca</a>.'
         )
     )
-    return subject, wrap(body, preheader="Account deleted", unsub_url=_unsub(context))
+    return subject, wrap(body, preheader="Account deleted", unsub_url=_unsub(context), user_email=_email(user))
 
 
 def account_deleted_pro(*, user: "User", context: dict) -> tuple[str, str]:
@@ -463,7 +473,7 @@ def account_deleted_pro(*, user: "User", context: dict) -> tuple[str, str]:
             'a new account at <a href="https://tripsignal.ca" style="color:#1D4ED8;">tripsignal.ca</a>.'
         )
     )
-    return subject, wrap(body, preheader="Account deleted, subscription canceled", unsub_url=_unsub(context))
+    return subject, wrap(body, preheader="Account deleted, subscription canceled", unsub_url=_unsub(context), user_email=_email(user))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -497,6 +507,7 @@ def no_match_update(*, user: "User", context: dict) -> tuple[str, str]:
         body,
         preheader=f"No matches after {days_active} days",
         unsub_url=_unsub(context),
+        user_email=_email(user),
     )
 
 
@@ -611,6 +622,7 @@ def inactive_reengagement(*, user: "User", context: dict) -> tuple[str, str]:
         preheader=preview,
         show_daily_summary_nudge=_is_instant(context),
         unsub_url=_unsub(context),
+        user_email=_email(user),
     )
 
 
@@ -709,6 +721,7 @@ def weekly_digest(*, user: "User", context: dict) -> tuple[str, str]:
         preheader=preview,
         show_daily_summary_nudge=_is_instant(context),
         unsub_url=_unsub(context),
+        user_email=_email(user),
     )
 
 

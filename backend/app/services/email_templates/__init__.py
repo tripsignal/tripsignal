@@ -119,7 +119,7 @@ def render_template(
             override = _get_override(db, email_type)
             if override and (override.subject or override.body_html):
                 subject, body = _render_override(override, email_type, user, context)
-                return subject, wrap(body, unsub_url=context.get("_unsub_url", ""))
+                return subject, wrap(body, unsub_url=context.get("_unsub_url", ""), user_email=getattr(user, "email", "") or "")
         except Exception:
             logger.exception("Error loading template override for %s, falling back to default", email_type.value)
 
