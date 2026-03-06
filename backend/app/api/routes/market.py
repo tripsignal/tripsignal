@@ -18,7 +18,9 @@ from app.services.market_intel import (
     compute_empty_state_insights,
     compute_market_activity,
     compute_market_coverage,
+    compute_market_events,
     compute_market_stats,
+    compute_top_destinations,
     compute_trigger_likelihood,
 )
 
@@ -40,6 +42,22 @@ async def market_overview(db: Session = Depends(get_db)):
         "destinations_count": coverage["destinations_count"],
         "price_drops_today": activity["price_drops_today"],
     }
+
+
+@router.get("/events")
+async def market_events(db: Session = Depends(get_db)):
+    """Today's signals and market movers. Public endpoint."""
+    return compute_market_events(db)
+
+
+@router.get("/top-destinations/{origin}")
+async def top_destinations(
+    origin: str,
+    db: Session = Depends(get_db),
+):
+    """Top destinations by deal count for a departure airport. Public endpoint."""
+    destinations = compute_top_destinations(db, origin.upper(), limit=3)
+    return {"origin": origin.upper(), "destinations": destinations}
 
 
 @router.get("/signal/{signal_id}/intelligence")

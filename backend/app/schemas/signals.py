@@ -243,6 +243,29 @@ class SignalIntel(BaseModel):
     total_matches: Optional[int] = None
     cache_refreshed_at: Optional[datetime] = None
 
+    # Live market intelligence (computed per request from active deals)
+    best_price_cents: Optional[int] = None
+    median_price_cents: Optional[int] = None
+    value_label: Optional[str] = None
+    price_delta_amount: Optional[int] = None
+
+    # Market price spectrum (from comparable market bucket)
+    spectrum_min: Optional[int] = None
+    spectrum_p25: Optional[int] = None
+    spectrum_median: Optional[int] = None
+    spectrum_p75: Optional[int] = None
+    spectrum_max: Optional[int] = None
+    spectrum_sample_size: Optional[int] = None
+
+    # Empty-state diagnostics (for signals with no matches)
+    empty_reason: Optional[str] = None  # 'above_budget', 'outside_date_window', 'no_inventory', 'healthy'
+    empty_budget_gap_cents: Optional[int] = None
+    empty_date_gap_days: Optional[int] = None
+    empty_market_packages: Optional[int] = None
+    empty_adjustment_type: Optional[str] = None  # 'budget_flex', 'date_flex'
+    empty_adjustment_value: Optional[str] = None  # e.g. '+$200', '±3 days'
+    empty_adjustment_matches: Optional[int] = None
+
 
 class SignalOut(BaseModel):
     """Schema for signal output (read operations)."""

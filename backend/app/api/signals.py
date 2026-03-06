@@ -23,6 +23,13 @@ from app.schemas.signals import (
     SignalStatus,
     SignalUpdate,
 )
+from app.services.market_intel import (
+    MarketStats,
+    build_market_bucket_from_signal,
+    compute_empty_state_insights,
+    compute_market_stats,
+    score_deal,
+)
 
 logger = logging.getLogger("signals")
 
@@ -265,13 +272,31 @@ async def list_signals(
         ).scalars().all()
         intel_map = {ic.signal_id: ic for ic in intel_rows}
 
+    # Batch-fetch active deal prices per signal for live market intelligence
+    price_map: dict[UUID, list[int]] = {}
+    if signal_ids:
+        price_rows = db.execute(
+            select(DealMatch.signal_id, Deal.price_cents)
+            .join(Deal, Deal.id == DealMatch.deal_id)
+            .where(
+                DealMatch.signal_id.in_(signal_ids),
+                Deal.is_active == True,  # noqa: E712
+                Deal.price_cents.isnot(None),
+                Deal.price_cents > 0,
+            )
+        ).all()
+        for sid, price in price_rows:
+            price_map.setdefault(sid, []).append(price)
+
     out: List[SignalOut] = []
     for signal, match_count in rows:
         s_out = _signal_to_out(signal)
-        intel_data = None
+
+        # Build intel from cache
         ic = intel_map.get(signal.id)
+        intel_kwargs: dict = {}
         if ic:
-            intel_data = SignalIntel(
+            intel_kwargs.update(
                 value_score=ic.value_score,
                 trend_direction=ic.trend_direction,
                 trend_consecutive_weeks=ic.trend_consecutive_weeks,
@@ -282,6 +307,61 @@ async def list_signals(
                 total_matches=ic.total_matches,
                 cache_refreshed_at=ic.cache_refreshed_at,
             )
+
+        # Compute market-bucket stats (used for scoring and spectrum)
+        bucket = build_market_bucket_from_signal(signal)
+        stats = compute_market_stats(db, bucket) if bucket else MarketStats()
+
+        # Populate spectrum data when sample is trustworthy
+        if stats.is_scorable() and stats.min_price and stats.max_price and stats.max_price > stats.min_price:
+            intel_kwargs["spectrum_min"] = stats.min_price
+            intel_kwargs["spectrum_p25"] = stats.p25_price
+            intel_kwargs["spectrum_median"] = stats.median_price
+            intel_kwargs["spectrum_p75"] = stats.p75_price
+            intel_kwargs["spectrum_max"] = stats.max_price
+            intel_kwargs["spectrum_sample_size"] = stats.sample_size
+
+        # Compute live market intelligence from active deal prices
+        prices = price_map.get(signal.id, [])
+        if prices:
+            sorted_prices = sorted(prices)
+            best = sorted_prices[0]
+            intel_kwargs["best_price_cents"] = best
+
+            if stats.median_price is not None:
+                intel_kwargs["median_price_cents"] = stats.median_price
+
+            if stats.is_scorable():
+                value_score = score_deal(best, stats)
+                if value_score.label:
+                    intel_kwargs["value_label"] = value_score.label
+                if value_score.price_delta_amount and value_score.price_delta_direction == "below":
+                    intel_kwargs["price_delta_amount"] = value_score.price_delta_amount
+        elif bucket and signal.status == "active":
+            # Empty-state diagnostics for signals with no active matched deals
+            try:
+                esi = compute_empty_state_insights(db, signal, bucket)
+                intel_kwargs["empty_market_packages"] = stats.sample_size or 0
+
+                if esi.closest_match_reason == "no_inventory":
+                    intel_kwargs["empty_reason"] = "no_inventory"
+                elif esi.closest_match_reason == "above_budget" and esi.closest_match_delta_cents:
+                    intel_kwargs["empty_reason"] = "above_budget"
+                    intel_kwargs["empty_budget_gap_cents"] = esi.closest_match_delta_cents
+                elif esi.closest_match_reason == "outside_date_window" and esi.closest_match_date_delta_days:
+                    intel_kwargs["empty_reason"] = "outside_date_window"
+                    intel_kwargs["empty_date_gap_days"] = esi.closest_match_date_delta_days
+                else:
+                    intel_kwargs["empty_reason"] = "healthy"
+
+                if esi.recommended_adjustment and esi.additional_matches_estimate:
+                    intel_kwargs["empty_adjustment_type"] = esi.recommended_adjustment
+                    intel_kwargs["empty_adjustment_value"] = esi.recommended_adjustment_value
+                    intel_kwargs["empty_adjustment_matches"] = esi.additional_matches_estimate
+            except Exception:
+                logger.exception("Failed to compute empty-state insights for signal %s", signal.id)
+
+        intel_data = SignalIntel(**intel_kwargs) if intel_kwargs else None
         out.append(
             s_out.model_copy(update={"match_count": int(match_count), "intel": intel_data})
         )

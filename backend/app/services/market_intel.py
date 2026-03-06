@@ -552,6 +552,269 @@ def compute_market_activity(db: Session) -> dict:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Market Events (Today's Signals + Market Movers)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Destination key → display label mapping (server-side)
+DESTINATION_LABELS: dict[str, str] = {
+    "mexico": "Mexico", "riviera_maya": "Riviera Maya", "cancun": "Cancún",
+    "puerto_vallarta": "Puerto Vallarta", "los_cabos": "Los Cabos",
+    "mazatlan": "Mazatlán", "huatulco": "Huatulco", "ixtapa": "Ixtapa",
+    "dominican_republic": "Dominican Republic", "punta_cana": "Punta Cana",
+    "puerto_plata": "Puerto Plata", "la_romana": "La Romana", "samana": "Samaná",
+    "jamaica": "Jamaica", "montego_bay": "Montego Bay", "negril": "Negril",
+    "cuba": "Cuba", "varadero": "Varadero", "holguin": "Holguín", "havana": "Havana",
+    "cayo_coco": "Cayo Coco", "caribbean": "Caribbean", "aruba": "Aruba",
+    "barbados": "Barbados", "curacao": "Curaçao", "saint_lucia": "Saint Lucia",
+    "turks_caicos": "Turks & Caicos", "bahamas": "Bahamas", "antigua": "Antigua",
+    "costa_rica": "Costa Rica", "panama": "Panama", "belize": "Belize",
+    "roatan": "Roatán",
+}
+
+
+def _dest_label(key: str) -> str:
+    return DESTINATION_LABELS.get(key, key.replace("_", " ").title())
+
+
+def compute_market_events(db: Session) -> dict:
+    """Compute today's signals and market movers from real scrape data.
+
+    Today's Signals: notable price drops, resort anomalies, inventory shifts.
+    Market Movers: strongest destination-level price/inventory changes.
+
+    Returns dict with 'todays_signals' and 'market_movers' lists (max 5 each).
+    Empty lists when data is insufficient.
+    """
+    cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+    cutoff_48h = datetime.now(timezone.utc) - timedelta(hours=48)
+    freshness = _freshness_cutoff()
+    today_date = date.today()
+
+    todays_signals: list[dict] = []
+    market_movers: list[dict] = []
+
+    # ── 1. Price drops by destination (last 24h) ──
+    # Find destinations where deals dropped in price, compute average % drop
+    drop_rows = db.execute(text("""
+        SELECT
+            d.destination,
+            COUNT(DISTINCT sub.deal_id) AS drop_count,
+            AVG(sub.drop_pct) AS avg_drop_pct
+        FROM (
+            SELECT
+                deal_id,
+                price_cents,
+                LAG(price_cents) OVER (PARTITION BY deal_id ORDER BY recorded_at) AS prev_price,
+                CASE WHEN LAG(price_cents) OVER (PARTITION BY deal_id ORDER BY recorded_at) > 0
+                     THEN (LAG(price_cents) OVER (PARTITION BY deal_id ORDER BY recorded_at) - price_cents)::float
+                          / LAG(price_cents) OVER (PARTITION BY deal_id ORDER BY recorded_at) * 100
+                     ELSE 0 END AS drop_pct,
+                ROW_NUMBER() OVER (PARTITION BY deal_id ORDER BY recorded_at DESC) AS rn
+            FROM deal_price_history
+            WHERE recorded_at >= :cutoff_24h
+        ) sub
+        JOIN deals d ON d.id = sub.deal_id
+        WHERE sub.rn = 1
+          AND sub.prev_price IS NOT NULL
+          AND sub.price_cents < sub.prev_price
+          AND sub.drop_pct >= 2.0
+          AND d.is_active = true
+          AND d.depart_date >= :today
+        GROUP BY d.destination
+        HAVING COUNT(DISTINCT sub.deal_id) >= 3
+        ORDER BY AVG(sub.drop_pct) DESC
+        LIMIT 5
+    """), {"cutoff_24h": cutoff_24h, "today": today_date}).all()
+
+    for dest, drop_count, avg_pct in drop_rows:
+        pct = round(avg_pct)
+        if pct >= 3:
+            todays_signals.append({
+                "text": f"{_dest_label(dest)} prices dropped {pct}% overnight",
+                "type": "price_drop",
+                "destination": dest,
+                "magnitude": pct,
+            })
+
+    # ── 2. Resort anomalies (unusually cheap resorts) ──
+    # Find hotels with current price significantly below their own recent median
+    anomaly_rows = db.execute(text("""
+        WITH hotel_stats AS (
+            SELECT
+                hotel_name,
+                destination,
+                MIN(price_cents) AS current_min,
+                percentile_cont(0.5) WITHIN GROUP (ORDER BY price_cents) AS median_price
+            FROM deals
+            WHERE is_active = true
+              AND last_seen_at >= :freshness
+              AND depart_date >= :today
+              AND hotel_name IS NOT NULL
+            GROUP BY hotel_name, destination
+            HAVING COUNT(*) >= 5
+        )
+        SELECT hotel_name, destination, current_min, median_price,
+               ROUND((1.0 - current_min::float / median_price) * 100) AS discount_pct
+        FROM hotel_stats
+        WHERE median_price > 0
+          AND current_min < median_price * 0.85
+        ORDER BY discount_pct DESC
+        LIMIT 3
+    """), {"freshness": freshness, "today": today_date}).all()
+
+    for hotel, dest, _current, _median, discount in anomaly_rows:
+        # Truncate long hotel names
+        short_name = hotel if len(hotel) <= 30 else hotel[:27] + "..."
+        todays_signals.append({
+            "text": f"{short_name} unusually cheap this week",
+            "type": "resort_anomaly",
+            "destination": dest,
+            "magnitude": int(discount),
+        })
+
+    # ── 3. Inventory growth by destination ──
+    # Compare deal counts: last 24h vs previous 24h
+    inventory_rows = db.execute(text("""
+        WITH recent AS (
+            SELECT destination, COUNT(*) AS cnt
+            FROM deals
+            WHERE is_active = true
+              AND found_at >= :cutoff_24h
+              AND depart_date >= :today
+            GROUP BY destination
+        ),
+        previous AS (
+            SELECT destination, COUNT(*) AS cnt
+            FROM deals
+            WHERE is_active = true
+              AND found_at >= :cutoff_48h
+              AND found_at < :cutoff_24h
+              AND depart_date >= :today
+            GROUP BY destination
+        )
+        SELECT r.destination, r.cnt AS new_count, COALESCE(p.cnt, 0) AS prev_count
+        FROM recent r
+        LEFT JOIN previous p ON p.destination = r.destination
+        WHERE r.cnt >= 5
+          AND r.cnt > COALESCE(p.cnt, 0) * 1.3
+        ORDER BY r.cnt - COALESCE(p.cnt, 0) DESC
+        LIMIT 3
+    """), {"cutoff_24h": cutoff_24h, "cutoff_48h": cutoff_48h, "today": today_date}).all()
+
+    for dest, new_count, prev_count in inventory_rows:
+        if prev_count > 0:
+            pct_increase = round((new_count - prev_count) / prev_count * 100)
+            if pct_increase >= 10:
+                todays_signals.append({
+                    "text": f"{_dest_label(dest)} deals increasing",
+                    "type": "inventory_growth",
+                    "destination": dest,
+                    "magnitude": pct_increase,
+                })
+
+    # Cap today's signals at 5
+    todays_signals = todays_signals[:5]
+
+    # ── Market Movers: destination-level strongest shifts ──
+    # Price movers: destinations with biggest average price change
+    price_mover_rows = db.execute(text("""
+        SELECT
+            d.destination,
+            AVG(sub.change_pct) AS avg_change_pct,
+            COUNT(DISTINCT sub.deal_id) AS deal_count,
+            CASE WHEN AVG(sub.change_pct) > 0 THEN 'up' ELSE 'down' END AS direction
+        FROM (
+            SELECT
+                deal_id,
+                price_cents,
+                LAG(price_cents) OVER (PARTITION BY deal_id ORDER BY recorded_at) AS prev_price,
+                CASE WHEN LAG(price_cents) OVER (PARTITION BY deal_id ORDER BY recorded_at) > 0
+                     THEN (price_cents::float - LAG(price_cents) OVER (PARTITION BY deal_id ORDER BY recorded_at))
+                          / LAG(price_cents) OVER (PARTITION BY deal_id ORDER BY recorded_at) * 100
+                     ELSE 0 END AS change_pct,
+                ROW_NUMBER() OVER (PARTITION BY deal_id ORDER BY recorded_at DESC) AS rn
+            FROM deal_price_history
+            WHERE recorded_at >= :cutoff_24h
+        ) sub
+        JOIN deals d ON d.id = sub.deal_id
+        WHERE sub.rn = 1
+          AND sub.prev_price IS NOT NULL
+          AND ABS(sub.change_pct) >= 2.0
+          AND d.is_active = true
+          AND d.depart_date >= :today
+        GROUP BY d.destination
+        HAVING COUNT(DISTINCT sub.deal_id) >= 3
+           AND ABS(AVG(sub.change_pct)) >= 3.0
+        ORDER BY ABS(AVG(sub.change_pct)) DESC
+        LIMIT 3
+    """), {"cutoff_24h": cutoff_24h, "today": today_date}).all()
+
+    for dest, avg_pct, _count, direction in price_mover_rows:
+        pct = abs(round(avg_pct))
+        arrow = "↓" if direction == "down" else "↑"
+        market_movers.append({
+            "text": f"{_dest_label(dest)} prices {arrow} {pct}%",
+            "type": "price",
+            "destination": dest,
+            "direction": direction,
+            "magnitude": pct,
+        })
+
+    # Inventory movers
+    inv_mover_rows = db.execute(text("""
+        WITH current_inv AS (
+            SELECT destination, COUNT(*) AS cnt
+            FROM deals
+            WHERE is_active = true
+              AND last_seen_at >= :cutoff_24h
+              AND depart_date >= :today
+            GROUP BY destination
+            HAVING COUNT(*) >= 10
+        ),
+        prev_inv AS (
+            SELECT destination, COUNT(*) AS cnt
+            FROM deals
+            WHERE is_active = true
+              AND last_seen_at >= :cutoff_48h
+              AND last_seen_at < :cutoff_24h
+              AND depart_date >= :today
+            GROUP BY destination
+            HAVING COUNT(*) >= 5
+        )
+        SELECT c.destination,
+               c.cnt AS current_count,
+               p.cnt AS prev_count,
+               ROUND((c.cnt::float - p.cnt) / p.cnt * 100) AS change_pct
+        FROM current_inv c
+        JOIN prev_inv p ON p.destination = c.destination
+        WHERE p.cnt > 0
+          AND ABS(c.cnt::float - p.cnt) / p.cnt * 100 >= 10
+        ORDER BY ABS(c.cnt::float - p.cnt) / p.cnt DESC
+        LIMIT 3
+    """), {"cutoff_24h": cutoff_24h, "cutoff_48h": cutoff_48h, "today": today_date}).all()
+
+    for dest, current, _prev, change_pct in inv_mover_rows:
+        pct = abs(int(change_pct))
+        arrow = "↑" if current > _prev else "↓"
+        market_movers.append({
+            "text": f"{_dest_label(dest)} inventory {arrow} {pct}%",
+            "type": "inventory",
+            "destination": dest,
+            "direction": "up" if current > _prev else "down",
+            "magnitude": pct,
+        })
+
+    # Sort movers by magnitude descending, cap at 5
+    market_movers.sort(key=lambda x: x["magnitude"], reverse=True)
+    market_movers = market_movers[:5]
+
+    return {
+        "todays_signals": todays_signals,
+        "market_movers": market_movers,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Empty-State Intelligence
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -805,6 +1068,80 @@ def build_spectrum_data(stats: MarketStats, marker_price: Optional[int] = None) 
 # Draft Signal Insights (Create Signal flow)
 # ──────────────────────────────────────────────────────────────────────────────
 
+def compute_top_destinations(db: Session, origin: str, limit: int = 3) -> list[dict]:
+    """Return the top destinations by active deal count for a given origin airport."""
+    cutoff = _freshness_cutoff()
+    today = date.today()
+
+    rows = db.execute(
+        select(Deal.destination, func.count(Deal.id).label("cnt"))
+        .where(Deal.is_active == True)
+        .where(Deal.last_seen_at >= cutoff)
+        .where(Deal.depart_date >= today)
+        .where(Deal.origin == origin)
+        .group_by(Deal.destination)
+        .order_by(func.count(Deal.id).desc())
+        .limit(limit)
+    ).all()
+
+    return [{"destination": row[0], "deal_count": row[1]} for row in rows]
+
+
+def compute_date_flexibility_gain(db: Session, draft: dict, flex_days: int = 3) -> Optional[int]:
+    """Estimate how many additional packages a user would monitor with ±N days flexibility.
+
+    Only meaningful for specific-dates signals.
+    """
+    tw = draft.get("travel_window", {})
+    start_date_str = tw.get("start_date")
+    end_date_str = tw.get("end_date")
+    if not start_date_str or not end_date_str:
+        return None
+
+    bucket = build_market_bucket_from_draft(draft)
+    if not bucket:
+        return None
+
+    try:
+        start_dt = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+        end_dt = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return None
+
+    deals = _deals_in_bucket(db, bucket, ignore_star=True)
+    if not deals:
+        return None
+
+    budget_config = draft.get("budget", {})
+    target_pp = budget_config.get("target_pp")
+    budget_cents = int(target_pp) * 100 if target_pp else None
+
+    # Count deals matching the exact window
+    exact_count = 0
+    for d in deals:
+        deal_return = d.return_date or (d.depart_date + timedelta(days=7))
+        if d.depart_date < start_dt or deal_return > end_dt:
+            continue
+        if budget_cents and d.price_cents and d.price_cents > budget_cents:
+            continue
+        exact_count += 1
+
+    # Count deals matching the expanded window
+    flex_start = start_dt - timedelta(days=flex_days)
+    flex_end = end_dt + timedelta(days=flex_days)
+    flex_count = 0
+    for d in deals:
+        deal_return = d.return_date or (d.depart_date + timedelta(days=7))
+        if d.depart_date < flex_start or deal_return > flex_end:
+            continue
+        if budget_cents and d.price_cents and d.price_cents > budget_cents:
+            continue
+        flex_count += 1
+
+    gain = flex_count - exact_count
+    return gain if gain > 0 else None
+
+
 def compute_draft_signal_insights(db: Session, draft: dict) -> Optional[dict]:
     """Compute market intelligence for a draft signal during creation.
 
@@ -832,6 +1169,27 @@ def compute_draft_signal_insights(db: Session, draft: dict) -> Optional[dict]:
     spectrum = build_spectrum_data(stats)
     if spectrum:
         result["spectrum"] = spectrum
+
+    # Date flexibility gain (only for specific-dates signals)
+    flex_gain = compute_date_flexibility_gain(db, draft)
+    if flex_gain:
+        result["date_flex_gain"] = flex_gain
+
+    # Budget suggestion: if user's budget is below median, suggest the median
+    budget_config = draft.get("budget", {})
+    target_pp = budget_config.get("target_pp")
+    if target_pp and stats.median_price:
+        budget_cents = int(target_pp) * 100
+        if budget_cents < stats.median_price:
+            # Count how many more deals the user would get at median
+            deals_at_budget = sum(1 for p in stats.prices if p <= budget_cents)
+            deals_at_median = sum(1 for p in stats.prices if p <= stats.median_price)
+            if deals_at_median > deals_at_budget:
+                result["budget_suggestion"] = {
+                    "suggested_budget": stats.median_price,
+                    "current_matches": deals_at_budget,
+                    "suggested_matches": deals_at_median,
+                }
 
     return result
 

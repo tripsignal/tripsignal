@@ -18,6 +18,7 @@ from app.api.routes.admin import router as admin_router
 from app.api.routes.billing import router as billing_router
 from app.api.routes.clerk_webhook import router as clerk_webhook_router
 from app.api.routes.deal_matches import router as deal_matches_router
+from app.api.routes.deal_public import router as deal_public_router
 from app.api.routes.market import router as market_router
 from app.api.routes.resend_webhooks import router as resend_webhook_router
 from app.api.routes.unsubscribe import router as unsubscribe_router
@@ -152,6 +153,7 @@ app.include_router(users_router)
 app.include_router(clerk_webhook_router)
 app.include_router(resend_webhook_router)
 app.include_router(market_router)
+app.include_router(deal_public_router)
 
 @app.post("/api/system/next-scan", dependencies=[Depends(_verify_system_token)])
 async def set_next_scan(payload: dict):
