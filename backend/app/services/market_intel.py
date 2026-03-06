@@ -312,7 +312,7 @@ def _deals_in_bucket(db: Session, bucket: MarketBucket, ignore_star: bool = Fals
         # Duration = return_date - depart_date
         stmt = stmt.where(Deal.return_date.isnot(None))
         stmt = stmt.where(
-            (func.extract("epoch", Deal.return_date - Deal.depart_date) / 86400).between(lo, hi)
+            (Deal.return_date - Deal.depart_date).between(lo, hi)
         )
 
     # Star filter (optional)
@@ -453,7 +453,7 @@ def score_deal_resort_anomaly(
         .where(Deal.origin == deal.origin)
         .where(Deal.return_date.isnot(None))
         .where(
-            (func.extract("epoch", Deal.return_date - Deal.depart_date) / 86400)
+            (Deal.return_date - Deal.depart_date)
             .between(dur_range[0], dur_range[1])
         )
         .where(Deal.id != deal.id)  # Exclude the deal itself
