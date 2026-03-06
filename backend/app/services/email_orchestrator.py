@@ -335,7 +335,7 @@ def _check_suppression(
 # | SUBSCRIPTION_CANCELED   | subscription_canceled:{subscription_id}       |
 # | ACCOUNT_DELETED_FREE    | account_deleted_free:{userId}                 |
 # | ACCOUNT_DELETED_PRO     | account_deleted_pro:{userId}                  |
-# | MATCH_ALERT             | match_alert:{signalId}:{runId}                |
+# | MATCH_ALERT             | match_alert:{userId}:{runId}                  |
 # | MAJOR_DROP_ALERT        | major_drop:{signalId}:{dealId}                |
 # | NO_SIGNAL_REMINDER      | no_signal:{userId}                            |
 # | NO_MATCH_UPDATE         | no_match:{signalId}:{window_start}            |
@@ -387,9 +387,8 @@ def _build_idempotency_key(email_type: EmailType, user_id: str, context: dict) -
         return f"account_deleted_pro:{uid}"
 
     if email_type == EmailType.MATCH_ALERT:
-        signal_id = context.get("signal_id", "unknown")
         run_id = context.get("run_id", "unknown")
-        return f"match_alert:{signal_id}:{run_id}"
+        return f"match_alert:{uid}:{run_id}"
 
     if email_type == EmailType.MAJOR_DROP_ALERT:
         signal_id = context.get("signal_id", "unknown")

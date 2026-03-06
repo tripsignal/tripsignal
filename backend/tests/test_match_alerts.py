@@ -2,13 +2,15 @@
 Integration tests for match alert service.
 
 Tests verify:
-- 3 matches in same run => 1 email per signal.
+- 3 matches in same run => 1 consolidated email per user.
+- Two signals for same user => 1 email (consolidated).
+- Two different users => 2 separate emails.
 - New low overrides multi-deal subject.
 - 9% drop does NOT trigger pct preview.
 - 10% drop DOES trigger pct preview.
 - Signal intelligence fields updated (last_check_min_price, all_time_low).
 - Idempotency: repeat call with same run_id => no double send.
-- Deterministic batching per signalId + runId.
+- Deterministic key per userId + runId.
 
 Run: cd /opt/tripsignal/backend && python -m pytest tests/test_match_alerts.py -v
 """
@@ -139,7 +141,7 @@ RUN_ID = str(uuid.uuid4())
 
 
 class TestBatching:
-    """Multiple matches in one run produce exactly one email per signal."""
+    """Multiple matches in one run produce exactly one consolidated email per user."""
 
     @patch("app.services.email_orchestrator.settings")
     @patch("app.services.email_orchestrator.send_email", return_value="msg_123")
@@ -199,8 +201,8 @@ class TestBatching:
 
     @patch("app.services.email_orchestrator.settings")
     @patch("app.services.email_orchestrator.send_email", return_value="msg_123")
-    def test_two_signals_two_emails(self, mock_send, mock_settings, db):
-        """Two signals with matches in same run => two separate emails."""
+    def test_two_signals_one_consolidated_email(self, mock_send, mock_settings, db):
+        """Two signals for same user => ONE consolidated email."""
         mock_settings.EMAIL_V2_ENABLED = True
         mock_settings.EMAIL_DRY_RUN = False
         mock_settings.EMAIL_SUSPEND_NONCRITICAL = False
@@ -208,6 +210,42 @@ class TestBatching:
         user = _make_user(db)
         sig1 = _make_signal(db, user, name="Signal A")
         sig2 = _make_signal(db, user, name="Signal B")
+        run_id = str(uuid.uuid4())
+
+        results = process_signal_matches(
+            db=db,
+            signal_deals={
+                str(sig1.id): [_deal_dict(price_cents=80000)],
+                str(sig2.id): [_deal_dict(price_cents=90000)],
+            },
+            run_id=run_id,
+        )
+
+        # One consolidated email per user
+        assert len(results) == 1
+        assert results[0]["status"] == "sent"
+
+        # Only 1 email logged for the user
+        logs = db.execute(
+            select(EmailLog).where(
+                EmailLog.user_id == user.id,
+                EmailLog.email_type == EmailType.MATCH_ALERT.value,
+            )
+        ).scalars().all()
+        assert len(logs) == 1
+
+    @patch("app.services.email_orchestrator.settings")
+    @patch("app.services.email_orchestrator.send_email", return_value="msg_123")
+    def test_two_users_two_emails(self, mock_send, mock_settings, db):
+        """Two different users with matches => two separate emails."""
+        mock_settings.EMAIL_V2_ENABLED = True
+        mock_settings.EMAIL_DRY_RUN = False
+        mock_settings.EMAIL_SUSPEND_NONCRITICAL = False
+
+        user1 = _make_user(db)
+        user2 = _make_user(db)
+        sig1 = _make_signal(db, user1, name="Signal A")
+        sig2 = _make_signal(db, user2, name="Signal B")
         run_id = str(uuid.uuid4())
 
         results = process_signal_matches(
@@ -472,7 +510,7 @@ class TestSignalIntelligence:
 
 
 class TestIdempotencyKey:
-    """Idempotency key format: match_alert:{signalId}:{runId}."""
+    """Idempotency key format: match_alert:{userId}:{runId}."""
 
     @patch("app.services.email_orchestrator.settings")
     @patch("app.services.email_orchestrator.send_email", return_value="msg_123")
@@ -490,7 +528,7 @@ class TestIdempotencyKey:
             db=db, signal_deals={str(signal.id): deals}, run_id=run_id,
         )
 
-        expected_key = f"match_alert:{signal.id}:{run_id}"
+        expected_key = f"match_alert:{user.id}:{run_id}"
         assert results[0]["idempotency_key"] == expected_key
 
     @patch("app.services.email_orchestrator.settings")
@@ -548,8 +586,7 @@ class TestRouteBuilding:
             )
         ).scalar_one()
 
-        # Route should appear in subject
-        assert "YQR" in log.subject
+        # Route should appear in subject (now includes city name)
         assert "Cancun" in log.subject
 
 

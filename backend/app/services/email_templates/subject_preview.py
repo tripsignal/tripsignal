@@ -33,8 +33,18 @@ def _truncate(s: str, max_len: int = 60) -> str:
 # ── Match alert (intelligence-driven priority) ─────────────────────────────
 
 def build_match_subject(context: dict) -> str:
-    """Build subject line for MATCH_ALERT using intelligence priority."""
+    """Build subject line for MATCH_ALERT using intelligence priority.
+
+    For consolidated multi-signal emails, adapts subject to show the most
+    compelling event across all signals.
+    """
+    signals_with_activity = context.get("signals_with_activity")
+    activity_count = context.get("signals_with_activity_count", 1)
+
+    # Multi-signal subject — lead with the primary signal's best stat
+    # but mention multi-signal context
     destination = context.get("destination", "your destination")
+    is_new_low = context.get("new_low", False)
     is_top_25 = context.get("is_top_25", False)
     pct_drop = context.get("pct_drop", 0)
     best_price_cents = context.get("best_price_cents")
@@ -42,56 +52,43 @@ def build_match_subject(context: dict) -> str:
     trend_direction = context.get("trend_direction", "stable")
     trend_weeks = context.get("trend_weeks", 0)
     days_monitoring = context.get("days_monitoring", 0)
-    trend_inflection = context.get("trend_inflection", False)
-    value_score = context.get("value_score")
-    floor_proximity = context.get("floor_proximity_pct")
-    star_anomaly = context.get("star_price_anomaly_pct")
-    arbitrage = context.get("arbitrage")
 
     price = _fmt_price(best_price_cents)
 
-    # Priority 0: Trend inflection — urgent, time-sensitive
-    if trend_inflection and price:
-        return _truncate(f"{price} to {destination}. Prices just started rising.")
+    # ── Notable event subjects (priority order) ──
 
-    # Priority 0b: Near price floor
-    if floor_proximity is not None and floor_proximity <= 5 and price:
-        return _truncate(f"{price} to {destination}. Near the all-time low.")
+    # New all-time low
+    if is_new_low and price:
+        return _truncate(f"New low: {price} to {destination}")
 
-    # Priority 0c: High value score
-    if value_score is not None and value_score >= 90 and price:
-        return _truncate(f"{price} to {destination}. Top {max(1, 100-value_score)}% value.")
+    # Significant price drop (>= 10%)
+    if pct_drop and pct_drop >= 10 and price:
+        if best_price_delta:
+            delta_str = _fmt_price(abs(best_price_delta))
+            return _truncate(f"{price} to {destination} \u2014 down {delta_str}")
+        return _truncate(f"{price} to {destination} \u2014 down {pct_drop}%")
 
-    # Priority 0d: Airport arbitrage with big savings
-    if arbitrage and arbitrage.get("arbitrage_savings_cents", 0) >= 20000 and price:
-        savings = _fmt_price(arbitrage["arbitrage_savings_cents"])
-        airport = arbitrage["arbitrage_airport"]
-        return _truncate(f"{price} to {destination}. Save {savings}/pp from {airport}.")
-
-    # Priority 0e: Star-price anomaly
-    if star_anomaly is not None and star_anomaly >= 0.7 and price:
-        return _truncate(f"{price} to {destination}. Higher-star, lower price.")
-
-    # Priority 1: Module 1 — deal in top 25% percentile
+    # Top 25% cheapest
     if is_top_25 and price and days_monitoring > 7:
         weeks = max(1, days_monitoring // 7)
-        return _truncate(f"{price} to {destination}. Cheapest in {weeks} weeks.")
+        if weeks == 1:
+            return _truncate(f"{price} to {destination}. Lowest this week.")
+        return _truncate(f"{price} to {destination}. Lowest in {weeks} weeks.")
 
-    # Priority 2: Significant price delta (> 8%)
-    if pct_drop and pct_drop >= 8 and best_price_delta and price:
-        delta_str = _fmt_price(abs(best_price_delta))
-        return _truncate(f"{price} \u2014 down {delta_str} since yesterday.")
-
-    # Priority 3: Module 2 — deal against trend
+    # Against-trend deal
     if trend_direction == "up" and trend_weeks >= 2 and pct_drop and pct_drop > 0:
         return _truncate(f"Prices rising for {trend_weeks} weeks. This one bucks the trend.")
 
-    # Priority 4: Default with price
+    # ── Multi-signal default ──
+    if activity_count > 1 and price:
+        return _truncate(f"New deals on {activity_count} signals \u2014 from {price}")
+
+    # ── Single-signal default ──
     if price:
-        return _truncate(f"{price} to {destination}. New deal on your signal.")
+        return _truncate(f"New deal: {price} to {destination}")
 
     # Fallback
-    return _truncate(f"Your {destination} signal \u2014 prices are moving.")
+    return _truncate(f"New deals found on your {destination} signal")
 
 
 def build_match_preview(context: dict) -> str:

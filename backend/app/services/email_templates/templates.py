@@ -10,8 +10,7 @@ from typing import TYPE_CHECKING
 from app.services.email_templates.base import (
     wrap, button, para, heading, info_box,
     stars_html, format_price, pricing_disclaimer, new_low_banner, price_drop_banner,
-    value_score_badge, arbitrage_line, destination_index_html,
-    departure_heatmap_html,
+    destination_index_html, departure_heatmap_html,
 )
 
 if TYPE_CHECKING:
@@ -109,107 +108,200 @@ def no_signal_reminder(*, user: "User", context: dict) -> tuple[str, str]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
-    """Instant alert — intelligence-driven, zone-structured.
+    """Consolidated per-user alert — one email covering all active signals.
 
-    Zones (per Email Intelligence Spec):
-      1. Signal ID — route, dates, criteria in one line
-      2. Hero stat — single most compelling number
-      3. Deal card — hotel, date, nights, price (delta if > 5%)
-      4. One-line intel — the sentence nobody else can say
-      5. Single CTA — drives to app
-      6. Footer — manage signal + preferences + unsubscribe
+    Structure:
+      - For each signal with activity: heading → deals → intel sentence
+      - "Still watching" section for quiet signals
+      - Single CTA + disclaimer
 
-    Context fields:
-        signal_name, route, deal_count, new_low, pct_drop, deals,
-        intel_sentence, days_monitoring, is_top_25, percentile_rank,
-        trend_direction, trend_weeks, best_price_delta, best_price_cents,
-        destination
+    Context fields (consolidated):
+        signals_with_activity (list of signal contexts), quiet_signals,
+        active_signal_count, signals_with_activity_count, quiet_signal_count,
+        + primary signal fields at top level for backward compat
     """
     from app.services.email_templates.subject_preview import (
         build_match_subject, build_match_preview,
     )
-
-    signal_name = context.get("signal_name", "your signal")
-    route = context.get("route", "")
-    deal_count = context.get("deal_count", 1)
-    is_new_low = context.get("new_low", False)
-    pct_drop = context.get("pct_drop", 0)
-    deals = context.get("deals", [])
-    intel_sentence = context.get("intel_sentence", "")
-    days_monitoring = context.get("days_monitoring", 0)
 
     subject = build_match_subject(context)
     preview = build_match_preview(context)
 
     parts: list[str] = []
 
-    # ── Conditional banners ──
-    if is_new_low:
-        parts.append(new_low_banner(days_monitoring))
-    elif pct_drop and pct_drop >= 10:
-        parts.append(price_drop_banner(pct_drop))
+    # ── Monitoring summary header ──
+    active_count = context.get("active_signal_count", 1)
+    activity_count = context.get("signals_with_activity_count", 1)
 
-    # ── Zone 1: Signal ID ──
+    summary_line = f"Watching {active_count} signal{'s' if active_count != 1 else ''}"
+    if activity_count > 0:
+        activity_line = (
+            f"{activity_count} signal{'s' if activity_count != 1 else ''} "
+            f"{'have' if activity_count != 1 else 'has'} new deals"
+        )
+    else:
+        activity_line = "No new deals right now"
+
     parts.append(
-        f'<p style="margin:0 0 4px;font-size:12px;color:#999;text-transform:uppercase;'
-        f'letter-spacing:0.5px;font-weight:600;">{signal_name}</p>'
+        f'<p style="margin:0 0 4px;font-size:13px;color:#999;line-height:1.4;">'
+        f'{summary_line}</p>'
+        f'<p style="margin:0 0 28px;font-size:16px;font-weight:600;color:#111;line-height:1.4;">'
+        f'{activity_line}</p>'
     )
-    if route:
+
+    # ── Render each signal with activity ──
+    signals = context.get("signals_with_activity") or [context]
+
+    for i, sig in enumerate(signals):
+        route = sig.get("route", "")
+        deals = sig.get("deals", [])
+        is_new_low = sig.get("new_low", False)
+        pct_drop = sig.get("pct_drop", 0)
+        intel_sentence = sig.get("intel_sentence", "")
+        days_monitoring = sig.get("days_monitoring", 0)
+
+        # Cap at 2 deals per signal for clean presentation
+        display_deals = deals[:2]
+
+        # Separator between signals
+        if i > 0:
+            parts.append(
+                '<div style="height:24px;"></div>'
+            )
+
+        # ── Signal card container ──
         parts.append(
-            f'<p style="margin:0 0 20px;font-size:14px;color:#666;">{route}</p>'
+            '<div style="border:1px solid #e5e7eb;border-radius:12px;'
+            'overflow:hidden;margin-bottom:8px;">'
         )
 
-    # ── Zone 2: Hero stat ──
-    hero = _build_hero_stat(context)
-    if hero:
+        # Signal heading — route as the primary label
+        heading_text = route or sig.get("signal_name", "your signal")
         parts.append(
-            f'<p style="margin:0 0 20px;font-size:18px;font-weight:600;color:#111;">{hero}</p>'
+            f'<div style="padding:16px 20px 0;">'
+            f'<p style="margin:0 0 6px;font-size:15px;font-weight:600;color:#111;">'
+            f'{heading_text}</p>'
         )
 
-    # ── Value Score badge (above deal card) ──
-    vs = context.get("value_score")
-    if vs is not None and vs >= 75:
-        parts.append(value_score_badge(vs))
+        # Summary value line (hero stat or banner-style summary)
+        hero = _build_hero_stat(sig)
+        if is_new_low:
+            parts.append(
+                '<p style="margin:0 0 4px;font-size:13px;font-weight:600;color:#92400E;">'
+                'Lowest price we\u2019ve seen</p>'
+            )
+        elif pct_drop and pct_drop >= 10:
+            parts.append(
+                f'<p style="margin:0 0 4px;font-size:13px;font-weight:600;color:#166534;">'
+                f'Price dropped {pct_drop}%</p>'
+            )
+        elif hero:
+            parts.append(
+                f'<p style="margin:0 0 4px;font-size:13px;color:#666;">'
+                f'{hero}</p>'
+            )
 
-    # ── Zone 3: Deal card(s) ──
-    if deal_count == 1 and deals:
-        parts.append(_single_deal_card(deals[0], route))
-    elif deals:
-        parts.append(_multi_deal_list(deals))
+        parts.append('</div>')
 
-    # ── Airport arbitrage (below deal card) ──
-    arb = context.get("arbitrage")
-    if arb:
-        parts.append(arbitrage_line(arb["arbitrage_airport"], arb["arbitrage_savings_cents"]))
+        # ── Deal rows inside the card ──
+        for j, deal in enumerate(display_deals):
+            hotel = deal.get("hotel_name", "Hotel")
+            rating = deal.get("star_rating")
+            price = format_price(deal.get("price_cents"))
+            duration = deal.get("duration_nights", 7)
+            depart = deal.get("depart_date", "")
 
-    # ── Departure heatmap (between deal card and intel) ──
-    heatmap = context.get("departure_heatmap")
-    if heatmap:
-        parts.append(departure_heatmap_html(heatmap))
+            stars = stars_html(rating)
+            delta = _deal_delta_html(deal)
 
-    # ── Zone 4: One-line intel ──
-    if intel_sentence:
+            provider = deal.get("provider", "")
+            via = ""
+            if provider:
+                label = "RedTag" if provider == "redtag" else "SellOff"
+                via = f' <span style="color:#aaa;font-size:11px;">via {label}</span>'
+
+            dates_info = f"{duration} nights"
+            if depart:
+                dates_info += f" · {depart}"
+
+            border_top = "border-top:1px solid #f3f4f6;" if j == 0 else ""
+            border_bottom = "border-bottom:1px solid #f3f4f6;" if j < len(display_deals) - 1 else ""
+
+            parts.append(
+                f'<div style="padding:14px 20px;{border_top}{border_bottom}">'
+                f'<div style="margin:0 0 4px;">'
+                f'<span style="font-size:14px;font-weight:600;color:#111;">{hotel}</span>'
+                f'{stars}{via}'
+                f'</div>'
+                f'<div style="font-size:13px;color:#666;">'
+                f'{dates_info}'
+                f'</div>'
+                f'<div style="margin-top:6px;">'
+                f'<span style="font-size:20px;font-weight:700;color:#111;">{price}</span>'
+                f'{delta}'
+                f'<span style="font-size:12px;color:#999;margin-left:6px;">per person</span>'
+                f'</div>'
+                f'</div>'
+            )
+
+        # More deals indicator
+        remaining = len(deals) - len(display_deals)
+        if remaining > 0:
+            parts.append(
+                f'<div style="padding:10px 20px;background:#f9fafb;text-align:center;">'
+                f'<span style="font-size:13px;color:#666;">'
+                f'+{remaining} more deal{"s" if remaining != 1 else ""}'
+                f'</span></div>'
+            )
+
+        # Close signal card container
+        parts.append('</div>')
+
+        # Intel sentence below card
+        if intel_sentence:
+            parts.append(
+                f'<p style="margin:6px 0 0;font-size:13px;color:#888;font-style:italic;'
+                f'line-height:1.5;">'
+                f'{intel_sentence}</p>'
+            )
+
+    # ── Still watching section ──
+    quiet_signals = context.get("quiet_signals", [])
+    if quiet_signals:
         parts.append(
-            f'<p style="margin:0 0 20px;font-size:14px;color:#666;font-style:italic;">'
-            f'{intel_sentence}</p>'
+            '<div style="margin-top:28px;padding:16px 20px;background:#f9fafb;'
+            'border-radius:12px;">'
         )
+        parts.append(
+            '<p style="margin:0 0 10px;font-size:13px;font-weight:600;color:#999;'
+            'letter-spacing:0.3px;">Still watching your signals</p>'
+        )
+        for qs in quiet_signals:
+            qname = qs.get("signal_name", "signal")
+            parts.append(
+                f'<p style="margin:0 0 4px;font-size:14px;color:#666;line-height:1.5;">'
+                f'{qname}</p>'
+            )
+        parts.append(
+            '<p style="margin:8px 0 0;font-size:12px;color:#aaa;">'
+            'No strong deals found yet.</p>'
+        )
+        parts.append('</div>')
 
-    # ── Zone 5: Single CTA ──
-    parts.append(button("See deal details \u2192", "https://tripsignal.ca/signals"))
+    # ── Primary CTA ──
+    parts.append(
+        '<div style="text-align:center;margin:32px 0 24px;">'
+    )
+    parts.append(button("Open Trip Signal \u2192", "https://tripsignal.ca/signals"))
+    parts.append('</div>')
 
-    # ── Urgency note + disclaimer ──
-    parts.append(para(
-        '<span style="font-size:13px;color:#666;">'
-        "Prices can change quickly \u2014 check availability soon."
-        "</span>"
-    ))
+    # ── Disclaimer ──
     parts.append(pricing_disclaimer())
 
     body = "".join(parts)
     return subject, wrap(
         body,
         preheader=preview,
-        show_daily_summary_nudge=_is_instant(context),
         unsub_url=_unsub(context),
         user_email=_email(user),
     )
@@ -542,8 +634,8 @@ def inactive_reengagement(*, user: "User", context: dict) -> tuple[str, str]:
         parts.append(heading("Your signals are still running"))
 
     parts.append(para(
-        f"It's been {days_inactive} days since you last checked in. "
-        "Here's what you missed."
+        f"It\u2019s been {days_inactive} days since your last visit. "
+        "Here\u2019s what we found."
     ))
 
     # ── Zone 2: Best missed deal ──
@@ -745,14 +837,16 @@ def _build_hero_stat(context: dict) -> str:
     # Priority: percentile rank > price delta > trend
     if is_top_25 and days_monitoring > 7:
         weeks = max(1, days_monitoring // 7)
-        return f"{price} \u2014 cheapest in {weeks} weeks"
+        if weeks == 1:
+            return f"{price} \u2014 lowest price this week"
+        return f"{price} \u2014 lowest price in {weeks} weeks"
 
     if is_new_low and price:
-        return f"{price} \u2014 all-time low for this signal"
+        return f"{price} \u2014 lowest we\u2019ve seen on this route"
 
     if pct_drop and pct_drop >= 8 and best_price_delta:
         delta_str = format_price(abs(best_price_delta))
-        return f"\u2193 {delta_str} since yesterday"
+        return f"Down {delta_str} from last check"
 
     if trend_direction == "up" and trend_weeks >= 2 and pct_drop and pct_drop > 0:
         return f"First drop in {trend_weeks} weeks of rising prices"

@@ -74,6 +74,9 @@ TEMPLATE_VARIABLES: dict[EmailType, list[str]] = {
         "deals", "intel_sentence", "days_monitoring", "is_top_25",
         "percentile_rank", "trend_direction", "trend_weeks",
         "best_price_delta", "best_price_cents", "destination",
+        # Multi-signal consolidated fields
+        "active_signal_count", "signals_with_activity_count",
+        "quiet_signal_count", "signals_with_activity", "quiet_signals",
     ],
     EmailType.MAJOR_DROP_ALERT: [
         "signal_name", "route", "hotel_name", "star_rating", "drop_amount",

@@ -363,8 +363,8 @@ def _send_cycle_alerts(
 ) -> None:
     """Send match alert emails for a scrape cycle.
 
-    Creates SignalRun records and calls the orchestrator via
-    process_signal_matches (one email per signal per run).
+    Creates SignalRun records and calls process_signal_matches which
+    groups signals by user and sends one consolidated email per user.
     """
     if not v2_signal_deals:
         return
@@ -407,13 +407,14 @@ def _send_cycle_alerts(
             db.flush()
             run_map[signal_id_str] = (str(run.id), deals)
 
-        # Now call process_signal_matches with {signal_id: [deals]} + run_id
-        for signal_id_str, (run_id, deals) in run_map.items():
-            process_signal_matches(
-                db=db,
-                signal_deals={signal_id_str: deals},
-                run_id=run_id,
-            )
+        # Call process_signal_matches ONCE with ALL signals (consolidated per-user emails)
+        all_deals = {sig_id: deals for sig_id, (_, deals) in run_map.items()}
+        all_run_ids = {sig_id: rid for sig_id, (rid, _) in run_map.items()}
+        process_signal_matches(
+            db=db,
+            signal_deals=all_deals,
+            run_ids=all_run_ids,
+        )
 
     if db_override:
         _process(db_override)
