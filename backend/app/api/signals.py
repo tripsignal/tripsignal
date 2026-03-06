@@ -13,10 +13,12 @@ from app.core.rate_limit import limiter
 from app.db.models.deal import Deal
 from app.db.models.deal_match import DealMatch
 from app.db.models.signal import Signal
+from app.db.models.signal_intel_cache import SignalIntelCache
 from app.db.models.user import User
 from app.db.session import get_db
 from app.schemas.signals import (
     SignalCreate,
+    SignalIntel,
     SignalOut,
     SignalStatus,
     SignalUpdate,
@@ -254,11 +256,34 @@ async def list_signals(
 
     rows = db.execute(stmt).all()
 
+    # Batch-fetch intel cache for all user signals
+    signal_ids = [row[0].id for row in rows]
+    intel_map: dict = {}
+    if signal_ids:
+        intel_rows = db.execute(
+            select(SignalIntelCache).where(SignalIntelCache.signal_id.in_(signal_ids))
+        ).scalars().all()
+        intel_map = {ic.signal_id: ic for ic in intel_rows}
+
     out: List[SignalOut] = []
     for signal, match_count in rows:
         s_out = _signal_to_out(signal)
+        intel_data = None
+        ic = intel_map.get(signal.id)
+        if ic:
+            intel_data = SignalIntel(
+                value_score=ic.value_score,
+                trend_direction=ic.trend_direction,
+                trend_consecutive_weeks=ic.trend_consecutive_weeks,
+                min_price_ever_cents=ic.min_price_ever_cents,
+                current_deal_percentile=ic.current_deal_percentile,
+                floor_proximity_pct=ic.floor_proximity_pct,
+                best_value_nights=ic.best_value_nights,
+                total_matches=ic.total_matches,
+                cache_refreshed_at=ic.cache_refreshed_at,
+            )
         out.append(
-            s_out.model_copy(update={"match_count": int(match_count)})
+            s_out.model_copy(update={"match_count": int(match_count), "intel": intel_data})
         )
 
     return out

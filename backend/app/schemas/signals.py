@@ -230,6 +230,20 @@ class SignalUpdate(BaseModel):
     status: Optional[SignalStatus] = None
 
 
+class SignalIntel(BaseModel):
+    """Per-signal intelligence summary from cache."""
+
+    value_score: Optional[int] = None
+    trend_direction: Optional[str] = None
+    trend_consecutive_weeks: Optional[int] = None
+    min_price_ever_cents: Optional[int] = None
+    current_deal_percentile: Optional[float] = None
+    floor_proximity_pct: Optional[float] = None
+    best_value_nights: Optional[int] = None
+    total_matches: Optional[int] = None
+    cache_refreshed_at: Optional[datetime] = None
+
+
 class SignalOut(BaseModel):
     """Schema for signal output (read operations)."""
 
@@ -245,5 +259,6 @@ class SignalOut(BaseModel):
     preferences: Preferences
     created_at: datetime
     updated_at: datetime
-    match_count: int = 0  # ✅ NEW (default for safety)
+    match_count: int = 0
+    intel: Optional[SignalIntel] = None
     model_config = {"from_attributes": True}
