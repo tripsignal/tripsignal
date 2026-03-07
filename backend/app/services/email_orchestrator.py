@@ -486,7 +486,11 @@ def _log_deferred(
     logger.info("orchestrator: DEFERRED %s → %s reason=%s", email_type.value, user.email, reason)
 
 
-FREQUENCY_HOURS = {"morning": 8, "noon": 12, "evening": 18}
+FREQUENCY_WINDOWS = {
+    "morning": (7, 10),   # 7:00 AM – 10:59 AM
+    "noon": (11, 13),     # 11:00 AM – 1:59 PM
+    "evening": (17, 20),  # 5:00 PM – 8:59 PM
+}
 
 
 def drain_deferred_emails(db: Session) -> int:
@@ -563,12 +567,13 @@ def drain_deferred_emails(db: Session) -> int:
 
 
 def _in_delivery_window(user: User) -> bool:
-    """Check if the current time matches one of the user's frequency windows.
+    """Check if the current time falls within one of the user's frequency windows.
 
     For "all" users (instant delivery), always returns True (they shouldn't have
     deferred emails, but handle gracefully).
     For time-based windows, matches if the current hour in the user's timezone
-    equals the target hour (morning=8, noon=12, evening=18).
+    falls within the window range:
+      morning = 7–10 AM, noon = 11 AM–1 PM, evening = 5–8 PM.
     """
     if user.is_instant_delivery:
         return True
@@ -583,8 +588,10 @@ def _in_delivery_window(user: User) -> bool:
     current_hour = now_local.hour
 
     for window in user.frequency_windows:
-        target_hour = FREQUENCY_HOURS.get(window)
-        if target_hour is not None and current_hour == target_hour:
-            return True
+        bounds = FREQUENCY_WINDOWS.get(window)
+        if bounds is not None:
+            start_hour, end_hour = bounds
+            if start_hour <= current_hour <= end_hour:
+                return True
 
     return False
