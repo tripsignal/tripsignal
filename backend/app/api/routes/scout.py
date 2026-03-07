@@ -495,7 +495,7 @@ async def action_queue(
             "priority": 1,
             "type": "price_drop",
             "title": f"${drop_cents // 100} price drop on {hotel}",
-            "description": f"Was ${row[4] // 100}pp, now ${row[5] // 100}pp",
+            "description": f"Was ${row[4] // 100}, now ${row[5] // 100}",
             "signal_id": row[0],
             "deal_id": row[1],
             "cta_label": "View deal",
