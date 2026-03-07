@@ -44,9 +44,9 @@ def wrap(
         '<p style="font-size:12px;color:#999;margin:0 0 12px;text-align:center;line-height:1.6;">'
         f'<a href="{notif_url}" style="color:#999;text-decoration:underline;">Email Notifications</a>'
         ' &nbsp;|&nbsp; '
-        '<a href="https://tripsignal.ca/privacy" style="color:#999;text-decoration:underline;">Privacy Policy</a>'
+        '<a href="https://tripsignal.ca/privacy-policy" style="color:#999;text-decoration:underline;">Privacy Policy</a>'
         ' &nbsp;|&nbsp; '
-        '<a href="https://tripsignal.ca/terms" style="color:#999;text-decoration:underline;">Terms and Conditions</a>'
+        '<a href="https://tripsignal.ca/terms-and-conditions" style="color:#999;text-decoration:underline;">Terms and Conditions</a>'
         '</p>'
     )
 
