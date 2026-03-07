@@ -276,7 +276,7 @@ def _check_suppression(
 
     # ── Anti-fatigue rules (Email Intelligence Spec) ──────────────────────
 
-    # 8. Daily cap: max 1 instant alert per user per day.
+    # 8. Daily cap: max 3 instant alerts per user per day.
     if category == EmailCategory.ALERT and email_type != EmailType.WEEKLY_DIGEST:
         today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         alert_today = db.execute(
@@ -287,7 +287,7 @@ def _check_suppression(
                 EmailLog.sent_at >= today_start,
             )
         ).scalar() or 0
-        if alert_today >= 1:
+        if alert_today >= 3:
             return "daily_cap"
 
     # 10. Frequency-based deferral: non-"all" users get deferred for batch delivery.

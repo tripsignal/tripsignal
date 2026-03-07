@@ -1084,6 +1084,22 @@ def send_test_email(
 
     sent = send_email(payload.to_email, subject, html)
 
+    # Log to email_log for admin visibility
+    from app.db.models.email_log import EmailLog
+    log = EmailLog(
+        user_id=real_user.id if real_user else None,
+        email_type=f"test_{email_type.value}",
+        category="transactional",
+        idempotency_key=f"test_{email_type.value}_{payload.to_email}_{datetime.now(timezone.utc).isoformat()}",
+        to_email=payload.to_email,
+        subject=subject,
+        provider_message_id=sent if sent else None,
+        status="sent" if sent else "failed",
+        sent_at=datetime.now(timezone.utc) if sent else None,
+    )
+    db.add(log)
+    db.commit()
+
     return {
         "ok": sent,
         "email_type": email_type.value,
