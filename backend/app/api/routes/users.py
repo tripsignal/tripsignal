@@ -60,6 +60,9 @@ def get_user_by_clerk_id(
             if user.pro_activation_completed_at
             else None
         ),
+        "email_enabled": user.email_enabled,
+        "notification_delivery_frequency": user.notification_delivery_frequency,
+        "notification_weekly_summary": user.notification_weekly_summary,
     }
 
 
@@ -188,6 +191,7 @@ def get_prefs(
         "email_enabled": user.email_enabled,
         "sms_enabled": user.sms_enabled,
         "email_opt_out": user.email_opt_out,
+        "notification_weekly_summary": user.notification_weekly_summary,
         "timezone": user.timezone,
     }
 
@@ -198,6 +202,7 @@ class UpdatePrefsRequest(BaseModel):
     notification_delivery_frequency: str | None = None
     email_enabled: bool | None = None
     sms_enabled: bool | None = None
+    notification_weekly_summary: bool | None = None
     timezone: str | None = None
     complete_activation: bool = False
 
@@ -229,6 +234,10 @@ def update_prefs(
         user.email_enabled = body.email_enabled
     if body.sms_enabled is not None:
         user.sms_enabled = body.sms_enabled
+    if body.notification_weekly_summary is not None:
+        if body.notification_weekly_summary and user.plan_type != "pro":
+            raise HTTPException(status_code=400, detail="Weekly summary is only available for Pro users")
+        user.notification_weekly_summary = body.notification_weekly_summary
     if body.timezone is not None:
         user.timezone = body.timezone
 

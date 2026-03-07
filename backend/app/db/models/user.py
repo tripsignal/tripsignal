@@ -107,6 +107,10 @@ class User(Base):
         Text, nullable=True, server_default=text("'America/Toronto'"),
     )
 
+    notification_weekly_summary: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false"),
+    )
+
     # Quiet hours
     quiet_hours_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false"),
