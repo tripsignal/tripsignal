@@ -1324,3 +1324,84 @@ def delete_email_template(
     logger.info("[ADMIN] delete_email_template: %s (reverted to default)", et.value)
 
     return {"ok": True, "email_type": et.value, "has_override": False}
+
+
+# ── Email Queue ──────────────────────────────────────────────────────────────
+
+@router.get("/email-queue/stats")
+def email_queue_stats(
+    db: Session = Depends(get_db),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    verify_admin(x_admin_token)
+    from app.services.email_queue import get_queue_stats
+    return get_queue_stats(db)
+
+
+@router.get("/email-queue/items")
+def email_queue_items(
+    limit: int = 50,
+    status: str = "",
+    db: Session = Depends(get_db),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    verify_admin(x_admin_token)
+    from app.services.email_queue import get_recent_queue_items
+    limit = max(1, min(limit, 100))
+    return {"items": get_recent_queue_items(db, limit=limit, status=status)}
+
+
+@router.post("/email-queue/retry-dead")
+def email_queue_retry_dead(
+    db: Session = Depends(get_db),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    verify_admin(x_admin_token)
+    from app.services.email_queue import retry_dead
+    count = retry_dead(db)
+    return {"ok": True, "retried": count}
+
+
+@router.post("/email-queue/pause")
+def email_queue_pause(
+    db: Session = Depends(get_db),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    verify_admin(x_admin_token)
+    from app.services.email_queue import pause_queue
+    count = pause_queue(db)
+    return {"ok": True, "paused": count}
+
+
+@router.post("/email-queue/resume")
+def email_queue_resume(
+    db: Session = Depends(get_db),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    verify_admin(x_admin_token)
+    from app.services.email_queue import resume_queue
+    count = resume_queue(db)
+    return {"ok": True, "resumed": count}
+
+
+@router.post("/email-queue/flush")
+def email_queue_flush(
+    db: Session = Depends(get_db),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    verify_admin(x_admin_token)
+    from app.services.email_queue import flush_queue
+    count = flush_queue(db)
+    return {"ok": True, "flushed": count}
+
+
+@router.post("/email-queue/drain")
+def email_queue_drain_now(
+    db: Session = Depends(get_db),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """Manually trigger a queue drain cycle from admin."""
+    verify_admin(x_admin_token)
+    from app.services.email_queue import drain
+    stats = drain(db)
+    return {"ok": True, **stats}

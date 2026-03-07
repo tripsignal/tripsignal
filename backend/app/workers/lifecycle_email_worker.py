@@ -36,6 +36,7 @@ from app.services.email_orchestrator import (
     drain_deferred_emails,
     trigger as email_trigger,
 )
+from app.services.email_queue import drain as drain_email_queue
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +69,14 @@ def run_cycle(db: Session, now: datetime | None = None) -> None:
     if now is None:
         now = datetime.now(timezone.utc)
 
-    # Drain deferred quiet-hours emails first — deliver waiting emails ASAP.
+    # Drain the email queue first — deliver waiting emails ASAP.
+    _run_queue_drain(db)
+
+    # Drain deferred quiet-hours emails — renders and enqueues them.
     _run_deferred_drain(db)
+
+    # Drain again after deferred emails have been enqueued.
+    _run_queue_drain(db)
 
     # Order matters — extension must run before trial warnings.
     _run_trial_auto_extension(db, now)
@@ -83,10 +90,28 @@ def run_cycle(db: Session, now: datetime | None = None) -> None:
     _run_weekly_digests(db, now)
 
 
-# ── Job 0: Drain deferred quiet-hours emails ─────────────────────────────────
+# ── Job 0a: Drain email queue ─────────────────────────────────────────────────
+
+def _run_queue_drain(db: Session) -> dict:
+    """Send queued emails via rate-limited queue worker."""
+    try:
+        stats = drain_email_queue(db)
+        if stats["sent"] > 0 or stats["failed"] > 0:
+            logger.info(
+                "queue_drain: sent=%d failed=%d dead=%d elapsed=%dms",
+                stats["sent"], stats["failed"], stats["dead"], stats["elapsed_ms"],
+            )
+        return stats
+    except Exception:
+        logger.exception("queue_drain failed")
+        db.rollback()
+        return {}
+
+
+# ── Job 0b: Drain deferred quiet-hours emails ────────────────────────────────
 
 def _run_deferred_drain(db: Session) -> int:
-    """Send emails that were deferred during quiet hours."""
+    """Enqueue emails that were deferred during quiet hours."""
     try:
         return drain_deferred_emails(db)
     except Exception:

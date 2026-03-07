@@ -5,10 +5,12 @@ Every email in the system flows through ``trigger()`` which:
 1. Loads user + validates state.
 2. Applies suppression rules (see ``_check_suppression``).
 3. Computes a deterministic idempotency key and dedupes via email_log.
-4. Inserts a "pending" row into email_log BEFORE sending.
+4. Inserts a "queued" row into email_log.
 5. Renders the template.
-6. Sends via Resend (or dry-runs).
-7. Updates email_log with sent_at, provider_message_id, and metadata.
+6. Enqueues into email_queue for async, rate-limited delivery.
+7. Stamps user-level sent_at flags.
+
+The actual sending happens in the email queue drain worker, not here.
 """
 from __future__ import annotations
 
@@ -23,7 +25,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.models.email_log import EmailLog
 from app.db.models.user import User
-from app.services.email import send_email
+from app.services.email_queue import enqueue as queue_enqueue
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +98,7 @@ def trigger(
 ) -> dict:
     """
     Main entry point.  Returns dict with outcome:
-      {"status": "sent"|"dry_run"|"suppressed"|"duplicate"|"skipped"|"error",
+      {"status": "queued"|"suppressed"|"duplicate"|"deferred"|"error",
        "reason": ...}
     """
     email_type = EmailType(email_type) if isinstance(email_type, str) else email_type
@@ -162,34 +164,28 @@ def trigger(
     from app.services.email_templates import render_template
     subject, html = render_template(email_type, user=user, context=context, db=db)
 
-    # ── 6. Send (or dry-run) ─────────────────────────────────────────────
-    now = datetime.now(timezone.utc)
-    message_id = send_email(user.email, subject, html)
-
-    # ── 7. Update the pending email_log row ──────────────────────────────
+    # ── 6. Enqueue for async delivery ────────────────────────────────────
     log_row.subject = subject
-    if settings.EMAIL_DRY_RUN:
-        log_row.status = "dry_run"
-        log_row.sent_at = now
-        log_row.provider_message_id = None
-        log_row.metadata_json = {
-            "dry_run": True,
-            "rendered_subject": subject,
-            "rendered_body": html,
-            **(context or {}),
-        }
-    elif message_id:
-        log_row.status = "sent"
-        log_row.sent_at = now
-        log_row.provider_message_id = message_id
-        log_row.metadata_json = context if context else None
-    else:
-        log_row.status = "failed"
-        log_row.metadata_json = context if context else None
+    log_row.status = "queued"
+    log_row.metadata_json = context if context else None
 
-    # ── 8. Stamp user-level sent_at flags ─────────────────────────────────
-    if message_id:
-        _stamp_user_sent(user, email_type, now)
+    try:
+        queue_enqueue(
+            db,
+            to_email=user.email,
+            subject=subject,
+            html_body=html,
+            email_log_id=log_row.id,
+            email_type=email_type.value,
+            category=category.value,
+            user_id=str(user.id),
+        )
+    except Exception as e:
+        logger.error("orchestrator: enqueue error: %s", e)
+        log_row.status = "failed"
+
+    # ── 7. Stamp user-level sent_at flags ─────────────────────────────────
+    _stamp_user_sent(user, email_type, datetime.now(timezone.utc))
 
     try:
         db.commit()
@@ -198,14 +194,13 @@ def trigger(
         db.rollback()
         return {"status": "error", "reason": str(e)}
 
-    status_label = "dry_run" if settings.EMAIL_DRY_RUN else ("sent" if message_id else "failed")
     logger.info(
-        "orchestrator: %s → %s (%s) key=%s mid=%s",
-        email_type.value, user.email, status_label, idempotency_key, message_id or "—",
+        "orchestrator: %s → %s (queued) key=%s",
+        email_type.value, user.email, idempotency_key,
     )
     return {
-        "status": status_label,
-        "reason": None if message_id else ("dry_run" if settings.EMAIL_DRY_RUN else "send_failed"),
+        "status": "queued",
+        "reason": None,
         "idempotency_key": idempotency_key,
     }
 
@@ -494,10 +489,11 @@ FREQUENCY_WINDOWS = {
 
 
 def drain_deferred_emails(db: Session) -> int:
-    """Send deferred frequency-window emails when the user's chosen window arrives.
+    """Enqueue deferred frequency-window emails when the user's chosen window arrives.
 
     Called by the lifecycle worker every poll cycle (~5 min).
-    Returns the number of emails sent.
+    Renders deferred emails and pushes them into the email_queue for delivery.
+    Returns the number of emails enqueued.
     """
     rows = db.execute(
         select(EmailLog).where(
@@ -509,7 +505,7 @@ def drain_deferred_emails(db: Session) -> int:
     if not rows:
         return 0
 
-    sent = 0
+    enqueued = 0
     for row in rows:
         user = db.execute(
             select(User).where(User.id == row.user_id)
@@ -525,7 +521,7 @@ def drain_deferred_emails(db: Session) -> int:
         if not _in_delivery_window(user):
             continue
 
-        # Window matched — render and send
+        # Window matched — render and enqueue
         email_type = EmailType(row.email_type)
         context = row.metadata_json or {}
 
@@ -543,27 +539,29 @@ def drain_deferred_emails(db: Session) -> int:
             from app.services.email_templates import render_template
             subject, html = render_template(email_type, user=user, context=context, db=db)
 
-            message_id = send_email(user.email, subject, html)
-            now = datetime.now(timezone.utc)
-
             row.subject = subject
-            if message_id:
-                row.status = "sent"
-                row.sent_at = now
-                row.provider_message_id = message_id
-                _stamp_user_sent(user, email_type, now)
-                sent += 1
-            else:
-                row.status = "failed"
-
+            row.status = "queued"
             row.suppressed_reason = None
+
+            queue_enqueue(
+                db,
+                to_email=user.email,
+                subject=subject,
+                html_body=html,
+                email_log_id=row.id,
+                email_type=email_type.value,
+                category=row.category,
+                user_id=str(user.id),
+            )
+            _stamp_user_sent(user, email_type, datetime.now(timezone.utc))
             db.commit()
+            enqueued += 1
         except Exception:
-            logger.exception("drain_deferred: failed to send %s to %s", row.email_type, user.email)
+            logger.exception("drain_deferred: failed to enqueue %s to %s", row.email_type, user.email)
             db.rollback()
 
-    logger.info("drain_deferred: processed %d deferred emails, sent %d", len(rows), sent)
-    return sent
+    logger.info("drain_deferred: processed %d deferred emails, enqueued %d", len(rows), enqueued)
+    return enqueued
 
 
 def _in_delivery_window(user: User) -> bool:
