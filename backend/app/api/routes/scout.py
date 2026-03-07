@@ -69,6 +69,47 @@ def _region_label(key: str) -> str:
     return REGION_LABELS.get(key, key.replace("_", " ").title())
 
 
+AIRPORT_CITY_MAP: dict[str, str] = {
+    "YXX": "Abbotsford", "YVR": "Vancouver", "YYJ": "Victoria",
+    "YLW": "Kelowna", "YKA": "Kamloops", "YXS": "Prince George",
+    "YYC": "Calgary", "YEG": "Edmonton", "YMM": "Fort McMurray",
+    "YQU": "Grande Prairie", "YQL": "Lethbridge", "YQR": "Regina",
+    "YXE": "Saskatoon", "YWG": "Winnipeg", "YYZ": "Toronto",
+    "YOW": "Ottawa", "YHM": "Hamilton", "YKF": "Kitchener",
+    "YXU": "London", "YAM": "Sault Ste. Marie", "YSB": "Sudbury",
+    "YQT": "Thunder Bay", "YQG": "Windsor", "YUL": "Montreal",
+    "YQB": "Quebec City", "YBG": "Bagotville", "YFC": "Fredericton",
+    "YQM": "Moncton", "YSJ": "Saint John", "YHZ": "Halifax",
+    "YQY": "Sydney", "YYG": "Charlottetown", "YDF": "Deer Lake",
+    "YQX": "Gander", "YYT": "St. John's", "YZF": "Yellowknife",
+    "YXH": "Medicine Hat", "YTS": "Timmins",
+    "YQQ": "Comox", "YXC": "Cranbrook", "YXJ": "Fort St. John",
+    "YCD": "Nanaimo", "YYF": "Penticton", "YPR": "Prince Rupert",
+    "YXT": "Terrace",
+}
+
+REGION_COUNTRY: dict[str, str] = {
+    "mexico": "Mexico", "riviera_maya": "Mexico", "cancun": "Mexico",
+    "puerto_vallarta": "Mexico", "los_cabos": "Mexico", "huatulco": "Mexico",
+    "puerto_escondido": "Mexico", "mazatlan": "Mexico", "ixtapa": "Mexico",
+    "dominican_republic": "Dominican Republic", "punta_cana": "Dominican Republic",
+    "la_romana": "Dominican Republic", "puerto_plata": "Dominican Republic",
+    "samana": "Dominican Republic", "santo_domingo": "Dominican Republic",
+    "jamaica": "Jamaica", "montego_bay": "Jamaica", "negril": "Jamaica",
+    "ocho_rios": "Jamaica",
+    "cuba": "Cuba", "varadero": "Cuba", "holguin": "Cuba",
+    "havana": "Cuba", "cayo_coco": "Cuba",
+    "caribbean": "", "aruba": "Aruba", "barbados": "Barbados",
+    "curacao": "Cura\u00e7ao", "cayman_islands": "Cayman Islands",
+    "saint_lucia": "Saint Lucia", "st_maarten": "Sint Maarten",
+    "turks_caicos": "Turks and Caicos", "bahamas": "Bahamas",
+    "antigua": "Antigua", "grenada": "Grenada",
+    "costa_rica": "Costa Rica", "panama": "Panama", "belize": "Belize",
+    "roatan": "Honduras",
+    "all_south": "",
+}
+
+
 def _get_user_and_signals(db: Session, clerk_user_id: str):
     """Shared helper: look up user + active signals."""
     user = db.query(User).filter(User.clerk_id == clerk_user_id).first()
@@ -680,11 +721,19 @@ async def what_is_a_good_price(
 # ── 8. Unified Insights ─────────────────────────────────────────────────────
 
 def _build_route_label(signal: Signal) -> str:
-    """Build a human-readable route label like 'YQR -> Riviera Maya'."""
+    """Build a human-readable route label like 'Regina (YQR) \u2192 Los Cabos, Mexico'."""
     airports = signal.departure_airports or []
     regions = signal.destination_regions or []
-    origin = airports[0] if airports else "?"
+
+    code = airports[0] if airports else "?"
+    city = AIRPORT_CITY_MAP.get(code)
+    origin = f"{city} ({code})" if city else code
+
     dest = _region_label(regions[0]) if regions else "?"
+    country = REGION_COUNTRY.get(regions[0], "") if regions else ""
+    if country and country != dest:
+        dest = f"{dest}, {country}"
+
     return f"{origin} \u2192 {dest}"
 
 
