@@ -92,6 +92,7 @@ async def get_public_deal(deal_id: UUID, db: Session = Depends(get_db)):
         "star_rating": deal.star_rating,
         "deeplink_url": deal.deeplink_url,
         "destination_str": deal.destination_str,
+        "provider": deal.provider,
         "value_score": value_score,
         "price_delta_cents": price_delta_cents,
     }
