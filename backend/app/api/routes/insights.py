@@ -210,25 +210,29 @@ async def market_pulse(
         for r in route_rows
     ]
 
-    # Market snapshots — last 7 days
-    cutoff = date.today() - timedelta(days=7)
-    snapshot_rows = (
-        db.query(MarketSnapshot)
-        .filter(MarketSnapshot.snapshot_date >= cutoff)
-        .order_by(MarketSnapshot.snapshot_date.desc())
-        .all()
-    )
-    snapshots = [
-        {
-            "snapshot_date": s.snapshot_date.isoformat(),
-            "departure_airport": s.departure_airport,
-            "destination_region": s.destination_region,
-            "package_count": s.package_count,
-            "min_price": s.min_price,
-            "median_price": s.median_price,
-        }
-        for s in snapshot_rows
-    ]
+    # Market snapshots — last 7 days (table may not exist yet)
+    snapshots: list[dict] = []
+    try:
+        cutoff = date.today() - timedelta(days=7)
+        snapshot_rows = (
+            db.query(MarketSnapshot)
+            .filter(MarketSnapshot.snapshot_date >= cutoff)
+            .order_by(MarketSnapshot.snapshot_date.desc())
+            .all()
+        )
+        snapshots = [
+            {
+                "snapshot_date": s.snapshot_date.isoformat(),
+                "departure_airport": s.departure_airport,
+                "destination_region": s.destination_region,
+                "package_count": s.package_count,
+                "min_price": s.min_price,
+                "median_price": s.median_price,
+            }
+            for s in snapshot_rows
+        ]
+    except Exception:
+        db.rollback()
 
     return {
         "plan_type": getattr(user, "plan_type", "free"),
