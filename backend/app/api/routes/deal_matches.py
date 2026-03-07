@@ -162,6 +162,7 @@ def list_signal_matches(
             id=match.id,
             matched_at=match.matched_at,
             is_favourite=match.is_favourite,
+            value_label=match.value_label,
             deal=deal_out,
         ))
 
@@ -225,6 +226,7 @@ def toggle_favourite(
         id=match.id,
         matched_at=match.matched_at,
         is_favourite=match.is_favourite,
+        value_label=match.value_label,
         deal=deal_out,
     )
 

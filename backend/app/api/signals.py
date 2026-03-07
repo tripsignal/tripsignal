@@ -23,6 +23,7 @@ from app.schemas.signals import (
     SignalStatus,
     SignalUpdate,
 )
+from app.services.market_intel import score_deal_for_match
 from app.services.market_intel import (
     MarketStats,
     build_market_bucket_from_signal,
@@ -148,7 +149,11 @@ def _match_signal_against_deals(db: Session, signal: Signal) -> int:
                 continue
             seen_deal_ids.add(deal.id)
 
-            match = DealMatch(signal_id=signal.id, deal_id=deal.id)
+            try:
+                vlabel = score_deal_for_match(db, deal)
+            except Exception:
+                vlabel = None
+            match = DealMatch(signal_id=signal.id, deal_id=deal.id, value_label=vlabel)
             db.add(match)
             new_matches += 1
         except Exception:

@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, ForeignKey, Integer, TIMESTAMP, UniqueConstraint, text
+from sqlalchemy import Boolean, ForeignKey, Integer, String, TIMESTAMP, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -72,6 +72,11 @@ class DealMatch(Base):
     )
     deal_last_seen_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True, server_default=text("now()"),
+    )
+
+    # Market-based value label (scored at match time)
+    value_label: Mapped[str | None] = mapped_column(
+        String(30), nullable=True,
     )
 
     # Relationships

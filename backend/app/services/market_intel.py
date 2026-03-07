@@ -422,6 +422,59 @@ def score_deal(price_cents: int, stats: MarketStats) -> DealValueScore:
     return result
 
 
+def _deal_bucket_key(deal: Deal) -> tuple:
+    """Return a hashable key for a deal's market bucket."""
+    duration = (deal.return_date - deal.depart_date).days if deal.return_date else 7
+    dur_bucket = duration_to_bucket(duration) or "one_week"
+    star_bkt = star_to_bucket(deal.star_rating)
+    return (deal.origin, deal.destination, dur_bucket, star_bkt)
+
+
+def score_deal_for_match(
+    db: Session,
+    deal: Deal,
+    stats_cache: Optional[dict[tuple, MarketStats]] = None,
+) -> Optional[str]:
+    """Score a deal against its market bucket and return the value label.
+
+    Returns only positive labels ('Rare value', 'Great value') or None.
+    Used when creating DealMatch records to store the label at match time.
+
+    Pass a stats_cache dict to avoid recomputing market stats for deals in
+    the same bucket during a batch operation (e.g. scraper run).
+    """
+    if not deal.price_cents:
+        return None
+
+    cache_key = _deal_bucket_key(deal)
+
+    if stats_cache is not None and cache_key in stats_cache:
+        stats = stats_cache[cache_key]
+    else:
+        duration = (deal.return_date - deal.depart_date).days if deal.return_date else 7
+        dur_bucket = duration_to_bucket(duration) or "one_week"
+        star_bkt = star_to_bucket(deal.star_rating)
+        bucket = MarketBucket(
+            origin=deal.origin,
+            destination=deal.destination,
+            duration_bucket=dur_bucket,
+            star_bucket=star_bkt,
+        )
+        stats = compute_market_stats(db, bucket)
+        if stats_cache is not None:
+            stats_cache[cache_key] = stats
+
+    if not stats.is_scorable():
+        return None
+
+    result = score_deal(deal.price_cents, stats)
+
+    # Only return positive labels — neutral/negative are not shown
+    if result.label in ("Rare value", "Great value"):
+        return result.label
+    return None
+
+
 def score_deal_resort_anomaly(
     db: Session, deal: Deal, price_cents: int
 ) -> tuple[bool, Optional[float]]:

@@ -1421,3 +1421,34 @@ def email_queue_drain_now(
     from app.services.email_queue import drain
     stats = drain(db)
     return {"ok": True, **stats}
+
+
+@router.post("/backfill-value-labels")
+def backfill_value_labels(
+    db: Session = Depends(get_db),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+):
+    """Backfill value_label on existing deal_matches using market scoring."""
+    verify_admin(x_admin_token)
+    from app.db.models.deal_match import DealMatch
+    from app.services.market_intel import score_deal_for_match
+
+    matches = (
+        db.query(DealMatch)
+        .join(Deal)
+        .filter(DealMatch.value_label.is_(None), Deal.is_active == True)
+        .all()
+    )
+
+    stats_cache: dict = {}
+    updated = 0
+    for match in matches:
+        try:
+            label = score_deal_for_match(db, match.deal, stats_cache=stats_cache)
+            match.value_label = label  # None if not positive
+            updated += 1
+        except Exception as e:
+            logger.warning("Backfill error for match %s: %s", match.id, e)
+
+    db.commit()
+    return {"ok": True, "matches_processed": len(matches), "updated": updated}

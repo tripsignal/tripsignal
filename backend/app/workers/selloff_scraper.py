@@ -169,6 +169,7 @@ from app.workers.shared.regions import (
 )
 from app.workers.shared.matching import match_deal_to_signals as _shared_match_deal_to_signals
 from app.workers.shared.upsert import upsert_deal as _shared_upsert_deal
+from app.services.market_intel import score_deal_for_match
 
 
 def parse_duration_days(duration_str: str) -> int:
@@ -436,6 +437,7 @@ def run_matching_only(db: Session) -> None:
     user_digest: dict = defaultdict(dict)
     v2_signal_deals: dict = defaultdict(list)
     total_matches = 0
+    value_stats_cache: dict = {}
     for deal in deals:
         duration_days = (deal.return_date - deal.depart_date).days if deal.return_date else 7
         deal_meta = {
@@ -460,10 +462,15 @@ def run_matching_only(db: Session) -> None:
                 continue
 
             ppn = deal.price_cents // duration_days if duration_days > 0 else None
+            try:
+                vlabel = score_deal_for_match(db, deal, stats_cache=value_stats_cache)
+            except Exception:
+                vlabel = None
             match = DealMatch(
                 signal_id=signal.id,
                 deal_id=deal.id,
                 price_per_night_cents=ppn,
+                value_label=vlabel,
             )
             db.add(match)
             db.commit()
@@ -537,6 +544,7 @@ def run_scraper(once: bool = True) -> None:
         deals_deactivated = 0
         deals_expired = 0
         seen_dedupe_keys: set[str] = set()
+        scrape_value_stats_cache: dict = {}
         started_at = datetime.now(timezone.utc)
         run_id = None
 
@@ -628,10 +636,15 @@ def run_scraper(once: bool = True) -> None:
 
                                     duration_days = deal_meta.get("duration_days", 7)
                                     ppn = deal.price_cents // duration_days if duration_days > 0 else None
+                                    try:
+                                        vlabel = score_deal_for_match(db, deal, stats_cache=scrape_value_stats_cache)
+                                    except Exception:
+                                        vlabel = None
                                     match = DealMatch(
                                         signal_id=signal.id,
                                         deal_id=deal.id,
                                         price_per_night_cents=ppn,
+                                        value_label=vlabel,
                                     )
                                     db.add(match)
                                     db.commit()
