@@ -4,7 +4,7 @@ from datetime import date as date_type
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
@@ -23,7 +23,7 @@ from app.services.account import delete_account, restore_account
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(verify_admin)])
 
 
 
@@ -41,9 +41,7 @@ def enqueue_test_email(
     request: Request,
     payload: TestEmailIn,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     email_enabled = os.getenv("ENABLE_EMAIL_NOTIFICATIONS", "false").lower() == "true"
     channel = "email" if email_enabled else "log"
     to_email = payload.to_email if email_enabled else "log"
@@ -66,9 +64,7 @@ def enqueue_test_email(
 def debug_outbox(
     limit: int = 20,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     limit = max(1, min(limit, 100))
     rows = db.execute(
         select(NotificationOutbox).order_by(NotificationOutbox.created_at.desc()).limit(limit)
@@ -95,9 +91,7 @@ def debug_outbox(
 @router.get("/health")
 def system_health(
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
 
     total_users = db.execute(select(func.count()).select_from(User).where(User.is_test_user.is_(False))).scalar()
     free_users = db.execute(select(func.count()).select_from(User).where(User.plan_type == "free", User.is_test_user.is_(False))).scalar()
@@ -159,9 +153,7 @@ def list_signals(
     page: int = 1,
     limit: int = 25,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     offset = (page - 1) * limit
     limit = max(1, min(limit, 100))
 
@@ -206,9 +198,7 @@ def list_signals(
 def get_user_by_clerk_id(
     clerk_id: str,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     user = db.execute(select(User).where(User.clerk_id == clerk_id)).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -229,9 +219,7 @@ def list_users(
     search: str = "",
     include_test_users: bool = False,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     offset = (page - 1) * limit
     limit = max(1, min(limit, 100))
 
@@ -270,9 +258,7 @@ def list_users(
 def toggle_test_user(
     user_id: str,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
 
     user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
     if not user:
@@ -297,9 +283,7 @@ def set_user_plan(
     user_id: str,
     plan: str,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     if plan not in ("free", "pro"):
         raise HTTPException(status_code=400, detail="Invalid plan")
     user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
@@ -322,9 +306,7 @@ def set_user_status(
     user_id: str,
     status: str,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     if status not in ("active", "disabled"):
         raise HTTPException(status_code=400, detail="Invalid status")
     user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
@@ -348,9 +330,7 @@ def admin_delete_user(
     user_id: str,
     body: DeleteUserRequest | None = None,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
 
     user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
     if not user:
@@ -383,9 +363,7 @@ def admin_delete_user(
 def admin_undelete_user(
     user_id: str,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
 
     user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
     if not user:
@@ -410,14 +388,12 @@ def admin_undelete_user(
 def admin_hard_delete_user(
     user_id: str,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
     """Permanently remove a soft-deleted user and all associated data.
 
     CASCADE FKs handle: signals → deal_matches, signal_runs.
     SET NULL FKs handle: email_log.user_id, notifications_outbox.signal_id.
     """
-    verify_admin(x_admin_token)
 
     user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
     if not user:
@@ -447,9 +423,7 @@ def extend_trial(
     user_id: str,
     days: int = 7,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     if days < 1 or days > 90:
         raise HTTPException(status_code=400, detail="Days must be 1-90")
 
@@ -479,9 +453,7 @@ def extend_trial(
 def reset_trial(
     user_id: str,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
 
     user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
     if not user:
@@ -507,9 +479,7 @@ def reset_trial(
 def get_user_feedback(
     user_id: str,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
 
     user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
     if not user:
@@ -529,7 +499,6 @@ def get_user_feedback(
 @router.post("/run-trial-expiry")
 def run_trial_expiry(
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
     """
     Find users whose trial has expired and send them an upsell email.
@@ -537,7 +506,6 @@ def run_trial_expiry(
     trial_expired_email_sent_at).
     """
 
-    verify_admin(x_admin_token)
     now = datetime.now(timezone.utc)
 
     # Users with expired trials who:
@@ -585,9 +553,7 @@ def list_notifications(
     status: str = "",
     email: str = "",
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     offset = (page - 1) * limit
     limit = max(1, min(limit, 100))
 
@@ -636,9 +602,7 @@ def list_scrape_runs(
     limit: int = 20,
     offset: int = 0,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     limit = max(1, min(limit, 50))
     offset = max(0, offset)
 
@@ -693,9 +657,7 @@ def list_deals(
     scrape_run_id: int | None = None,
     view: str = "active",
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     offset = (page - 1) * limit
     limit = max(1, min(limit, 100))
 
@@ -793,9 +755,7 @@ def users_unified(
     include_test_users: bool = False,
     status_filter: str = "",
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     offset = (page - 1) * limit
     limit = max(1, min(limit, 100))
 
@@ -924,10 +884,8 @@ def users_unified(
 def list_hotels(
     search: str = "",
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
     """List all hotels with their TripAdvisor links."""
-    verify_admin(x_admin_token)
 
     # Sync any new hotels from deals that aren't in hotel_links yet
     # Use the earliest found_at from deals as created_at (first time we ever saw this hotel)
@@ -986,10 +944,8 @@ def update_hotel_link(
     hotel_id: str,
     payload: dict,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
     """Update the TripAdvisor URL for a hotel."""
-    verify_admin(x_admin_token)
 
     hotel = db.execute(
         select(HotelLink).where(HotelLink.hotel_id == hotel_id)
@@ -1015,10 +971,8 @@ class SendTestEmailIn(BaseModel):
 
 @router.get("/email-types")
 def list_email_types(
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
     """Return all available email types with their categories."""
-    verify_admin(x_admin_token)
     from app.services.email_orchestrator import EMAIL_TYPE_CATEGORY, EmailType
 
     result = []
@@ -1036,10 +990,8 @@ def list_email_types(
 def send_test_email(
     payload: SendTestEmailIn,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
     """Render a template with a fake user and send it to the provided address."""
-    verify_admin(x_admin_token)
     from app.services.email import send_email
     from app.services.email_orchestrator import EmailType
     from app.services.email_templates import render_template
@@ -1115,10 +1067,8 @@ def send_test_email(
 def preview_email(
     payload: SendTestEmailIn,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
     """Render a template and return the HTML without sending."""
-    verify_admin(x_admin_token)
     from app.services.email_orchestrator import EmailType
     from app.services.email_templates import render_template
 
@@ -1198,10 +1148,8 @@ class TemplateOverrideIn(BaseModel):
 @router.get("/email-templates")
 def list_email_templates(
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
     """List all email types with their override status and available variables."""
-    verify_admin(x_admin_token)
     from app.db.models.email_template_override import EmailTemplateOverride
     from app.services.email_orchestrator import EMAIL_TYPE_CATEGORY, EmailType
     from app.services.email_templates import TEMPLATE_VARIABLES
@@ -1231,10 +1179,8 @@ def list_email_templates(
 def get_email_template(
     email_type: str,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
     """Get the default template and any DB override for a specific email type."""
-    verify_admin(x_admin_token)
     from app.db.models.email_template_override import EmailTemplateOverride
     from app.services.email_orchestrator import EmailType
     from app.services.email_templates import TEMPLATE_VARIABLES, get_default_body
@@ -1268,10 +1214,8 @@ def upsert_email_template(
     email_type: str,
     payload: TemplateOverrideIn,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
     """Create or update a template override."""
-    verify_admin(x_admin_token)
     from app.db.models.email_template_override import EmailTemplateOverride
     from app.services.email_orchestrator import EmailType
 
@@ -1318,10 +1262,8 @@ def upsert_email_template(
 def delete_email_template(
     email_type: str,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
     """Delete a template override, reverting to the Python default."""
-    verify_admin(x_admin_token)
     from app.db.models.email_template_override import EmailTemplateOverride
     from app.services.email_orchestrator import EmailType
 
@@ -1349,9 +1291,7 @@ def delete_email_template(
 @router.get("/email-queue/stats")
 def email_queue_stats(
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     from app.services.email_queue import get_queue_stats
     return get_queue_stats(db)
 
@@ -1361,9 +1301,7 @@ def email_queue_items(
     limit: int = 50,
     status: str = "",
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     from app.services.email_queue import get_recent_queue_items
     limit = max(1, min(limit, 100))
     return {"items": get_recent_queue_items(db, limit=limit, status=status)}
@@ -1372,9 +1310,7 @@ def email_queue_items(
 @router.post("/email-queue/retry-dead")
 def email_queue_retry_dead(
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     from app.services.email_queue import retry_dead
     count = retry_dead(db)
     return {"ok": True, "retried": count}
@@ -1383,9 +1319,7 @@ def email_queue_retry_dead(
 @router.post("/email-queue/pause")
 def email_queue_pause(
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     from app.services.email_queue import pause_queue
     count = pause_queue(db)
     return {"ok": True, "paused": count}
@@ -1394,9 +1328,7 @@ def email_queue_pause(
 @router.post("/email-queue/resume")
 def email_queue_resume(
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     from app.services.email_queue import resume_queue
     count = resume_queue(db)
     return {"ok": True, "resumed": count}
@@ -1405,9 +1337,7 @@ def email_queue_resume(
 @router.post("/email-queue/flush")
 def email_queue_flush(
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     from app.services.email_queue import flush_queue
     count = flush_queue(db)
     return {"ok": True, "flushed": count}
@@ -1416,10 +1346,8 @@ def email_queue_flush(
 @router.post("/email-queue/drain")
 def email_queue_drain_now(
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
     """Manually trigger a queue drain cycle from admin."""
-    verify_admin(x_admin_token)
     from app.services.email_queue import drain
     stats = drain(db)
     return {"ok": True, **stats}
@@ -1428,10 +1356,8 @@ def email_queue_drain_now(
 @router.post("/backfill-value-labels")
 def backfill_value_labels(
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
     """Backfill value_label on existing deal_matches using market scoring."""
-    verify_admin(x_admin_token)
     from app.db.models.deal_match import DealMatch
     from app.services.market_intel import score_deal_for_match
 

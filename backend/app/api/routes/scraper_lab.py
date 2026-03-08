@@ -6,7 +6,7 @@ import urllib.request
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -16,7 +16,7 @@ from app.db.models.deal import Deal
 from app.db.models.signal import Signal
 from app.db.session import get_db
 
-router = APIRouter(prefix="/admin/scraper-lab", tags=["scraper-lab"])
+router = APIRouter(prefix="/admin/scraper-lab", tags=["scraper-lab"], dependencies=[Depends(verify_admin)])
 
 CATEGORIES = [
     "luxury-vacations",
@@ -178,10 +178,12 @@ def fetch_html(url: str) -> tuple[str, str]:
     if parsed.scheme not in ("http", "https"):
         return "", f"Blocked: scheme '{parsed.scheme}' not allowed"
     try:
-        resolved_ip = socket.getaddrinfo(parsed.hostname, None)[0][4][0]
-        ip = ipaddress.ip_address(resolved_ip)
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-            return "", f"Blocked: '{parsed.hostname}' resolves to private IP {resolved_ip}"
+        addrs = socket.getaddrinfo(parsed.hostname, None)
+        for addr_info in addrs:
+            resolved_ip = addr_info[4][0]
+            ip = ipaddress.ip_address(resolved_ip)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return "", f"Blocked: '{parsed.hostname}' resolves to private IP {resolved_ip}"
     except (socket.gaierror, ValueError) as e:
         return "", f"Blocked: DNS resolution failed for '{parsed.hostname}': {e}"
     try:
@@ -385,9 +387,7 @@ class DryRunRequest(BaseModel):
 @router.post("/health-check")
 def health_check(
     payload: HealthCheckRequest,
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     html, error = fetch_html(payload.url)
     if error:
         return {"ok": False, "error": error, "url": payload.url, "regexes": {}}
@@ -409,9 +409,7 @@ def health_check(
 @router.post("/test-scrape")
 def test_scrape(
     payload: TestScrapeRequest,
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
     html, error = fetch_html(payload.url)
     if error:
         return {"ok": False, "error": error, "deals": [], "count": 0}
@@ -431,9 +429,7 @@ def test_scrape(
 def dry_run(
     payload: DryRunRequest,
     db: Session = Depends(get_db),
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
-    verify_admin(x_admin_token)
 
     if payload.category not in CATEGORIES:
         raise HTTPException(status_code=400, detail=f"Invalid category. Choose from: {CATEGORIES}")

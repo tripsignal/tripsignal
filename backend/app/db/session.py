@@ -22,11 +22,13 @@ def get_db() -> Session:
     """
     Dependency function to get database session.
     Yields a database session and ensures it's closed after use.
+    Rollback before close prevents returning a dirty connection to the pool.
     """
     db = SessionLocal()
     try:
         yield db
     finally:
+        db.rollback()
         db.close()
 
 

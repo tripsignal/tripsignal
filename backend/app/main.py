@@ -96,8 +96,9 @@ async def log_requests(request: Request, call_next):
     response = await call_next(request)
     elapsed_ms = (time.monotonic() - start) * 1000
 
-    client_ip = (request.headers.get('x-forwarded-for', '').split(',')[0].strip()
-                 or (request.client.host if request.client else 'unknown'))
+    xff = request.headers.get('x-forwarded-for', '')
+    client_ip = (xff.split(",")[-1].strip() if xff
+                 else (request.client.host if request.client else 'unknown'))
 
     _request_logger.info(
         '%s | %s | %s %s | %s | %.0fms',
