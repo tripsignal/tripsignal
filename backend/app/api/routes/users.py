@@ -84,8 +84,8 @@ def sync_user(
     user_agent = user_agent or request.headers.get("user-agent")
     x_timezone = x_timezone or request.headers.get("x-timezone")
 
-    # Extract first IP from X-Forwarded-For (client IP before proxies)
-    client_ip = x_forwarded_for.split(",")[0].strip() if x_forwarded_for else None
+    # Rightmost IP is the one Caddy appended from the TCP connection
+    client_ip = x_forwarded_for.split(",")[-1].strip() if x_forwarded_for else None
 
     user = db.execute(
         select(User).where(User.clerk_id == clerk_user_id)

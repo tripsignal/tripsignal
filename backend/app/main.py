@@ -1,18 +1,18 @@
 """FastAPI application entry point."""
-import hmac
 import logging
-import os
 import time
 import traceback
 from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import select, text
+from sqlalchemy.orm import Session
 
+from app.api.deps import verify_admin
 from app.api.routes import health
 from app.api.routes.admin import router as admin_router
 from app.api.routes.billing import router as billing_router
@@ -65,21 +65,6 @@ app.add_middleware(
         "X-Admin-Token",
     ],
 )
-
-
-# ── Security helpers ─────────────────────────────────────────────────────────
-
-_security_logger = logging.getLogger("tripsignal.security")
-
-
-def _verify_system_token(x_admin_token: str | None = Header(None, alias="X-Admin-Token")):
-    """Verify the admin token for internal system endpoints."""
-    admin_token = os.getenv("ADMIN_TOKEN", "").strip()
-    if not admin_token:
-        raise HTTPException(status_code=500, detail="ADMIN_TOKEN not configured")
-    if not x_admin_token or not hmac.compare_digest(x_admin_token, admin_token):
-        _security_logger.warning("SECURITY | system_auth_failed | token_present=%s", x_admin_token is not None)
-        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 # Request logging middleware
@@ -152,114 +137,99 @@ app.include_router(market_router)
 app.include_router(scout_router)
 app.include_router(deal_public_router)
 
-@app.post("/api/system/next-scan", dependencies=[Depends(_verify_system_token)])
-async def set_next_scan(payload: dict):
+@app.post("/api/system/next-scan", dependencies=[Depends(verify_admin)])
+def set_next_scan(payload: dict, db: Session = Depends(get_db)):
     """Called by scraper to register next scan time. Persists to system_config."""
     next_scan_at = payload.get("next_scan_at")
-    db = next(get_db())
-    try:
-        db.execute(text(
-            "INSERT INTO system_config (key, value, updated_at) "
-            "VALUES ('next_scan_at', :val, now()) "
-            "ON CONFLICT (key) DO UPDATE SET value = :val, updated_at = now()"
-        ), {"val": str(next_scan_at) if next_scan_at is not None else ""})
-        db.commit()
-        return {"ok": True}
-    finally:
-        db.close()
+    db.execute(text(
+        "INSERT INTO system_config (key, value, updated_at) "
+        "VALUES ('next_scan_at', :val, now()) "
+        "ON CONFLICT (key) DO UPDATE SET value = :val, updated_at = now()"
+    ), {"val": str(next_scan_at) if next_scan_at is not None else ""})
+    db.commit()
+    return {"ok": True}
+
 
 @app.get("/api/system/next-scan")
-async def next_scan():
+def next_scan(db: Session = Depends(get_db)):
     """Return the next scheduled scrape time from system_config."""
-    db = next(get_db())
-    try:
-        row = db.execute(text(
-            "SELECT value FROM system_config WHERE key = 'next_scan_at'"
-        )).first()
-        if row and row[0]:
-            try:
-                val = float(row[0])
-                return {"next_scan_at": val, "available": True}
-            except (ValueError, TypeError):
-                pass
-        return {"next_scan_at": None, "available": False}
-    finally:
-        db.close()
+    row = db.execute(text(
+        "SELECT value FROM system_config WHERE key = 'next_scan_at'"
+    )).first()
+    if row and row[0]:
+        try:
+            val = float(row[0])
+            return {"next_scan_at": val, "available": True}
+        except (ValueError, TypeError):
+            pass
+    return {"next_scan_at": None, "available": False}
 
 
-@app.post("/api/system/scrape-started", dependencies=[Depends(_verify_system_token)])
-async def scrape_started(payload: dict):
+@app.post("/api/system/scrape-started", dependencies=[Depends(verify_admin)])
+def scrape_started(payload: dict, db: Session = Depends(get_db)):
     """Called by scraper when a cycle begins. Creates a ScrapeRun row."""
     started_at_str = payload.get("started_at")
     started_at = datetime.fromisoformat(started_at_str) if started_at_str else datetime.now(timezone.utc)
-    db = next(get_db())
-    try:
-        run = ScrapeRun(started_at=started_at, status="running", proxy_ip=payload.get("proxy_ip"), proxy_geo=payload.get("proxy_geo"))
-        db.add(run)
-        db.commit()
-        db.refresh(run)
-        return {"ok": True, "run_id": run.id}
-    finally:
-        db.close()
+    run = ScrapeRun(started_at=started_at, status="running", proxy_ip=payload.get("proxy_ip"), proxy_geo=payload.get("proxy_geo"))
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    return {"ok": True, "run_id": run.id}
 
 
-@app.post("/api/system/collection-complete", dependencies=[Depends(_verify_system_token)])
-async def collection_complete(payload: dict):
+@app.post("/api/system/collection-complete", dependencies=[Depends(verify_admin)])
+def collection_complete(payload: dict, db: Session = Depends(get_db)):
     """Called by scraper when a cycle finishes. Updates or creates a ScrapeRun row."""
-    db = next(get_db())
-    try:
-        # Prefer explicit run_id correlation; fall back to latest running
-        payload_run_id = payload.get("run_id")
-        if payload_run_id:
-            run = db.execute(
-                select(ScrapeRun).where(ScrapeRun.id == payload_run_id)
-            ).scalar_one_or_none()
-        else:
-            run = db.execute(
-                select(ScrapeRun)
-                .where(ScrapeRun.status == "running")
-                .order_by(ScrapeRun.started_at.desc())
-                .limit(1)
-            ).scalar_one_or_none()
+    # Prefer explicit run_id correlation; fall back to latest running
+    payload_run_id = payload.get("run_id")
+    if payload_run_id:
+        run = db.execute(
+            select(ScrapeRun).where(ScrapeRun.id == payload_run_id)
+        ).scalar_one_or_none()
+    else:
+        run = db.execute(
+            select(ScrapeRun)
+            .where(ScrapeRun.status == "running")
+            .order_by(ScrapeRun.started_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
 
-        completed_at_str = payload.get("completed_at")
-        completed_at = datetime.fromisoformat(completed_at_str) if completed_at_str else datetime.now(timezone.utc)
+    completed_at_str = payload.get("completed_at")
+    completed_at = datetime.fromisoformat(completed_at_str) if completed_at_str else datetime.now(timezone.utc)
 
-        if run:
-            run.completed_at = completed_at
-            run.total_deals = payload.get("total_deals", 0)
-            run.total_matches = payload.get("total_matches", 0)
-            run.error_count = payload.get("error_count", 0)
-            run.error_log = payload.get("errors", [])
-            run.deals_deactivated = payload.get("deals_deactivated")
-            run.deals_expired = payload.get("deals_expired")
-            run.status = payload.get("status", "completed")
-            if payload.get("proxy_ip"):
-                run.proxy_ip = payload["proxy_ip"]
-            if payload.get("proxy_geo"):
-                run.proxy_geo = payload["proxy_geo"]
-        else:
-            started_at_str = payload.get("started_at")
-            started_at = datetime.fromisoformat(started_at_str) if started_at_str else completed_at
-            run = ScrapeRun(
-                started_at=started_at,
-                completed_at=completed_at,
-                total_deals=payload.get("total_deals", 0),
-                total_matches=payload.get("total_matches", 0),
-                error_count=payload.get("error_count", 0),
-                error_log=payload.get("errors", []),
-                deals_deactivated=payload.get("deals_deactivated"),
-                deals_expired=payload.get("deals_expired"),
-                status=payload.get("status", "completed"),
-                proxy_ip=payload.get("proxy_ip"),
-                proxy_geo=payload.get("proxy_geo"),
-            )
-            db.add(run)
+    if run:
+        run.completed_at = completed_at
+        run.total_deals = payload.get("total_deals", 0)
+        run.total_matches = payload.get("total_matches", 0)
+        run.error_count = payload.get("error_count", 0)
+        run.error_log = payload.get("errors", [])
+        run.deals_deactivated = payload.get("deals_deactivated")
+        run.deals_expired = payload.get("deals_expired")
+        run.status = payload.get("status", "completed")
+        if payload.get("proxy_ip"):
+            run.proxy_ip = payload["proxy_ip"]
+        if payload.get("proxy_geo"):
+            run.proxy_geo = payload["proxy_geo"]
+    else:
+        started_at_str = payload.get("started_at")
+        started_at = datetime.fromisoformat(started_at_str) if started_at_str else completed_at
+        run = ScrapeRun(
+            started_at=started_at,
+            completed_at=completed_at,
+            total_deals=payload.get("total_deals", 0),
+            total_matches=payload.get("total_matches", 0),
+            error_count=payload.get("error_count", 0),
+            error_log=payload.get("errors", []),
+            deals_deactivated=payload.get("deals_deactivated"),
+            deals_expired=payload.get("deals_expired"),
+            status=payload.get("status", "completed"),
+            proxy_ip=payload.get("proxy_ip"),
+            proxy_geo=payload.get("proxy_geo"),
+        )
+        db.add(run)
 
-        db.commit()
-        return {"ok": True, "run_id": run.id}
-    finally:
-        db.close()
+    db.commit()
+    return {"ok": True, "run_id": run.id}
 
 
 # 1x1 transparent PNG
@@ -272,9 +242,8 @@ _PIXEL_PNG = (
 
 
 @app.get("/api/notifications/{notification_id}/pixel.png")
-def tracking_pixel(notification_id: str):
+def tracking_pixel(notification_id: str, db: Session = Depends(get_db)):
     """Return a 1x1 transparent PNG and track opens."""
-    db = next(get_db())
     try:
         notif = db.execute(
             select(NotificationOutbox).where(NotificationOutbox.id == notification_id)
@@ -286,8 +255,6 @@ def tracking_pixel(notification_id: str):
             db.commit()
     except Exception:
         pass
-    finally:
-        db.close()
     return Response(
         content=_PIXEL_PNG,
         media_type="image/png",

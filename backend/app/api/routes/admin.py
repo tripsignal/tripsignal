@@ -268,7 +268,7 @@ def toggle_test_user(
     db.commit()
     db.refresh(user)
 
-    print(f"[ADMIN] toggle_test_user: {user.email} → is_test_user={user.is_test_user}")
+    logger.info("[ADMIN] toggle_test_user: %s → is_test_user=%s", user.email, user.is_test_user)
 
     return {
         "id": str(user.id),
@@ -297,7 +297,7 @@ def set_user_plan(
     user.plan_type = plan
     db.commit()
     db.refresh(user)
-    print(f"[ADMIN] set_plan: {user.email} → plan_type={user.plan_type}")
+    logger.info("[ADMIN] set_plan: %s → plan_type=%s", user.email, user.plan_type)
     return {"id": str(user.id), "email": user.email, "plan_type": user.plan_type, "plan_status": user.plan_status}
 
 
@@ -315,7 +315,7 @@ def set_user_status(
     user.plan_status = status
     db.commit()
     db.refresh(user)
-    print(f"[ADMIN] set_status: {user.email} → plan_status={user.plan_status}")
+    logger.info("[ADMIN] set_status: %s → plan_status=%s", user.email, user.plan_status)
     return {"id": str(user.id), "email": user.email, "plan_type": user.plan_type, "plan_status": user.plan_status}
 
 
@@ -518,7 +518,7 @@ def run_trial_expiry(
             User.plan_type == "free",
             User.deleted_at.is_(None),
             User.trial_expired_email_sent_at.is_(None),
-            not User.email_opt_out,
+            User.email_opt_out.is_(False),
             User.email != "",
         )
     ).scalars().all()
@@ -679,11 +679,11 @@ def list_deals(
         )
     elif view == "removed":
         query = select(Deal).where(
-            not Deal.is_active,
+            Deal.is_active.is_(False),
             Deal.deactivated_at.isnot(None),
         )
         count_query = select(func.count()).select_from(Deal).where(
-            not Deal.is_active,
+            Deal.is_active.is_(False),
             Deal.deactivated_at.isnot(None),
         )
     else:
