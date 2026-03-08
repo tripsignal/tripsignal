@@ -236,8 +236,10 @@ def create_signal_match(
     signal_id: UUID,
     payload: DealMatchCreate,
     db: Session = Depends(get_db),
+    clerk_user_id: str = Depends(get_clerk_user_id),
 ):
     """Create a match between a signal and a deal (idempotent)."""
+    _verify_signal_owner(signal_id, clerk_user_id, db)
 
     run = SignalRun(
         signal_id=signal_id,

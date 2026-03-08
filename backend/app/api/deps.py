@@ -20,31 +20,20 @@ def verify_admin(x_admin_token: str | None = Header(None, alias="X-Admin-Token")
 
 def get_clerk_user_id(
     authorization: str | None = Header(None),
-    x_clerk_user_id: str | None = Header(None, alias="x-clerk-user-id"),
-    x_user_id: str | None = Header(None, alias="x-user-id"),
 ) -> str:
-    """Extract and verify the Clerk user ID.
+    """Extract and verify the Clerk user ID from a JWT Bearer token.
 
-    Priority:
-    1. Authorization: Bearer <jwt> — verify JWT, extract sub
-    2. x-clerk-user-id header — legacy fallback (TRANSITION ONLY)
-    3. x-user-id header — legacy fallback (TRANSITION ONLY)
+    Requires a valid, cryptographically signed JWT. No fallbacks.
     """
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization[7:]
-        try:
-            from app.core.clerk_auth import verify_clerk_token
-            clerk_id = verify_clerk_token(token)
-            logger.info("SECURITY | jwt_auth_ok | clerk_id=%s", clerk_id)
-            return clerk_id
-        except Exception as e:
-            logger.warning("SECURITY | jwt_verification_failed | error=%s", str(e))
-            # Fall through to legacy auth instead of hard 401
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authentication required")
 
-    # Legacy fallback — remove after frontend migration
-    legacy_id = x_clerk_user_id or x_user_id
-    if legacy_id:
-        logger.warning("SECURITY | legacy_header_auth | clerk_id=%s", legacy_id)
-        return legacy_id
-
-    raise HTTPException(status_code=401, detail="Authentication required")
+    token = authorization[7:]
+    try:
+        from app.core.clerk_auth import verify_clerk_token
+        clerk_id = verify_clerk_token(token)
+        logger.info("SECURITY | jwt_auth_ok | clerk_id=%s", clerk_id)
+        return clerk_id
+    except Exception as e:
+        logger.warning("SECURITY | jwt_verification_failed | error=%s", str(e))
+        raise HTTPException(status_code=401, detail="Invalid or expired token")

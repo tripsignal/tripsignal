@@ -120,9 +120,12 @@ def sync_user(
 # ── GET /users/terms-status ─────────────────────────────────────────────────
 
 @router.get("/terms-status")
-def get_terms_status(clerk_id: str, db: Session = Depends(get_db)):
+def get_terms_status(
+    db: Session = Depends(get_db),
+    clerk_user_id: str = Depends(get_clerk_user_id),
+):
     user = db.execute(
-        select(User).where(User.clerk_id == clerk_id)
+        select(User).where(User.clerk_id == clerk_user_id)
     ).scalar_one_or_none()
     if not user:
         return {"terms_accepted": True}  # Don't block unknown users
@@ -132,15 +135,18 @@ def get_terms_status(clerk_id: str, db: Session = Depends(get_db)):
 # ── POST /users/accept-terms ────────────────────────────────────────────────
 
 class AcceptTermsRequest(BaseModel):
-    clerk_id: str
     terms_version: str = "1.0"
     privacy_version: str = "1.0"
 
 
 @router.post("/accept-terms")
-def accept_terms(body: AcceptTermsRequest, db: Session = Depends(get_db)):
+def accept_terms(
+    body: AcceptTermsRequest,
+    db: Session = Depends(get_db),
+    clerk_user_id: str = Depends(get_clerk_user_id),
+):
     user = db.execute(
-        select(User).where(User.clerk_id == body.clerk_id)
+        select(User).where(User.clerk_id == clerk_user_id)
     ).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
