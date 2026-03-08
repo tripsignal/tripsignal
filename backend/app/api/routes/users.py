@@ -128,7 +128,7 @@ def get_terms_status(
         select(User).where(User.clerk_id == clerk_user_id)
     ).scalar_one_or_none()
     if not user:
-        return {"terms_accepted": True}  # Don't block unknown users
+        return {"terms_accepted": False}  # New user — redirect to accept-terms
     return {"terms_accepted": user.terms_accepted_at is not None}
 
 
@@ -148,10 +148,20 @@ def accept_terms(
     user = db.execute(
         select(User).where(User.clerk_id == clerk_user_id)
     ).scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
 
     now = datetime.now(timezone.utc)
+
+    # Create user if they don't exist yet (webhook or sync may not have fired)
+    if not user:
+        user = User(
+            clerk_id=clerk_user_id,
+            email="",  # Will be updated by webhook
+            login_count=0,
+        )
+        db.add(user)
+        db.flush()
+        logger.info("accept-terms created user for clerk_id=%s", clerk_user_id)
+
     user.terms_accepted_at = now
     user.terms_version = body.terms_version
     user.privacy_accepted_at = now
