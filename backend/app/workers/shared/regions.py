@@ -115,10 +115,6 @@ def deal_matches_signal_region(deal_region: str, signal_regions: list[str]) -> b
     parent = PARENT_REGION_MAP.get(deal_region)
     if parent and parent in signal_regions:
         return True
-    # Reverse match — deal is parent catch-all, signal has a sub-region of that parent
-    for sr in signal_regions:
-        if PARENT_REGION_MAP.get(sr) == deal_region:
-            return True
     return False
 
 
