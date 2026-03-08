@@ -61,8 +61,6 @@ app.add_middleware(
     allow_headers=[
         "Content-Type",
         "Authorization",
-        "x-clerk-user-id",
-        "x-user-id",
         "x-timezone",
         "X-Admin-Token",
     ],
@@ -98,19 +96,15 @@ async def log_requests(request: Request, call_next):
     response = await call_next(request)
     elapsed_ms = (time.monotonic() - start) * 1000
 
-    client_ip = (request.headers.get('x-forwarded-for', '') .split(',')[0].strip()
-                 or request.client.host if request.client else 'unknown')
-    user_id = (request.headers.get('x-clerk-user-id')
-               or request.headers.get('x-user-id')
-               or 'anonymous')
+    client_ip = (request.headers.get('x-forwarded-for', '').split(',')[0].strip()
+                 or (request.client.host if request.client else 'unknown'))
 
     _request_logger.info(
-        '%s | %s | %s %s | user:%s | %s | %.0fms',
+        '%s | %s | %s %s | %s | %.0fms',
         datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
         client_ip,
         request.method,
         request.url.path,
-        user_id,
         response.status_code,
         elapsed_ms,
     )

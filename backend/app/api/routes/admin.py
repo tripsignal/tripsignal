@@ -206,7 +206,9 @@ def list_signals(
 def get_user_by_clerk_id(
     clerk_id: str,
     db: Session = Depends(get_db),
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ):
+    verify_admin(x_admin_token)
     user = db.execute(select(User).where(User.clerk_id == clerk_id)).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

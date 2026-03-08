@@ -167,13 +167,23 @@ def fetch_html(url: str) -> tuple[str, str]:
     """Fetch HTML from URL. Returns (html, error_message).
 
     Only allows requests to known travel deal domains to prevent SSRF.
+    Resolves DNS and rejects private/internal IPs to prevent DNS rebinding.
     """
+    import ipaddress
+    import socket
     from urllib.parse import urlparse
     parsed = urlparse(url)
     if parsed.hostname not in ALLOWED_DOMAINS:
         return "", f"Blocked: domain '{parsed.hostname}' not in allowlist"
     if parsed.scheme not in ("http", "https"):
         return "", f"Blocked: scheme '{parsed.scheme}' not allowed"
+    try:
+        resolved_ip = socket.getaddrinfo(parsed.hostname, None)[0][4][0]
+        ip = ipaddress.ip_address(resolved_ip)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            return "", f"Blocked: '{parsed.hostname}' resolves to private IP {resolved_ip}"
+    except (socket.gaierror, ValueError) as e:
+        return "", f"Blocked: DNS resolution failed for '{parsed.hostname}': {e}"
     try:
         req = urllib.request.Request(url, headers={
             "User-Agent": random.choice(USER_AGENTS),

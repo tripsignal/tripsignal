@@ -1,13 +1,13 @@
 """Resend webhook handler for email open/click/delivery tracking."""
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 from svix.webhooks import Webhook, WebhookVerificationError
 
 from app.core.config import settings
@@ -39,6 +39,7 @@ def _lookup_user_from_message_id(db, message_id: str) -> tuple[EmailLog | None, 
 @router.post("/resend")
 async def resend_webhook(
     request: Request,
+    db: Session = Depends(get_db),
     svix_id: str | None = Header(None, alias="svix-id"),
     svix_timestamp: str | None = Header(None, alias="svix-timestamp"),
     svix_signature: str | None = Header(None, alias="svix-signature"),
@@ -70,69 +71,56 @@ async def resend_webhook(
     event_type = event.get("type", "")
     data = event.get("data", {})
 
-    # Resend puts the email_id in data
-    # For opened/clicked events, the email_id is in data.email_id
-    # For delivery events, it's in data.email_id as well
     message_id = data.get("email_id", "")
 
     if not message_id:
         logger.warning("Resend webhook missing email_id: type=%s", event_type)
         return {"ok": True}
 
-    db = next(get_db())
-    try:
-        log_entry, user = _lookup_user_from_message_id(db, message_id)
+    log_entry, user = _lookup_user_from_message_id(db, message_id)
 
-        if not log_entry:
-            logger.debug("No email_log found for message_id=%s", message_id)
-            return {"ok": True}
+    if not log_entry:
+        logger.debug("No email_log found for message_id=%s", message_id)
+        return {"ok": True}
 
-        now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
 
-        if event_type == "email.opened":
-            if user:
-                user.last_email_opened_at = now
-            # Store open event in metadata
-            meta = log_entry.metadata_json or {}
-            opens = meta.get("opens", [])
-            opens.append(now.isoformat())
-            meta["opens"] = opens
-            log_entry.metadata_json = meta
-            logger.info("Email opened: user=%s type=%s", log_entry.user_id, log_entry.email_type)
+    if event_type == "email.opened":
+        if user:
+            user.last_email_opened_at = now
+        meta = log_entry.metadata_json or {}
+        opens = meta.get("opens", [])
+        opens.append(now.isoformat())
+        meta["opens"] = opens
+        log_entry.metadata_json = meta
+        logger.info("Email opened: user=%s type=%s", log_entry.user_id, log_entry.email_type)
 
-        elif event_type == "email.clicked":
-            if user:
-                user.last_email_clicked_at = now
-                # Click is the strongest engagement signal — immediately restore active
-                user.email_mode = "active"
-            meta = log_entry.metadata_json or {}
-            clicks = meta.get("clicks", [])
-            click_url = data.get("click", {}).get("link", "")
-            clicks.append({"at": now.isoformat(), "url": click_url})
-            meta["clicks"] = clicks
-            log_entry.metadata_json = meta
-            logger.info("Email clicked: user=%s type=%s", log_entry.user_id, log_entry.email_type)
+    elif event_type == "email.clicked":
+        if user:
+            user.last_email_clicked_at = now
+            user.email_mode = "active"
+        meta = log_entry.metadata_json or {}
+        clicks = meta.get("clicks", [])
+        click_url = data.get("click", {}).get("link", "")
+        clicks.append({"at": now.isoformat(), "url": click_url})
+        meta["clicks"] = clicks
+        log_entry.metadata_json = meta
+        logger.info("Email clicked: user=%s type=%s", log_entry.user_id, log_entry.email_type)
 
-        elif event_type == "email.delivered":
-            if log_entry.status == "sent":
-                log_entry.status = "delivered"
+    elif event_type == "email.delivered":
+        if log_entry.status == "sent":
+            log_entry.status = "delivered"
 
-        elif event_type == "email.bounced":
-            log_entry.status = "bounced"
-            logger.warning("Email bounced: user=%s email=%s", log_entry.user_id, log_entry.to_email)
+    elif event_type == "email.bounced":
+        log_entry.status = "bounced"
+        logger.warning("Email bounced: user=%s email=%s", log_entry.user_id, log_entry.to_email)
 
-        elif event_type == "email.complained":
-            log_entry.status = "complained"
-            if user:
-                user.email_opt_out = True
-            logger.warning("Spam complaint: user=%s email=%s", log_entry.user_id, log_entry.to_email)
+    elif event_type == "email.complained":
+        log_entry.status = "complained"
+        if user:
+            user.email_opt_out = True
+        logger.warning("Spam complaint: user=%s email=%s", log_entry.user_id, log_entry.to_email)
 
-        db.commit()
-
-    except Exception:
-        db.rollback()
-        logger.exception("Error processing Resend webhook type=%s", event_type)
-    finally:
-        db.close()
+    db.commit()
 
     return {"ok": True}

@@ -5,6 +5,8 @@ import os
 
 from fastapi import Header, HTTPException
 
+from app.core.clerk_auth import verify_clerk_token
+
 logger = logging.getLogger("tripsignal.security")
 
 
@@ -30,9 +32,8 @@ def get_clerk_user_id(
 
     token = authorization[7:]
     try:
-        from app.core.clerk_auth import verify_clerk_token
         clerk_id = verify_clerk_token(token)
-        logger.info("SECURITY | jwt_auth_ok | clerk_id=%s", clerk_id)
+        logger.debug("jwt_auth_ok | clerk_id=%s", clerk_id)
         return clerk_id
     except Exception as e:
         logger.warning("SECURITY | jwt_verification_failed | error=%s", str(e))
