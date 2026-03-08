@@ -1,8 +1,6 @@
 """Resend webhook handler for email open/click/delivery tracking."""
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import logging
 from datetime import datetime, timezone
@@ -10,6 +8,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
+from svix.webhooks import Webhook, WebhookVerificationError
 
 from app.core.config import settings
 from app.db.models.email_log import EmailLog
@@ -19,44 +18,6 @@ from app.db.session import get_db
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
-
-
-def _verify_signature(payload: bytes, signature: str | None) -> bool:
-    """Verify Resend webhook signature using svix.
-
-    If no secret is configured, skip verification (dev mode).
-    """
-    if not settings.RESEND_WEBHOOK_SECRET:
-        logger.error("SECURITY | resend_webhook_secret_missing | Webhook verification skipped — RESEND_WEBHOOK_SECRET not configured")
-        return False
-    if not signature:
-        return False
-
-    # Resend uses svix for webhook signing. The signature header contains
-    # multiple signatures separated by spaces. We check if any match.
-    try:
-        secret = settings.RESEND_WEBHOOK_SECRET
-        # svix secrets are base64 encoded with a "whsec_" prefix
-        if secret.startswith("whsec_"):
-            import base64
-            secret_bytes = base64.b64decode(secret[6:])
-        else:
-            secret_bytes = secret.encode()
-
-        expected = hmac.new(secret_bytes, payload, hashlib.sha256).hexdigest()
-
-        # The svix-signature header may contain multiple sigs like "v1,<sig1> v1,<sig2>"
-        for sig_part in signature.split(" "):
-            if "," in sig_part:
-                sig_value = sig_part.split(",", 1)[1]
-            else:
-                sig_value = sig_part
-            if hmac.compare_digest(expected, sig_value):
-                return True
-    except Exception:
-        logger.exception("Webhook signature verification error")
-
-    return False
 
 
 def _lookup_user_from_message_id(db, message_id: str) -> tuple[EmailLog | None, User | None]:
@@ -83,20 +44,28 @@ async def resend_webhook(
     svix_signature: str | None = Header(None, alias="svix-signature"),
 ):
     """Handle Resend webhook events (opens, clicks, deliveries, bounces)."""
+    if not settings.RESEND_WEBHOOK_SECRET:
+        logger.error("SECURITY | resend_webhook_secret_missing | rejecting — RESEND_WEBHOOK_SECRET not configured")
+        return JSONResponse(status_code=500, content={"error": "webhook not configured"})
+
     body = await request.body()
 
-    if not _verify_signature(body, svix_signature):
+    # Verify signature using svix library (same approach as Clerk webhook)
+    headers = {
+        "svix-id": svix_id or "",
+        "svix-timestamp": svix_timestamp or "",
+        "svix-signature": svix_signature or "",
+    }
+    try:
+        wh = Webhook(settings.RESEND_WEBHOOK_SECRET)
+        event = wh.verify(body, headers)
+    except WebhookVerificationError:
         logger.warning(
             "SECURITY | resend_webhook_sig_failed | ip=%s | svix_id=%s",
             request.client.host if request.client else "unknown",
             svix_id,
         )
         return JSONResponse(status_code=401, content={"error": "invalid signature"})
-
-    try:
-        event = json.loads(body)
-    except json.JSONDecodeError:
-        return JSONResponse(status_code=400, content={"error": "invalid json"})
 
     event_type = event.get("type", "")
     data = event.get("data", {})

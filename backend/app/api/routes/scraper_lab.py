@@ -160,8 +160,20 @@ def clean_url(url: str) -> str:
     return url.replace("&amp;", "&")
 
 
+ALLOWED_DOMAINS = {"www.selloffvacations.com", "selloffvacations.com", "www.redtag.ca", "redtag.ca"}
+
+
 def fetch_html(url: str) -> tuple[str, str]:
-    """Fetch HTML from URL. Returns (html, error_message)."""
+    """Fetch HTML from URL. Returns (html, error_message).
+
+    Only allows requests to known travel deal domains to prevent SSRF.
+    """
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    if parsed.hostname not in ALLOWED_DOMAINS:
+        return "", f"Blocked: domain '{parsed.hostname}' not in allowlist"
+    if parsed.scheme not in ("http", "https"):
+        return "", f"Blocked: scheme '{parsed.scheme}' not allowed"
     try:
         req = urllib.request.Request(url, headers={
             "User-Agent": random.choice(USER_AGENTS),

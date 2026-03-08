@@ -67,8 +67,6 @@ services:
       PYTHONPATH: /app/backend
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
-    volumes:
-      - ./backend:/app/backend
     command: ["python", "-m", "app.workers.notifications_log_worker"]
     depends_on:
       postgres:
@@ -91,8 +89,6 @@ services:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
       LIFECYCLE_POLL_SECONDS: "300"
-    volumes:
-      - ./backend:/app/backend
     command: ["python", "-m", "app.workers.lifecycle_email_worker"]
     depends_on:
       postgres:
