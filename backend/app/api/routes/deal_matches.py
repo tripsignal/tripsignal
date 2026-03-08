@@ -61,7 +61,7 @@ def get_price_trend(db: Session, deal_id: UUID):
 def _batch_price_trends(db: Session, deal_ids: list[UUID]) -> dict[UUID, tuple]:
     """Batch-fetch price trends for multiple deals in a single query.
 
-    Returns {deal_id: (trend, previous_price_cents, abs_delta_cents)}.
+    Returns {deal_id: (trend, previous_price_cents, abs_delta_cents, first_price_cents)}.
     """
     if not deal_ids:
         return {}
@@ -80,18 +80,19 @@ def _batch_price_trends(db: Session, deal_ids: list[UUID]) -> dict[UUID, tuple]:
 
     result = {}
     for did, history in by_deal.items():
+        first_price = history[0].price_cents
         if len(history) < 2:
-            result[did] = (None, None, None)
+            result[did] = (None, None, None, first_price)
             continue
         previous_price = history[-2].price_cents
         current_price = history[-1].price_cents
         delta = current_price - previous_price
         if delta < 0:
-            result[did] = ("down", previous_price, abs(delta))
+            result[did] = ("down", previous_price, abs(delta), first_price)
         elif delta > 0:
-            result[did] = ("up", previous_price, delta)
+            result[did] = ("up", previous_price, delta, first_price)
         else:
-            result[did] = ("stable", previous_price, 0)
+            result[did] = ("stable", previous_price, 0, first_price)
 
     return result
 
@@ -132,7 +133,7 @@ def list_signal_matches(
 
     result = []
     for match in matches:
-        trend, previous_price, delta_cents = price_trends.get(match.deal.id, (None, None, None))
+        trend, previous_price, delta_cents, first_price = price_trends.get(match.deal.id, (None, None, None, None))
         deal_out = DealOut(
             id=match.deal.id,
             provider=match.deal.provider,
@@ -157,6 +158,8 @@ def list_signal_matches(
             destination_str=match.deal.destination_str,
             star_rating=match.deal.star_rating,
             tripadvisor_url=ta_urls.get(match.deal.hotel_id),
+            found_at=match.deal.found_at,
+            first_price_cents=first_price,
         )
         result.append(DealMatchOut(
             id=match.id,
@@ -191,6 +194,14 @@ def toggle_favourite(
     db.refresh(match)
 
     trend, previous_price, delta_cents = get_price_trend(db, match.deal.id)
+    # Get first price from history
+    first_hist = (
+        db.query(DealPriceHistory.price_cents)
+        .filter(DealPriceHistory.deal_id == match.deal.id)
+        .order_by(DealPriceHistory.recorded_at.asc())
+        .first()
+    )
+    first_price = first_hist[0] if first_hist else None
     ta_url = None
     if match.deal.hotel_id:
         ta_url = db.query(HotelLink.tripadvisor_url).filter(
@@ -220,6 +231,8 @@ def toggle_favourite(
         destination_str=match.deal.destination_str,
         star_rating=match.deal.star_rating,
         tripadvisor_url=ta_url,
+        found_at=match.deal.found_at,
+        first_price_cents=first_price,
     )
 
     return DealMatchOut(

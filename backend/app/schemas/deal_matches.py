@@ -31,6 +31,8 @@ class DealOut(BaseModel):
     destination_str: Optional[str] = None
     star_rating: Optional[float] = None
     tripadvisor_url: Optional[str] = None
+    found_at: Optional[datetime] = None
+    first_price_cents: Optional[int] = None
 
     class Config:
         from_attributes = True
