@@ -340,6 +340,7 @@ def _process_single_signal(
             "deeplink_url": d.get("deeplink_url", "https://tripsignal.ca/signals"),
             "price_delta": d.get("price_delta", 0),
             "provider": d.get("provider", ""),
+            "value_label": d.get("value_label"),
         }
         for d in sorted_deals
     ]

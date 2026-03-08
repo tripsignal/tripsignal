@@ -213,6 +213,7 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
 
             stars = stars_html(rating)
             delta = _deal_delta_html(deal)
+            value_label = deal.get("value_label") or ""
 
             provider = deal.get("provider", "")
             via = ""
@@ -223,6 +224,16 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
             dates_info = f"{duration} nights"
             if depart:
                 dates_info += f" · {depart}"
+
+            # Value label badge (e.g. "Rare value", "Great value")
+            value_badge = ""
+            if value_label:
+                value_badge = (
+                    f'<div style="margin-top:6px;">'
+                    f'<span style="display:inline-block;background:#dcfce7;color:#166534;'
+                    f'font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;">'
+                    f'{value_label}</span></div>'
+                )
 
             border_top = "border-top:1px solid #f3f4f6;" if j == 0 else ""
             border_bottom = "border-bottom:1px solid #f3f4f6;" if j < len(display_deals) - 1 else ""
@@ -241,6 +252,7 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
                 f'{delta}'
                 f'<span style="font-size:12px;color:#999;margin-left:6px;">per person</span>'
                 f'</div>'
+                f'{value_badge}'
                 f'</div>'
             )
 
