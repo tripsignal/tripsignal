@@ -31,12 +31,6 @@ class User(Base):
     stripe_subscription_status: Mapped[str | None] = mapped_column(Text, nullable=True)
     subscription_current_period_end: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
 
-    # Terms & Privacy
-    terms_accepted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
-    terms_version: Mapped[str | None] = mapped_column(Text, nullable=True)
-    privacy_accepted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
-    privacy_version: Mapped[str | None] = mapped_column(Text, nullable=True)
-
     # Notification preferences
     email_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=text("true"),

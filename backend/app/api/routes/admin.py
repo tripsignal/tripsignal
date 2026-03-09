@@ -852,6 +852,7 @@ def users_unified(
 
         results.append({
             "id": str(u.id),
+            "clerk_id": u.clerk_id,
             "email": u.email,
             "plan": u.plan_type,
             "plan_status": u.plan_status,

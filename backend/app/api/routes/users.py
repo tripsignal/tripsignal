@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -14,8 +14,6 @@ from app.core.rate_limit import limiter
 from app.db.models.user import User
 from app.db.session import get_db
 from app.services.account import delete_account as _delete_account
-from app.services.email_orchestrator import EmailType
-from app.services.email_orchestrator import trigger as email_trigger
 
 logger = logging.getLogger(__name__)
 
@@ -125,76 +123,6 @@ def sync_user(
     db.commit()
     db.refresh(new_user)
     return {"id": str(new_user.id), "synced": True, "created": True}
-
-
-# ── GET /users/terms-status ─────────────────────────────────────────────────
-
-@router.get("/terms-status")
-def get_terms_status(
-    db: Session = Depends(get_db),
-    clerk_user_id: str = Depends(get_clerk_user_id),
-):
-    user = db.execute(
-        select(User).where(User.clerk_id == clerk_user_id)
-    ).scalar_one_or_none()
-    if not user:
-        return {"terms_accepted": False}  # New user — redirect to accept-terms
-    return {"terms_accepted": user.terms_accepted_at is not None}
-
-
-# ── POST /users/accept-terms ────────────────────────────────────────────────
-
-class AcceptTermsRequest(BaseModel):
-    terms_version: str = "1.0"
-    privacy_version: str = "1.0"
-
-
-@router.post("/accept-terms")
-def accept_terms(
-    body: AcceptTermsRequest,
-    db: Session = Depends(get_db),
-    clerk_user_id: str = Depends(get_clerk_user_id),
-):
-    user = db.execute(
-        select(User).where(User.clerk_id == clerk_user_id)
-    ).scalar_one_or_none()
-
-    now = datetime.now(timezone.utc)
-
-    # Create user if they don't exist yet (webhook or sync may not have fired)
-    if not user:
-        user = User(
-            clerk_id=clerk_user_id,
-            email="",  # Will be filled by sync or webhook
-            login_count=0,
-        )
-        db.add(user)
-        db.flush()
-        logger.info("accept-terms created user for clerk_id=%s", clerk_user_id)
-
-    user.terms_accepted_at = now
-    user.terms_version = body.terms_version
-    user.privacy_accepted_at = now
-    user.privacy_version = body.privacy_version
-
-    # Start 14-day free trial on first terms acceptance
-    if user.plan_type == "free" and user.trial_ends_at is None:
-        user.trial_ends_at = now + timedelta(days=14)
-
-    db.commit()
-
-    # Trigger welcome email (idempotent — won't resend if already sent)
-    if user.email and not user.welcome_email_sent_at:
-        try:
-            email_trigger(
-                db=db,
-                email_type=EmailType.WELCOME,
-                user_id=str(user.id),
-            )
-        except Exception:
-            logger.exception("Failed to trigger welcome email for %s", user.email)
-
-    return {"ok": True}
 
 
 # ── GET /users/prefs ────────────────────────────────────────────────────────
