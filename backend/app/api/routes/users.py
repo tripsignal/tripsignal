@@ -68,10 +68,15 @@ def get_user_by_clerk_id(
 
 # ── POST /users/sync ────────────────────────────────────────────────────────
 
+class SyncRequest(BaseModel):
+    email: str = ""
+
+
 @router.post("/sync")
 @limiter.limit("30/minute")
 def sync_user(
     request: Request,
+    body: SyncRequest | None = None,
     db: Session = Depends(get_db),
     clerk_user_id: str = Depends(get_clerk_user_id),
     x_forwarded_for: str | None = None,
@@ -87,6 +92,8 @@ def sync_user(
     # Rightmost IP is the one Caddy appended from the TCP connection
     client_ip = x_forwarded_for.split(",")[-1].strip() if x_forwarded_for else None
 
+    email = (body.email or "").strip() if body else ""
+
     user = db.execute(
         select(User).where(User.clerk_id == clerk_user_id)
     ).scalar_one_or_none()
@@ -99,13 +106,16 @@ def sync_user(
         # Auto-set timezone from browser if user hasn't manually chosen one
         if x_timezone and not user.timezone:
             user.timezone = x_timezone
+        # Fill in email if it was missing (e.g. sync beat the webhook)
+        if email and not user.email:
+            user.email = email
         db.commit()
         return {"id": str(user.id), "synced": True, "created": False}
 
     # User doesn't exist — create with defaults
     new_user = User(
         clerk_id=clerk_user_id,
-        email="",  # Will be updated by webhook
+        email=email,
         login_count=1,
         last_login_ip=client_ip,
         last_login_user_agent=user_agent,
@@ -155,7 +165,7 @@ def accept_terms(
     if not user:
         user = User(
             clerk_id=clerk_user_id,
-            email="",  # Will be updated by webhook
+            email="",  # Will be filled by sync or webhook
             login_count=0,
         )
         db.add(user)
