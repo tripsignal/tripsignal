@@ -252,7 +252,7 @@ def get_book_window(
     # Decision matrix
     if trend_sig == "declining" and not near_low:
         recommendation = "wait"
-        reasoning = "Prices are trending down. We'll alert you when they bottom out."
+        reasoning = "Prices are trending down. We'll alert you when we see a change."
     elif trend_sig == "rising" and near_low:
         recommendation = "book_now"
         reasoning = "This is near the lowest we've seen and prices are climbing."

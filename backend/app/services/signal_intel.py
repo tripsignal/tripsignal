@@ -95,14 +95,26 @@ def refresh_intel_cache(db: Session, signal_id) -> dict | None:
                 newer_price = weekly_avgs[i][1]
                 older_price = weekly_avgs[i + 1][1]
                 week_deltas.append(newer_price - older_price)
-                if newer_price < older_price:
+                # Only count as directional if delta exceeds 2% of the older price
+                threshold = older_price * 0.02 if older_price else 0
+                if newer_price < older_price - threshold:
                     directions.append("down")
-                elif newer_price > older_price:
+                elif newer_price > older_price + threshold:
                     directions.append("up")
                 else:
                     directions.append("stable")
 
-            current_direction = directions[0] if directions else "stable"
+            # Require majority of directions to agree; default to stable
+            down_count = sum(1 for d in directions if d == "down")
+            up_count = sum(1 for d in directions if d == "up")
+            total_dirs = len(directions)
+
+            if down_count > total_dirs / 2:
+                current_direction = "down"
+            elif up_count > total_dirs / 2:
+                current_direction = "up"
+            else:
+                current_direction = "stable"
 
             consecutive = 1
             for d in directions[1:]:
