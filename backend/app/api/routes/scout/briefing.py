@@ -39,6 +39,7 @@ router = APIRouter()
 # ──────────────────────────────────────────────────────────────────────────────
 
 STILL_LEARNING_THRESHOLD = 20  # data_points below this → still_learning
+DURABILITY_MIN_MATCHES = 3  # need at least this many matches to assess durability
 
 VALUE_LABEL_WEIGHTS = {"strongest": 4, "promising": 3, "watching": 2, "quiet": 1}
 CONFIDENCE_WEIGHTS = {"high": 3, "medium": 2, "low": 1}
@@ -85,6 +86,61 @@ def _compute_value_label(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Deal durability — how risky is it to wait on a good deal?
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _compute_durability(
+    match_count: int,
+    deal_score_label: str | None,
+    book_window_result: dict | None,
+    stats: object | None,
+    best_deal_price_cents: int | None,
+) -> str:
+    """Assess how replaceable the current best deal appears.
+
+    Returns one of: 'scarce', 'available', 'neutral', 'unknown'.
+
+    This is NOT a prediction. It describes current market structure:
+    - scarce: few comparable deals exist at this quality level right now
+    - available: several similar options exist — deal is replaceable
+    - neutral: no strong signal either way
+    - unknown: insufficient data to assess
+    """
+    if match_count < DURABILITY_MIN_MATCHES or not deal_score_label:
+        return "unknown"
+
+    is_good_deal = deal_score_label in ("Rare value", "Great value", "Good price")
+
+    # Extract inventory pressure from book window factors
+    inventory_signal = None
+    if book_window_result:
+        for factor in book_window_result.get("factors", []):
+            if factor.get("name") == "inventory_pressure":
+                inventory_signal = factor.get("signal")
+                break
+
+    # Check how many comparable deals exist relative to what's typical
+    # Low match count + good deal = scarce
+    # High match count + good deal = available
+    if is_good_deal:
+        if inventory_signal == "tightening":
+            return "scarce"
+        if inventory_signal == "growing":
+            return "available"
+        # Use match count as a secondary heuristic
+        if match_count <= 5:
+            return "scarce"
+        if match_count >= 15:
+            return "available"
+        return "neutral"
+
+    # For typical/elevated deals, durability is less decision-useful
+    if inventory_signal == "tightening":
+        return "scarce"
+    return "neutral"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Suggestion ranking
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -97,6 +153,7 @@ def _build_suggestion(
     value_label_level: str,
     nearby_suggestion: dict | None,
     empty_state: dict | None,
+    durability: str = "unknown",
 ) -> dict | None:
     """Pick the single best suggestion using deterministic scoring."""
     candidates: list[tuple[float, dict]] = []
@@ -117,9 +174,14 @@ def _build_suggestion(
             price_dollars = best_deal["price_cents"] // 100
             star_text = f"{star:.0f}-star " if star else ""
             detail = f"Best available: {star_text}from ${price_dollars:,}."
+        # Use durability to enrich the headline
+        if durability == "scarce":
+            headline = "If this trip fits, this is a strong price for this route."
+        else:
+            headline = "This price looks strong for the current market."
         candidates.append((score, {
             "type": "book_soon",
-            "headline": "Book soon — prices near their lowest",
+            "headline": headline,
             "detail": detail,
             "cta_href": f"/signals?expand={signal.id}",
         }))
@@ -160,8 +222,8 @@ def _build_suggestion(
         score = SUGGESTION_BASE["no_rush"] + conf_boost
         candidates.append((score, {
             "type": "no_rush",
-            "headline": "No rush — prices are still dropping",
-            "detail": "We'll alert you when the trend changes.",
+            "headline": "Prices have been easing, and there's no strong pressure to book yet.",
+            "detail": "We'll keep monitoring this route for you.",
             "cta_href": f"/signals?expand={signal.id}",
         }))
 
@@ -185,84 +247,100 @@ def _build_observations(
     price_delta_direction: str | None,
     match_count: int,
     suggestion_type: str | None,
+    durability: str = "unknown",
 ) -> list[dict]:
-    """Build max 2 observations using deterministic priority."""
-    candidates: list[tuple[int, dict]] = []
+    """Build max 2 observations using value-first priority.
+
+    Slot priority:
+    - Slot 1: VALUE (always first when available)
+    - Slot 2: DURABILITY (when deal is good + durability is meaningful)
+              or TREND (when value is typical/elevated or durability is weak)
+
+    Decision rules:
+    1. VALUE FIRST — slot 1 strongly prefers value context
+    2. DURABILITY WHEN IT HELPS — for good/promising deals with meaningful signal
+    3. TREND AS SECONDARY — when value is typical/elevated or durability is weak
+    4. STILL LEARNING — for low-data routes, suppress overconfident advice
+    """
     data_points = book_window_result.get("data_points", 0) if book_window_result else 0
     confidence = book_window_result.get("confidence", "low") if book_window_result else "low"
-
-    # still_learning — highest priority
     is_still_learning = confidence == "low" or data_points < STILL_LEARNING_THRESHOLD
-    if is_still_learning:
-        candidates.append((1, {
-            "type": "still_learning",
-            "text": "We're still collecting data for this route.",
-        }))
 
-    # value_label
+    result: list[dict] = []
+
+    # ── Still learning: special case ──
+    if is_still_learning:
+        result.append({"type": "still_learning", "text": "We're still learning this route."})
+        # Allow one more gentle observation for still-learning routes
+        if match_count > 0 and deal_score_label == "Typical price":
+            result.append({"type": "value_label", "text": "Prices are typical for this route right now."})
+        elif match_count == 0:
+            result.append({"type": "still_learning", "text": "Few useful price signals yet."})
+        return result[:2]
+
+    is_good_deal = deal_score_label in ("Rare value", "Great value", "Good price")
+
+    # ── Slot 1: VALUE ──
     if deal_score_label and match_count > 0:
-        if deal_score_label in ("Rare value", "Great value", "Good price"):
+        if is_good_deal:
             delta_text = ""
             if price_delta_cents and price_delta_direction == "below":
-                delta_text = f" — ${price_delta_cents // 100:,} below typical"
-            text = f"Good value{delta_text}"
-            # Suppress if book_soon already covers this and delta is small
+                delta_text = f" — about ${price_delta_cents // 100:,} below typical prices"
+            text = f"Good value{delta_text}."
+            # Suppress if book_soon already covers value strongly
             if not (suggestion_type == "book_soon" and (not price_delta_cents or price_delta_cents < 5000)):
-                candidates.append((2, {"type": "value_label", "text": text}))
+                result.append({"type": "value_label", "text": text})
         elif deal_score_label == "Typical price":
-            candidates.append((2, {"type": "value_label", "text": "Typical prices right now"}))
+            result.append({"type": "value_label", "text": "Prices are typical for this route right now."})
         elif deal_score_label == "High for market":
             delta_text = ""
             if price_delta_cents and price_delta_direction == "above":
-                delta_text = f" — ${price_delta_cents // 100:,} above typical"
-            candidates.append((2, {"type": "value_label", "text": f"Elevated{delta_text}"}))
+                delta_text = f" — about ${price_delta_cents // 100:,} above typical"
+            result.append({"type": "value_label", "text": f"Prices are currently above normal deal levels{delta_text}."})
 
-    # trend
-    if intel and intel.trend_direction and match_count > 0:
-        trend_map = {
-            "falling": "Prices easing",
-            "down": "Prices easing",
-            "declining": "Prices easing",
-            "rising": "Prices rising",
-            "up": "Prices rising",
-            "stable": "Prices stable",
-        }
-        trend_text = trend_map.get(intel.trend_direction, None)
-        if trend_text:
-            # Suppress "Prices easing" if no_rush suggestion already says it
-            if not (suggestion_type == "no_rush" and trend_text == "Prices easing"):
-                candidates.append((3, {"type": "trend", "text": trend_text}))
+    # ── Slot 2: DURABILITY or TREND ──
+    if len(result) < 2:
+        slot2_filled = False
 
-    # inventory — from book_window factors
-    if book_window_result and match_count > 0:
-        for factor in book_window_result.get("factors", []):
-            if factor.get("name") == "inventory_pressure":
-                inv_sig = factor.get("signal", "")
-                if inv_sig == "growing":
-                    candidates.append((4, {"type": "inventory", "text": "More deals appearing"}))
-                elif inv_sig == "tightening":
-                    candidates.append((4, {"type": "inventory", "text": "Fewer deals available"}))
-                break
+        # Prefer DURABILITY when deal is good and durability is meaningful
+        if is_good_deal and durability in ("scarce", "available"):
+            if durability == "scarce":
+                result.append({"type": "durability", "text": "Fewer similar deals are available right now."})
+                slot2_filled = True
+            elif durability == "available":
+                result.append({"type": "durability", "text": "Several similar options are still available."})
+                slot2_filled = True
 
-    # Sort by priority (lower number = higher priority)
-    candidates.sort(key=lambda c: c[0])
+        # Fall back to TREND when durability doesn't apply
+        if not slot2_filled and intel and intel.trend_direction and match_count > 0:
+            trend_map = {
+                "falling": "Prices have been easing recently.",
+                "down": "Prices have been easing recently.",
+                "declining": "Prices have been easing recently.",
+                "rising": "Prices have been rising recently.",
+                "up": "Prices have been rising recently.",
+                "stable": "Prices have been stable recently.",
+            }
+            trend_text = trend_map.get(intel.trend_direction)
+            if trend_text:
+                # Suppress if no_rush suggestion already conveys easing
+                if not (suggestion_type == "no_rush" and "easing" in trend_text.lower()):
+                    result.append({"type": "trend", "text": trend_text})
+                    slot2_filled = True
 
-    # Selection rules
-    result = []
-    has_still_learning = any(c[1]["type"] == "still_learning" for c in candidates)
-    for _, obs in candidates:
-        if len(result) >= 2:
-            break
-        if has_still_learning and obs["type"] != "still_learning" and len(result) >= 1:
-            # still_learning + at most 1 additional
-            if len(result) >= 2:
-                break
-        # Suppress overconfident copy when still_learning
-        if has_still_learning and obs["type"] == "value_label" and deal_score_label in ("Rare value", "Great value"):
-            continue
-        result.append(obs)
+        # Last resort for slot 2: inventory (only if durability didn't surface it)
+        if not slot2_filled and durability not in ("scarce", "available"):
+            if book_window_result and match_count > 0:
+                for factor in book_window_result.get("factors", []):
+                    if factor.get("name") == "inventory_pressure":
+                        inv_sig = factor.get("signal", "")
+                        if inv_sig == "growing":
+                            result.append({"type": "inventory", "text": "More options appearing for this route."})
+                        elif inv_sig == "tightening":
+                            result.append({"type": "inventory", "text": "Fewer options available for this route."})
+                        break
 
-    return result
+    return result[:2]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -270,11 +348,16 @@ def _build_observations(
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _build_confidence(book_window_result: dict | None) -> dict:
-    """Generate confidence block with human-readable text."""
+    """Generate confidence block.
+
+    The confidence object remains in the API contract for technical consistency,
+    but user-facing text avoids raw data-point jargon. Only surface meaningful
+    supporting text or nothing at all.
+    """
     if not book_window_result:
         return {
             "level": "low",
-            "text": "We're still collecting data for this route.",
+            "text": "",
             "data_points": 0,
         }
 
@@ -282,12 +365,11 @@ def _build_confidence(book_window_result: dict | None) -> dict:
     data_points = book_window_result.get("data_points", 0)
 
     if confidence == "high":
-        weeks = max(1, data_points // 50)  # conservative estimate
-        text = f"Based on {data_points} data points over {weeks} week{'s' if weeks != 1 else ''} — strong signal."
+        text = ""  # High confidence needs no qualifier — let observations speak
     elif confidence == "medium":
-        text = f"Based on {data_points} data points — directionally useful."
+        text = ""  # Medium confidence — observations already convey the picture
     else:
-        text = "We're still collecting data for this route."
+        text = ""  # Low data is handled by still_learning observation
 
     return {"level": confidence, "text": text, "data_points": data_points}
 
@@ -380,16 +462,10 @@ def _build_summary(signals_data: list[dict]) -> str:
         s.get("suggestion", {}).get("type") == "book_soon" if s.get("suggestion") else False
         for s in signals_data
     )
-    all_trending_down = all(
-        any(o.get("type") == "trend" and "easing" in o.get("text", "").lower() for o in s.get("observations", []))
-        for s in signals_data
-    ) and total > 0
     with_deals = sum(1 for s in signals_data if s.get("deal_count", 0) > 0)
 
     if has_book_soon:
-        return "One of your routes looks ready to book."
-    if all_trending_down:
-        return "All your routes are trending down — no rush."
+        return "One of your routes has a strong price right now."
     if with_deals > 0:
         return f"Tracking {total} signal{'s' if total != 1 else ''} — {with_deals} with deals."
     return f"Monitoring {total} signal{'s' if total != 1 else ''}. Deals will appear after the next scan."
@@ -598,6 +674,10 @@ async def briefing(
         # Value label
         value_label = _compute_value_label(deal_score_label, intel, mc > 0)
 
+        # Deal durability
+        best_deal_price = best_deal_dict["price_cents"] if best_deal_dict else None
+        durability = _compute_durability(mc, deal_score_label, bw_result, stats, best_deal_price)
+
         # Nearby airport suggestion
         nearby = _find_nearby_airport_suggestion(db, s, best_deal_obj)
 
@@ -611,6 +691,7 @@ async def briefing(
             value_label_level=value_label["level"],
             nearby_suggestion=nearby,
             empty_state=empty_state,
+            durability=durability,
         )
 
         # Observations
@@ -622,6 +703,7 @@ async def briefing(
             price_delta_direction=price_delta_direction,
             match_count=mc,
             suggestion_type=suggestion.get("type") if suggestion else None,
+            durability=durability,
         )
 
         # Confidence
