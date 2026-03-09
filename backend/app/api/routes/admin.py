@@ -307,8 +307,12 @@ def set_user_status(
     status: str,
     db: Session = Depends(get_db),
 ):
-    if status not in ("active", "disabled"):
-        raise HTTPException(status_code=400, detail="Invalid status")
+    allowed = ("active", "expired", "unsubscribed", "subscribed", "disabled")
+    if status not in allowed:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {', '.join(allowed)}")
+    # "subscribed" is a user-friendly alias for "active"
+    if status == "subscribed":
+        status = "active"
     user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -868,6 +872,7 @@ def users_unified(
             "notification_delivery_frequency": u.notification_delivery_frequency,
             "email_enabled": u.email_enabled,
             "email_opt_out": u.email_opt_out,
+            "notification_weekly_summary": u.notification_weekly_summary,
             "timezone": u.timezone,
             "email_mode": u.email_mode,
             # Soft-delete fields
