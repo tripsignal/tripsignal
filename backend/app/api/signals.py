@@ -261,7 +261,9 @@ async def list_signals(
             func.count(DealMatch.id).label("match_count"),
         )
         .outerjoin(DealMatch, DealMatch.signal_id == Signal.id)
+        .outerjoin(Deal, Deal.id == DealMatch.deal_id)
         .where(Signal.user_id == user.id)
+        .where((Deal.is_active == True) | (DealMatch.id == None))  # noqa: E712
         .group_by(Signal.id)
         .order_by(Signal.created_at.desc())
     )
