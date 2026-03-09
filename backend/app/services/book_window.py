@@ -78,8 +78,16 @@ def _compute_trend_direction(
     recent = cycle_avgs[-min(4, len(cycle_avgs)):]
     deltas = [recent[i + 1][1] - recent[i][1] for i in range(len(recent) - 1)]
 
-    declining_count = sum(1 for d in deltas if d < 0)
-    rising_count = sum(1 for d in deltas if d > 0)
+    # Only count as directional if delta exceeds 2% of the earlier cycle's price
+    declining_count = 0
+    rising_count = 0
+    for i, d in enumerate(deltas):
+        base_price = recent[i][1]
+        threshold = base_price * 0.02 if base_price else 0
+        if d < -threshold:
+            declining_count += 1
+        elif d > threshold:
+            rising_count += 1
 
     if declining_count >= 2 and declining_count > rising_count:
         return BookWindowFactor(
