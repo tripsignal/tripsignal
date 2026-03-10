@@ -162,9 +162,31 @@ def run_orchestrated_cycle() -> dict:
     }
 
 
+def _cleanup_orphaned_runs() -> None:
+    """Mark any 'running' scrape_runs as 'stale' on startup.
+
+    If the orchestrator crashed or was restarted, previous runs may be stuck
+    with status='running' even though nothing is processing them.
+    """
+    try:
+        from sqlalchemy import text
+        from app.db.session import get_db
+        with next(get_db()) as db:
+            result = db.execute(
+                text("UPDATE scrape_runs SET status = 'stale', completed_at = NOW() "
+                     "WHERE status = 'running'")
+            )
+            db.commit()
+            if result.rowcount > 0:
+                logger.info("Marked %d orphaned scrape_run(s) as stale", result.rowcount)
+    except Exception as e:
+        logger.warning("Failed to clean up orphaned runs: %s", e)
+
+
 def run_orchestrator(once: bool = False) -> None:
     """Main entry point — manages scheduling and runs scraper cycles."""
     logger.info("Scrape orchestrator starting (3 daily windows: ~8AM, ~1PM, ~7PM ET)")
+    _cleanup_orphaned_runs()
 
     if not once:
         if not _in_scrape_window():

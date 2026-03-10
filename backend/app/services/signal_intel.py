@@ -294,7 +294,7 @@ def refresh_intel_cache(db: Session, signal_id) -> dict | None:
                           AND d.return_date IS NOT NULL AND d.return_date > d.depart_date
                     ),
                     hero_value AS (
-                        SELECT :hero_price::float / (:hero_stars * NULLIF(:hero_duration, 0)) AS metric
+                        SELECT CAST(:hero_price AS float) / (:hero_stars * NULLIF(:hero_duration, 0)) AS metric
                     )
                     SELECT
                         (SELECT COUNT(*) FROM deal_values WHERE value_metric > (SELECT metric FROM hero_value)) AS better_count,
