@@ -386,6 +386,9 @@ def validate_user_for_email(db: Session, user_email: str) -> tuple[bool, bool]:
     if user.email_opt_out:
         logger.info("User %s has opted out of emails, skipping", user_email)
         return False, False
+    if user.email_suppressed:
+        logger.info("User %s is suppressed (bounce/complaint), skipping", user_email)
+        return False, False
     is_pro = user.plan_type == "pro"
     is_trial_active = user.plan_status == "active" and user.plan_type == "free"
     if not is_pro and not is_trial_active:

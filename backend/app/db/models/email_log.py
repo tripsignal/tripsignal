@@ -41,6 +41,15 @@ class EmailLog(Base):
     sent_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True,
     )
+    # Bounce/complaint tracking (populated by Resend webhooks)
+    bounce_type: Mapped[str | None] = mapped_column(Text, nullable=True)  # "hard" or "soft"
+    bounced_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True,
+    )
+    complaint_type: Mapped[str | None] = mapped_column(Text, nullable=True)  # "spam" or "abuse"
+    complained_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()"),
     )

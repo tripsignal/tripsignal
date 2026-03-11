@@ -40,6 +40,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.email_queue import EmailQueue
 from app.db.models.email_log import EmailLog
+from app.db.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -323,6 +324,17 @@ def _handle_failure(
     """Mark a queue row as failed or dead depending on attempt count."""
     row.error_message = error_msg[:500]
 
+    # Append to retry history in metadata_json
+    meta = row.metadata_json or {}
+    history = meta.get("retry_history", [])
+    history.append({
+        "attempt": row.attempts,
+        "error": error_msg[:300],
+        "at": now.isoformat(),
+    })
+    meta["retry_history"] = history
+    row.metadata_json = meta
+
     if row.attempts >= row.max_attempts:
         row.status = "dead"
         _sync_email_log(db, row, "failed", None)
@@ -407,12 +419,25 @@ def get_queue_stats(db: Session) -> dict:
         effective_rate = BATCH_SIZE * RATE_LIMIT_PER_SEC
         est_drain_sec = max(1, int(queued / effective_rate))
 
+    # Bounce/complaint counts (last 7 days) from email_log
+    seven_days_ago = now - timedelta(days=7)
+    bounced_7d = db.execute(
+        select(func.count(EmailLog.id))
+        .where(EmailLog.bounced_at >= seven_days_ago)
+    ).scalar() or 0
+    complained_7d = db.execute(
+        select(func.count(EmailLog.id))
+        .where(EmailLog.complained_at >= seven_days_ago)
+    ).scalar() or 0
+
     return {
         "queued": status_counts.get("queued", 0),
         "sending": status_counts.get("sending", 0),
         "sent": status_counts.get("sent", 0),
         "failed": status_counts.get("failed", 0),
         "dead": status_counts.get("dead", 0),
+        "bounced_7d": bounced_7d,
+        "complained_7d": complained_7d,
         "oldest_queued_age_sec": oldest_age_sec,
         "throughput_per_sec": throughput_per_sec,
         "est_drain_sec": est_drain_sec,
@@ -437,6 +462,29 @@ def retry_dead(db: Session) -> int:
     count = result.rowcount
     if count:
         logger.info("email_queue: retried %d dead emails", count)
+    return count
+
+
+def retry_by_ids(db: Session, ids: list[str]) -> int:
+    """Reset specific failed/dead emails back to queued."""
+    uuids = [uuid.UUID(i) for i in ids]
+    result = db.execute(
+        update(EmailQueue)
+        .where(
+            EmailQueue.id.in_(uuids),
+            EmailQueue.status.in_(["failed", "dead"]),
+        )
+        .values(
+            status="queued",
+            attempts=0,
+            next_retry_at=None,
+            error_message=None,
+        )
+    )
+    db.commit()
+    count = result.rowcount
+    if count:
+        logger.info("email_queue: retried %d selected emails", count)
     return count
 
 
@@ -472,28 +520,49 @@ def flush_queue(db: Session) -> int:
     return result.rowcount
 
 
-def get_recent_queue_items(db: Session, limit: int = 50, status: str = "") -> list[dict]:
+def get_recent_queue_items(db: Session, limit: int = 50, status: str = "", search: str = "") -> list[dict]:
     """Return recent queue items for admin list view."""
-    query = select(EmailQueue).order_by(EmailQueue.created_at.desc())
+    query = (
+        select(
+            EmailQueue,
+            User.first_name,
+            EmailLog.bounce_type,
+            EmailLog.bounced_at,
+            EmailLog.complaint_type,
+            EmailLog.complained_at,
+        )
+        .outerjoin(User, EmailQueue.user_id == User.id)
+        .outerjoin(EmailLog, EmailQueue.email_log_id == EmailLog.id)
+        .order_by(EmailQueue.created_at.desc())
+    )
     if status:
         query = query.where(EmailQueue.status == status)
+    if search:
+        query = query.where(EmailQueue.to_email.ilike(f"%{search}%"))
     query = query.limit(limit)
 
-    rows = db.execute(query).scalars().all()
+    rows = db.execute(query).all()
     return [
         {
-            "id": str(r.id),
-            "priority": r.priority,
-            "to_email": r.to_email,
-            "subject": r.subject,
-            "email_type": r.email_type,
-            "status": r.status,
-            "attempts": r.attempts,
-            "max_attempts": r.max_attempts,
-            "error_message": r.error_message,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "sent_at": r.sent_at.isoformat() if r.sent_at else None,
-            "next_retry_at": r.next_retry_at.isoformat() if r.next_retry_at else None,
+            "id": str(r.EmailQueue.id),
+            "priority": r.EmailQueue.priority,
+            "to_email": r.EmailQueue.to_email,
+            "subject": r.EmailQueue.subject,
+            "email_type": r.EmailQueue.email_type,
+            "status": r.EmailQueue.status,
+            "attempts": r.EmailQueue.attempts,
+            "max_attempts": r.EmailQueue.max_attempts,
+            "error_message": r.EmailQueue.error_message,
+            "created_at": r.EmailQueue.created_at.isoformat() if r.EmailQueue.created_at else None,
+            "sent_at": r.EmailQueue.sent_at.isoformat() if r.EmailQueue.sent_at else None,
+            "next_retry_at": r.EmailQueue.next_retry_at.isoformat() if r.EmailQueue.next_retry_at else None,
+            "provider_message_id": r.EmailQueue.provider_message_id,
+            "user_first_name": r.first_name,
+            "bounce_type": r.bounce_type,
+            "bounced_at": r.bounced_at.isoformat() if r.bounced_at else None,
+            "complaint_type": r.complaint_type,
+            "complained_at": r.complained_at.isoformat() if r.complained_at else None,
+            "retry_history": (r.EmailQueue.metadata_json or {}).get("retry_history", []),
         }
         for r in rows
     ]

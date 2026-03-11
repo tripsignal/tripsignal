@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
@@ -1306,11 +1307,73 @@ def email_queue_stats(
 def email_queue_items(
     limit: int = 50,
     status: str = "",
+    search: str = "",
     db: Session = Depends(get_db),
 ):
     from app.services.email_queue import get_recent_queue_items
     limit = max(1, min(limit, 100))
-    return {"items": get_recent_queue_items(db, limit=limit, status=status)}
+    return {"items": get_recent_queue_items(db, limit=limit, status=status, search=search)}
+
+
+@router.get("/email-queue/preview/{item_id}")
+def email_queue_preview(
+    item_id: str,
+    db: Session = Depends(get_db),
+):
+    """Return the rendered HTML body of a queue item for preview."""
+    from app.db.models.email_queue import EmailQueue
+    try:
+        uid = UUID(item_id)
+    except ValueError:
+        return JSONResponse(status_code=400, content={"error": "Invalid ID"})
+    row = db.execute(
+        select(EmailQueue.html_body, EmailQueue.subject, EmailQueue.to_email)
+        .where(EmailQueue.id == uid)
+    ).one_or_none()
+    if not row:
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+    return {"subject": row.subject, "to_email": row.to_email, "html": row.html_body}
+
+
+@router.get("/email-queue/daily-volume")
+def email_queue_daily_volume(
+    db: Session = Depends(get_db),
+):
+    """Return daily email volume for the last 14 days, broken down by sent vs failed/dead."""
+    from app.db.models.email_queue import EmailQueue
+
+    fourteen_days_ago = datetime.now(timezone.utc) - timedelta(days=14)
+    rows = db.execute(
+        select(
+            func.date(EmailQueue.created_at).label("date"),
+            EmailQueue.status,
+            func.count().label("count"),
+        )
+        .where(EmailQueue.created_at >= fourteen_days_ago)
+        .group_by(func.date(EmailQueue.created_at), EmailQueue.status)
+        .order_by(func.date(EmailQueue.created_at))
+    ).all()
+
+    # Aggregate into {date: {sent, failed, dead}} structure
+    from collections import defaultdict
+    by_date: dict[str, dict[str, int]] = defaultdict(lambda: {"sent": 0, "failed": 0, "dead": 0})
+    for row in rows:
+        d = str(row.date)
+        if row.status == "sent":
+            by_date[d]["sent"] += row.count
+        elif row.status == "failed":
+            by_date[d]["failed"] += row.count
+        elif row.status == "dead":
+            by_date[d]["dead"] += row.count
+
+    # Fill in missing dates with zeros
+    result = []
+    for i in range(14):
+        d = (datetime.now(timezone.utc) - timedelta(days=13 - i)).strftime("%Y-%m-%d")
+        entry = by_date.get(d, {"sent": 0, "failed": 0, "dead": 0})
+        result.append({"date": d, **entry})
+
+    return result
 
 
 @router.post("/email-queue/retry-dead")
@@ -1319,6 +1382,19 @@ def email_queue_retry_dead(
 ):
     from app.services.email_queue import retry_dead
     count = retry_dead(db)
+    return {"ok": True, "retried": count}
+
+
+@router.post("/email-queue/retry-selected")
+def email_queue_retry_selected(
+    request_body: dict,
+    db: Session = Depends(get_db),
+):
+    ids = request_body.get("ids", [])
+    if not ids or not isinstance(ids, list):
+        return {"ok": False, "error": "No IDs provided", "retried": 0}
+    from app.services.email_queue import retry_by_ids
+    count = retry_by_ids(db, ids[:100])  # cap at 100
     return {"ok": True, "retried": count}
 
 

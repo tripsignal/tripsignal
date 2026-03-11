@@ -64,21 +64,29 @@ async def clerk_webhook(
         if not email and email_addresses:
             email = email_addresses[0].get("email_address", "")
 
+        first_name = data.get("first_name") or None
+
         # Update user in DB
         user = db.execute(
             select(User).where(User.clerk_id == clerk_id)
         ).scalar_one_or_none()
 
         if user:
+            changed = False
             if email and email != user.email:
                 logger.info("Clerk webhook: updating email for %s: %s -> %s", clerk_id, user.email, email)
                 user.email = email
+                changed = True
+            if first_name and first_name != user.first_name:
+                user.first_name = first_name
+                changed = True
+            if changed:
                 db.commit()
             return {"ok": True, "action": "updated"}
         else:
             # user.created — create the user row if it doesn't exist yet
             if event_type == "user.created":
-                new_user = User(clerk_id=clerk_id, email=email)
+                new_user = User(clerk_id=clerk_id, email=email, first_name=first_name)
                 db.add(new_user)
                 db.commit()
                 logger.info("Clerk webhook: created user %s with email %s", clerk_id, email)

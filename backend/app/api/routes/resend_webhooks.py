@@ -113,13 +113,37 @@ async def resend_webhook(
 
     elif event_type == "email.bounced":
         log_entry.status = "bounced"
-        logger.warning("Email bounced: user=%s email=%s", log_entry.user_id, log_entry.to_email)
+        # Resend bounce data: data.bounce.type can be "hard" or "soft"
+        bounce_data = data.get("bounce", {})
+        bounce_type = bounce_data.get("type", "hard") if isinstance(bounce_data, dict) else "hard"
+        log_entry.bounce_type = bounce_type if bounce_type in ("hard", "soft") else "hard"
+        log_entry.bounced_at = now
+        # Hard bounces → suppress future emails to this user
+        if log_entry.bounce_type == "hard" and user:
+            user.email_suppressed = True
+            logger.warning(
+                "Hard bounce — suppressing user: user=%s email=%s",
+                log_entry.user_id, log_entry.to_email,
+            )
+        logger.warning(
+            "Email bounced (%s): user=%s email=%s",
+            log_entry.bounce_type, log_entry.user_id, log_entry.to_email,
+        )
 
     elif event_type == "email.complained":
         log_entry.status = "complained"
+        # Resend complaint data
+        complaint_data = data.get("complaint", {})
+        complaint_type = complaint_data.get("type", "spam") if isinstance(complaint_data, dict) else "spam"
+        log_entry.complaint_type = complaint_type if complaint_type in ("spam", "abuse") else "spam"
+        log_entry.complained_at = now
         if user:
             user.email_opt_out = True
-        logger.warning("Spam complaint: user=%s email=%s", log_entry.user_id, log_entry.to_email)
+            user.email_suppressed = True
+        logger.warning(
+            "Spam complaint (%s): user=%s email=%s",
+            log_entry.complaint_type, log_entry.user_id, log_entry.to_email,
+        )
 
     db.commit()
 
