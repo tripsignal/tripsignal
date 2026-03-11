@@ -2,6 +2,7 @@
 
 import logging
 from datetime import datetime, timedelta
+from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -13,11 +14,26 @@ from app.workers.shared.regions import deal_matches_signal_region
 logger = logging.getLogger(__name__)
 
 
-def match_deal_to_signals(db: Session, deal: Deal, deal_meta: dict) -> list[Signal]:
-    """Match a single deal against all active signals. Returns matched signals."""
-    signals = db.execute(
+def load_active_signals(db: Session) -> list[Signal]:
+    """Load all active signals once. Call at cycle start and pass to match_deal_to_signals."""
+    return db.execute(
         select(Signal).where(Signal.status == "active")
     ).scalars().all()
+
+
+def match_deal_to_signals(
+    db: Session,
+    deal: Deal,
+    deal_meta: dict,
+    signals: Optional[list[Signal]] = None,
+) -> list[Signal]:
+    """Match a single deal against active signals. Returns matched signals.
+
+    If signals is None, queries the DB (backwards-compatible fallback).
+    Pass pre-loaded signals from load_active_signals() to avoid repeated queries.
+    """
+    if signals is None:
+        signals = load_active_signals(db)
 
     matches = []
     for signal in signals:

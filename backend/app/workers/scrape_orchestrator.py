@@ -14,6 +14,7 @@ import logging
 import os
 import random
 import signal as _signal
+import threading
 import time
 import traceback
 from datetime import datetime, timedelta, timezone
@@ -27,9 +28,13 @@ logging.basicConfig(
 
 _SYSTEM_API_HEADERS = {"X-Admin-Token": os.getenv("ADMIN_TOKEN", "")}
 
-# Schedule: 1 daily window in Eastern Time (6–11 AM catches ~80% of new deals)
+# Schedule: 1 daily window in Eastern Time (6:30–8:30 AM)
 _ET = ZoneInfo("America/Toronto")
-_SCRAPE_WINDOWS = [(6, 0, 11, 0)]
+_SCRAPE_WINDOWS = [(6, 30, 8, 30)]
+
+# Hard timeouts (seconds) — prevents hung scrapers from blocking the entire pipeline
+SELLOFF_HARD_TIMEOUT = int(os.getenv("SELLOFF_HARD_TIMEOUT", "21600"))  # 6 hours
+REDTAG_HARD_TIMEOUT = int(os.getenv("REDTAG_HARD_TIMEOUT", "3600"))    # 1 hour
 
 _shutdown_requested = False
 
@@ -84,24 +89,69 @@ def _is_scraper_enabled(key: str) -> bool:
         return True  # If table doesn't exist, proceed
 
 
+def _run_with_timeout(target, name: str, timeout_seconds: int) -> dict:
+    """Run a callable in a daemon thread with a hard timeout.
+
+    Returns {"status": "completed"} on success, {"status": "timeout"} if the
+    thread didn't finish in time, or {"status": "failed", "error": str} on exception.
+    """
+    result = {"status": "completed", "error": None}
+
+    def _wrapper():
+        try:
+            target()
+        except Exception as e:
+            result["status"] = "failed"
+            result["error"] = str(e)
+            logger.error("%s failed: %s\n%s", name, e, traceback.format_exc())
+
+    thread = threading.Thread(target=_wrapper, name=f"scraper-{name}", daemon=True)
+    thread.start()
+    thread.join(timeout=timeout_seconds)
+
+    if thread.is_alive():
+        logger.error(
+            "%s HARD TIMEOUT after %d seconds. Thread is still running but will be "
+            "abandoned (daemon thread dies on process exit).",
+            name, timeout_seconds,
+        )
+        result["status"] = "timeout"
+        result["error"] = f"Hard timeout after {timeout_seconds}s"
+
+    return result
+
+
 def run_orchestrated_cycle() -> dict:
     """Run all enabled scrapers in sequence. Returns combined summary."""
     cycle_start = datetime.now(timezone.utc)
     results = []
+
+    logger.info(
+        "Hard timeouts: SellOff=%ds (%dh), RedTag=%ds (%dh)",
+        SELLOFF_HARD_TIMEOUT, SELLOFF_HARD_TIMEOUT // 3600,
+        REDTAG_HARD_TIMEOUT, REDTAG_HARD_TIMEOUT // 3600,
+    )
 
     # --- SellOff ---
     if _shutdown_requested:
         logger.info("Shutdown requested before SellOff, skipping")
     else:
         logger.info("=== Starting SellOff scraper ===")
-        try:
-            from app.workers.selloff_scraper import run_scraper as run_selloff
-            run_selloff(once=True)
+        from app.workers.selloff_scraper import run_scraper as run_selloff
+        outcome = _run_with_timeout(
+            lambda: run_selloff(once=True),
+            "SellOff",
+            SELLOFF_HARD_TIMEOUT,
+        )
+        if outcome["status"] == "completed":
             logger.info("=== SellOff scraper complete ===")
             results.append({"provider": "selloff", "status": "completed"})
-        except Exception as e:
-            logger.error("SellOff scraper failed: %s\n%s", e, traceback.format_exc())
-            results.append({"provider": "selloff", "status": "failed", "error": str(e)})
+        elif outcome["status"] == "timeout":
+            logger.error("=== SellOff scraper TIMED OUT ===")
+            results.append({"provider": "selloff", "status": "timeout", "error": outcome["error"]})
+        else:
+            logger.error("=== SellOff scraper FAILED ===")
+            results.append({"provider": "selloff", "status": "failed", "error": outcome["error"]})
 
     # --- RedTag ---
     if _shutdown_requested:
@@ -111,11 +161,18 @@ def run_orchestrated_cycle() -> dict:
         results.append({"provider": "redtag", "status": "disabled"})
     else:
         logger.info("=== Starting RedTag scraper ===")
-        try:
-            from app.workers.redtag_scraper import run_once as run_redtag_once
-            from collections import defaultdict
+        from app.workers.redtag_scraper import run_once as run_redtag_once
+        from collections import defaultdict
 
-            redtag_result = run_redtag_once(dry_run=False)
+        redtag_result_holder = {"result": None}
+
+        def _run_redtag():
+            redtag_result_holder["result"] = run_redtag_once(dry_run=False)
+
+        outcome = _run_with_timeout(_run_redtag, "RedTag", REDTAG_HARD_TIMEOUT)
+
+        if outcome["status"] == "completed" and redtag_result_holder["result"] is not None:
+            redtag_result = redtag_result_holder["result"]
             results.append({
                 "provider": "redtag",
                 "status": "completed",
@@ -131,10 +188,11 @@ def run_orchestrated_cycle() -> dict:
                     _send_cycle_alerts(redtag_result["v2_signal_deals"], defaultdict(dict))
                 except Exception as e:
                     logger.error("RedTag match alert sending failed: %s", e)
-
-        except Exception as e:
-            logger.error("RedTag scraper failed: %s\n%s", e, traceback.format_exc())
-            results.append({"provider": "redtag", "status": "failed", "error": str(e)})
+        elif outcome["status"] == "timeout":
+            logger.error("=== RedTag scraper TIMED OUT ===")
+            results.append({"provider": "redtag", "status": "timeout", "error": outcome["error"]})
+        else:
+            results.append({"provider": "redtag", "status": "failed", "error": outcome.get("error", "unknown")})
 
     # --- Refresh intelligence caches ---
     try:
@@ -185,7 +243,7 @@ def _cleanup_orphaned_runs() -> None:
 
 def run_orchestrator(once: bool = False) -> None:
     """Main entry point — manages scheduling and runs scraper cycles."""
-    logger.info("Scrape orchestrator starting (daily window: 6–11 AM ET)")
+    logger.info("Scrape orchestrator starting (1 daily window: ~7AM ET (±60min jitter))")
     _cleanup_orphaned_runs()
 
     if not once:

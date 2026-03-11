@@ -29,13 +29,16 @@ def upsert_deal(db: Session, provider: str, deal: dict) -> Optional[Deal]:
             existing.is_active = True
             existing.deactivated_at = None
             existing.reactivated_at = datetime.now(timezone.utc)
-        if existing.price_cents != deal["price_cents"]:
-            existing.price_cents = deal["price_cents"]
-            db.commit()
+
         delta = old_price - deal["price_cents"]
         existing._price_dropped = delta > 0
         existing._price_delta = delta
-        db.add(DealPriceHistory(deal_id=existing.id, price_cents=deal["price_cents"]))
+
+        if existing.price_cents != deal["price_cents"]:
+            existing.price_cents = deal["price_cents"]
+            # Only record price history when the price actually changes
+            db.add(DealPriceHistory(deal_id=existing.id, price_cents=deal["price_cents"]))
+
         db.commit()
         return existing
 

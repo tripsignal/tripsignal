@@ -1,4 +1,5 @@
 """SellOff Vacations scraper and signal matcher."""
+import http.cookiejar
 import json
 import logging
 import os
@@ -30,7 +31,7 @@ logger = logging.getLogger("selloff_scraper")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 NEXT_SCAN_FILE = "/tmp/next_scan.json"
 _SYSTEM_API_HEADERS = {"X-Admin-Token": os.getenv("ADMIN_TOKEN", "")}
-MAX_CYCLE_SECONDS = int(os.getenv("MAX_CYCLE_SECONDS", "10800"))  # 3 hours default
+MAX_CYCLE_SECONDS = int(os.getenv("MAX_CYCLE_SECONDS", "18000"))  # 5 hours default
 
 # Graceful shutdown — finish current cycle before exiting
 _shutdown_requested = False
@@ -45,6 +46,13 @@ def _handle_sigterm(signum, frame):
 _signal.signal(_signal.SIGTERM, _handle_sigterm)
 _signal.signal(_signal.SIGINT, _handle_sigterm)
 
+
+def _interruptible_sleep(seconds: float) -> None:
+    """Sleep in 1-second increments so SIGTERM is respected promptly."""
+    end = time.monotonic() + seconds
+    while time.monotonic() < end and not _shutdown_requested:
+        time.sleep(min(1.0, end - time.monotonic()))
+
 # Proxy configuration (DataImpulse residential proxy)
 PROXY_ENABLED = os.getenv("PROXY_ENABLED", "false").lower() in ("true", "1", "yes")
 PROXY_HOST = os.getenv("PROXY_HOST", "gw.dataimpulse.com")
@@ -55,40 +63,56 @@ PROXY_COUNTRY = os.getenv("PROXY_COUNTRY", "cr.ca")
 
 # Module-level proxy opener, set per cycle in run_scraper()
 _cycle_proxy_opener: Optional[urllib.request.OpenerDirector] = None
+# Module-level direct opener (no proxy, but with cookie jar)
+_cycle_direct_opener: Optional[urllib.request.OpenerDirector] = None
 
 # Set to True when last fetch was a 404 — skips rate-limit sleep in the scrape loop
 _last_fetch_was_404: bool = False
 
-# Scrape schedule: 3 daily windows in Eastern Time (America/Toronto)
-# Each tuple: (start_hour, start_min, end_hour, end_min)
-_ET = ZoneInfo("America/Toronto")
-_SCRAPE_WINDOWS = [(7, 0, 9, 0), (12, 0, 14, 0), (18, 0, 20, 0)]
+# Referer chain: tracks the last successfully fetched URL
+_last_page_url: Optional[str] = None
+
+# User agent for this cycle — one picked at cycle start, consistent for the session
+_cycle_ua: Optional[str] = None
+
+# User agent pool — one picked per cycle to simulate a single browser session
+_USER_AGENTS = [
+    # Chrome on Windows
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    # Chrome on Mac
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    # Firefox on Windows
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0",
+    # Firefox on Mac
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0",
+    # Edge on Windows
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
+]
 
 
-def _in_scrape_window() -> bool:
-    """True if current Eastern time falls inside a scrape window."""
-    now_et = datetime.now(_ET)
-    for sh, sm, eh, em in _SCRAPE_WINDOWS:
-        ws = now_et.replace(hour=sh, minute=sm, second=0, microsecond=0)
-        we = now_et.replace(hour=eh, minute=em, second=0, microsecond=0)
-        if ws <= now_et < we:
-            return True
-    return False
-
-
-def _next_scrape_time() -> datetime:
-    """Return a random UTC datetime in the next upcoming scrape window."""
-    now_et = datetime.now(_ET)
-    for day_offset in range(3):
-        base = now_et + timedelta(days=day_offset)
-        for sh, sm, eh, em in _SCRAPE_WINDOWS:
-            window_start = base.replace(hour=sh, minute=sm, second=0, microsecond=0)
-            window_end = base.replace(hour=eh, minute=em, second=0, microsecond=0)
-            if window_start > now_et:
-                offset = random.randint(0, int((window_end - window_start).total_seconds()))
-                return (window_start + timedelta(seconds=offset)).astimezone(timezone.utc)
-    # Fallback (shouldn't happen)
-    return datetime.now(timezone.utc) + timedelta(hours=6)
+def _build_request_headers(referer: Optional[str] = None) -> dict:
+    """Build realistic browser headers with the cycle's UA and referer chain."""
+    ua = _cycle_ua or random.choice(_USER_AGENTS)
+    headers = {
+        "User-Agent": ua,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-CA,en-US;q=0.9,en;q=0.8",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-User": "?1",
+        "Cache-Control": "max-age=0",
+    }
+    if referer:
+        headers["Referer"] = referer
+        headers["Sec-Fetch-Site"] = "same-origin"
+    else:
+        headers["Sec-Fetch-Site"] = "none"
+    return headers
 
 
 def _build_proxy_url() -> Optional[str]:
@@ -98,13 +122,21 @@ def _build_proxy_url() -> Optional[str]:
     return f"http://{PROXY_USER}__{PROXY_COUNTRY}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
 
 
-def _build_proxy_opener(proxy_url: str) -> urllib.request.OpenerDirector:
-    """Build a urllib opener that routes through the proxy."""
-    proxy_handler = urllib.request.ProxyHandler({
-        "http": proxy_url,
-        "https": proxy_url,
-    })
-    return urllib.request.build_opener(proxy_handler)
+def _build_proxy_opener(proxy_url: str, cookie_jar: Optional[http.cookiejar.CookieJar] = None) -> urllib.request.OpenerDirector:
+    """Build a urllib opener that routes through the proxy with cookie persistence."""
+    handlers = [urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url})]
+    if cookie_jar is not None:
+        handlers.append(urllib.request.HTTPCookieProcessor(cookie_jar))
+    return urllib.request.build_opener(*handlers)
+
+
+def _build_direct_opener(cookie_jar: Optional[http.cookiejar.CookieJar] = None) -> urllib.request.OpenerDirector:
+    """Build a urllib opener for direct connections with cookie persistence."""
+    handlers = []
+    if cookie_jar is not None:
+        handlers.append(urllib.request.HTTPCookieProcessor(cookie_jar))
+    return urllib.request.build_opener(*handlers)
+
 
 DESTINATION_SLUGS = [
     # Mexico (12 sub-destinations)
@@ -208,7 +240,7 @@ from app.workers.shared.regions import (
     deal_matches_signal_region,
     map_destination_to_region,
 )
-from app.workers.shared.matching import match_deal_to_signals as _shared_match_deal_to_signals
+from app.workers.shared.matching import match_deal_to_signals as _shared_match_deal_to_signals, load_active_signals
 from app.workers.shared.upsert import upsert_deal as _shared_upsert_deal
 from app.services.market_intel import score_deal_for_match
 
@@ -252,7 +284,7 @@ def _assert_safe_url(url: str) -> None:
 
 
 def fetch_deals_from_page(url: str) -> list[dict]:
-    global _last_fetch_was_404
+    global _last_fetch_was_404, _last_page_url
     _last_fetch_was_404 = False
     try:
         _assert_safe_url(url)
@@ -260,17 +292,14 @@ def fetch_deals_from_page(url: str) -> list[dict]:
         logger.warning("fetch_deals_from_page blocked: %s", e)
         return []
     try:
-        req = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-                "Accept-Language": "en-CA,en;q=0.9",
-            },
-        )
+        req = urllib.request.Request(url, headers=_build_request_headers(referer=_last_page_url))
         if _cycle_proxy_opener:
             html = _cycle_proxy_opener.open(req, timeout=30).read().decode("utf-8", "ignore")
+        elif _cycle_direct_opener:
+            html = _cycle_direct_opener.open(req, timeout=30).read().decode("utf-8", "ignore")
         else:
             html = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "ignore")
+        _last_page_url = url
     except Exception as e:
         is_404 = "404" in str(e) or "HTTP Error 404" in str(e)
         if _cycle_proxy_opener:
@@ -280,14 +309,12 @@ def fetch_deals_from_page(url: str) -> list[dict]:
                 return []
             logger.warning("Proxy error fetching %s: %s — retrying direct", url, e)
             try:
-                req = urllib.request.Request(
-                    url,
-                    headers={
-                        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-                        "Accept-Language": "en-CA,en;q=0.9",
-                    },
-                )
-                html = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "ignore")
+                req = urllib.request.Request(url, headers=_build_request_headers(referer=_last_page_url))
+                if _cycle_direct_opener:
+                    html = _cycle_direct_opener.open(req, timeout=30).read().decode("utf-8", "ignore")
+                else:
+                    html = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "ignore")
+                _last_page_url = url
             except Exception as e2:
                 if "404" in str(e2) or "HTTP Error 404" in str(e2):
                     logger.debug("404 (no flights) for %s — skipping", url)
@@ -363,13 +390,39 @@ def fetch_deals_from_page(url: str) -> list[dict]:
     return deals
 
 
+def _warmup_session() -> None:
+    """Hit a few top-level pages to establish a realistic browsing session and collect cookies."""
+    global _last_page_url
+    warmup_urls = [
+        "https://www.selloffvacations.com/en",
+        "https://www.selloffvacations.com/en/mexico",
+        "https://www.selloffvacations.com/en/caribbean",
+    ]
+    # Pick 1-2 random warmup pages
+    selected = random.sample(warmup_urls, k=random.randint(1, 2))
+    for url in selected:
+        try:
+            req = urllib.request.Request(url, headers=_build_request_headers(referer=_last_page_url))
+            if _cycle_proxy_opener:
+                _cycle_proxy_opener.open(req, timeout=15).read()
+            elif _cycle_direct_opener:
+                _cycle_direct_opener.open(req, timeout=15).read()
+            else:
+                urllib.request.urlopen(req, timeout=15).read()
+            _last_page_url = url
+            logger.debug("Warmup: visited %s", url)
+            time.sleep(random.uniform(3, 8))
+        except Exception as e:
+            logger.debug("Warmup failed for %s: %s (continuing)", url, e)
+
+
 def upsert_deal(db: Session, deal: dict) -> Optional[Deal]:
     deal["dedupe_key"] = f"selloff:{deal['gateway']}:{deal['hotel_id']}:{deal['depart_date']}:{deal['duration_days']}"
     return _shared_upsert_deal(db, "selloff", deal)
 
 
-def match_deal_to_signals(db: Session, deal: Deal, deal_meta: dict) -> list[Signal]:
-    return _shared_match_deal_to_signals(db, deal, deal_meta)
+def match_deal_to_signals(db: Session, deal: Deal, deal_meta: dict, signals=None) -> list[Signal]:
+    return _shared_match_deal_to_signals(db, deal, deal_meta, signals=signals)
 
 
 
@@ -599,28 +652,6 @@ def run_matching_only(db: Session) -> None:
 def run_scraper(once: bool = True) -> None:
     logger.info("SellOff scraper starting")
 
-    if not once:
-        logger.info("Scraper configured for 3 daily cycles: ~8AM, ~1PM, ~7PM ET")
-        if not _in_scrape_window():
-            next_time = _next_scrape_time()
-            next_et = next_time.astimezone(_ET)
-            sleep_sec = max(0, (next_time - datetime.now(timezone.utc)).total_seconds())
-            hours, remainder = divmod(int(sleep_sec), 3600)
-            minutes = remainder // 60
-            logger.info("Not in a scrape window — next scrape scheduled for %s ET (%dh %dm from now)",
-                        next_et.strftime("%Y-%m-%d %I:%M %p"), hours, minutes)
-            try:
-                import requests as _req
-                _req.post("http://api:8000/api/system/next-scan", json={
-                    "next_scan_at": next_time.timestamp(),
-                    "last_scan_at": datetime.now(timezone.utc).timestamp(),
-                }, headers=_SYSTEM_API_HEADERS, timeout=5)
-            except Exception as e:
-                logger.warning("Failed to post next_scan time: %s", e)
-            time.sleep(sleep_sec)
-        else:
-            logger.info("Currently inside a scrape window — starting immediately")
-
     while True:
         cycle_errors: list = []
         total_deals = 0
@@ -633,15 +664,21 @@ def run_scraper(once: bool = True) -> None:
         run_id = None
 
         try:
+            # Cookie jar for this cycle — simulates one browser session
+            cycle_cookie_jar = http.cookiejar.CookieJar()
+
             # Proxy setup for this cycle
-            global _cycle_proxy_opener
+            global _cycle_proxy_opener, _cycle_direct_opener, _last_page_url, _cycle_ua
             _cycle_proxy_opener = None
+            _cycle_direct_opener = None
+            _last_page_url = None  # Reset referer chain for new cycle
+            _cycle_ua = random.choice(_USER_AGENTS)  # One UA per cycle = one browser session
             proxy_ip = None
             proxy_url = _build_proxy_url()
             if proxy_url:
                 logger.info("Using residential proxy (Canada) via DataImpulse")
                 try:
-                    test_opener = _build_proxy_opener(proxy_url)
+                    test_opener = _build_proxy_opener(proxy_url, cookie_jar=cycle_cookie_jar)
                     test_req = urllib.request.Request("https://api.ipify.org?format=json")
                     resp = test_opener.open(test_req, timeout=10)
                     ip_data = json.loads(resp.read().decode())
@@ -653,12 +690,15 @@ def run_scraper(once: bool = True) -> None:
             else:
                 logger.info("Proxy not configured — using direct connection")
 
+            # Always build a direct opener with cookies (used as fallback and when no proxy)
+            _cycle_direct_opener = _build_direct_opener(cookie_jar=cycle_cookie_jar)
+
             # Geo-locate the proxy IP
             proxy_geo = None
             if proxy_ip:
                 try:
                     geo_req = urllib.request.Request(f"http://ip-api.com/json/{proxy_ip}?fields=city,regionName,countryCode")
-                    opener = _cycle_proxy_opener or urllib.request.build_opener()
+                    opener = _cycle_proxy_opener or _cycle_direct_opener
                     geo_resp = opener.open(geo_req, timeout=5)
                     geo = json.loads(geo_resp.read().decode())
                     if geo.get("city"):
@@ -685,38 +725,69 @@ def run_scraper(once: bool = True) -> None:
             # V2 match alert accumulator: {signal_id_str: [deal_dict, ...]}
             v2_signal_deals: dict = defaultdict(list)
 
+            # Pre-load active signals once for the entire cycle
+            with next(get_db()) as sig_db:
+                _cycle_signals = load_active_signals(sig_db)
+            logger.info("Loaded %d active signals for matching", len(_cycle_signals))
+
+            # Block detection: consecutive non-404 pages with 0 deals
+            _consecutive_empty = 0
+            _BLOCK_THRESHOLD = 8  # stop after 8 consecutive empty (non-404) pages
+
+            # Warm up the session with top-level page visits (collects cookies)
+            _warmup_session()
+            cookie_count = len(cycle_cookie_jar)
+            if cookie_count:
+                logger.info("Collected %d cookies from warmup", cookie_count)
+
+            # Shuffle destination and city order each cycle to avoid predictable patterns
+            cycle_destinations = list(DESTINATION_SLUGS)
+            random.shuffle(cycle_destinations)
+
+            cycle_gateways = list(GATEWAY_SLUGS.items())
+            random.shuffle(cycle_gateways)
+
             elapsed = 0
-            for slug in DESTINATION_SLUGS:
-                for gateway_code, city_slug in GATEWAY_SLUGS.items():
+            for slug in cycle_destinations:
+                for gateway_code, city_slug in cycle_gateways:
+                    # Randomly skip ~7% of pages to make crawl pattern unpredictable
+                    if random.random() < 0.07:
+                        logger.debug("Random skip: %s from %s", slug, city_slug)
+                        continue
+
                     url = f"https://www.selloffvacations.com/en/{slug}/from-{city_slug}"
                     logger.info("Scraping %s", url)
 
                     deals = fetch_deals_from_page(url)
                     logger.info("Found %d deals on %s", len(deals), url)
+
+                    # Block detection circuit breaker
+                    if not deals and not _last_fetch_was_404:
+                        _consecutive_empty += 1
+                        if _consecutive_empty >= _BLOCK_THRESHOLD:
+                            logger.error(
+                                "POSSIBLE BLOCK: %d consecutive non-404 pages returned 0 deals. "
+                                "Stopping cycle to avoid wasting requests.",
+                                _consecutive_empty,
+                            )
+                            cycle_errors.append({"error": "Block detected: consecutive empty pages", "type": "block"})
+                            break
+                    elif deals:
+                        _consecutive_empty = 0
+
                     if not deals:
                         cycle_errors.append({"url": url, "error": "No deals found", "type": "empty"})
 
-                    skipped_gateway_count = 0
                     with next(get_db()) as db:
                         for deal_meta in deals:
                             try:
-                                parsed_gateway = deal_meta.get("gateway", "")
-                                if parsed_gateway != gateway_code:
-                                    logger.warning(
-                                        "Gateway mismatch on %s page: expected %s, got %s — skipping (hotel=%s)",
-                                        city_slug, gateway_code, parsed_gateway,
-                                        deal_meta.get("hotel_name", "unknown"),
-                                    )
-                                    skipped_gateway_count += 1
-                                    continue
-
                                 deal = upsert_deal(db, deal_meta)
                                 if not deal:
                                     continue
 
                                 seen_dedupe_keys.add(deal.dedupe_key)
                                 total_deals += 1
-                                matched_signals = match_deal_to_signals(db, deal, deal_meta)
+                                matched_signals = match_deal_to_signals(db, deal, deal_meta, signals=_cycle_signals)
 
                                 for signal in matched_signals:
                                     existing = db.execute(
@@ -772,14 +843,8 @@ def run_scraper(once: bool = True) -> None:
                                 cycle_errors.append({"url": url, "error": str(e), "type": "error"})
                                 continue
 
-                    if skipped_gateway_count > 0:
-                        logger.warning(
-                            "%s: skipped %d deals due to gateway mismatch",
-                            city_slug, skipped_gateway_count,
-                        )
-
                     if not _last_fetch_was_404:
-                        time.sleep(random.uniform(8, 20))
+                        _interruptible_sleep(random.uniform(15, 45))
 
                     # Internal timeout: bail if cycle has been running too long
                     elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
@@ -796,6 +861,18 @@ def run_scraper(once: bool = True) -> None:
                         break
                 if elapsed > MAX_CYCLE_SECONDS:
                     break
+                if _consecutive_empty >= _BLOCK_THRESHOLD:
+                    break
+
+                # Longer pause between destination categories
+                if not _shutdown_requested:
+                    category_pause = random.uniform(60, 180)
+                    logger.debug("Category pause: %.0fs before next destination", category_pause)
+                    _interruptible_sleep(category_pause)
+
+            # Log final cookie count
+            final_cookies = len(cycle_cookie_jar)
+            logger.info("Cycle used %d cookies across session", final_cookies)
 
             # Graduated staleness: increment missed_cycles, only deactivate after 3+ misses
             DEACTIVATION_THRESHOLD = 3
@@ -863,6 +940,7 @@ def run_scraper(once: bool = True) -> None:
 
             completed_at = datetime.now(timezone.utc)
             logger.info("Scrape complete. Deals: %d, Matches: %d", total_deals, total_matches)
+            logger.info("Unique dedupe keys this cycle: %d (total upserts: %d)", len(seen_dedupe_keys), total_deals)
 
             # Post completion summary to API
             try:
@@ -909,23 +987,6 @@ def run_scraper(once: bool = True) -> None:
             if _shutdown_requested:
                 logger.info("Shutting down gracefully after completed cycle")
             return
-
-        next_time = _next_scrape_time()
-        next_et = next_time.astimezone(_ET)
-        sleep_seconds = max(0, (next_time - datetime.now(timezone.utc)).total_seconds())
-        hours, remainder = divmod(int(sleep_seconds), 3600)
-        minutes = remainder // 60
-        logger.info("Next scrape scheduled for %s ET (%dh %dm from now)",
-                    next_et.strftime("%Y-%m-%d %I:%M %p"), hours, minutes)
-        try:
-            import requests as _req
-            _req.post("http://api:8000/api/system/next-scan", json={
-                "next_scan_at": next_time.timestamp(),
-                "last_scan_at": datetime.now(timezone.utc).timestamp(),
-            }, headers=_SYSTEM_API_HEADERS, timeout=5)
-        except Exception as e:
-            logger.warning("Failed to post next_scan time: %s", e)
-        time.sleep(sleep_seconds)
 
 
 if __name__ == "__main__":

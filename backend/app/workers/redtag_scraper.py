@@ -102,8 +102,8 @@ _BLOCK_MARKERS = [
 ]
 
 # Rate limiting
-_DELAY_MIN = 10.0
-_DELAY_MAX = 25.0
+_DELAY_MIN = 15.0
+_DELAY_MAX = 45.0
 _MAX_PAGES_PER_RUN = 40
 
 # Staleness threshold (RedTag runs ~1x/day, so higher threshold)
