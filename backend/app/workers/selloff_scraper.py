@@ -30,7 +30,7 @@ logger = logging.getLogger("selloff_scraper")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 NEXT_SCAN_FILE = "/tmp/next_scan.json"
 _SYSTEM_API_HEADERS = {"X-Admin-Token": os.getenv("ADMIN_TOKEN", "")}
-MAX_CYCLE_SECONDS = int(os.getenv("MAX_CYCLE_SECONDS", "7200"))  # 2 hours default
+MAX_CYCLE_SECONDS = int(os.getenv("MAX_CYCLE_SECONDS", "10800"))  # 3 hours default
 
 # Graceful shutdown — finish current cycle before exiting
 _shutdown_requested = False
@@ -103,12 +103,47 @@ def _build_proxy_opener(proxy_url: str) -> urllib.request.OpenerDirector:
     })
     return urllib.request.build_opener(proxy_handler)
 
-CATEGORIES = [
-    "luxury-vacations",
-    "adults-only",
-    "family-vacations",
-    "budget-friendly-vacations",
-    "top-rated-all-inclusive-resorts",
+DESTINATION_SLUGS = [
+    # Mexico (12 sub-destinations)
+    "mexico/cancun",
+    "mexico/riviera-maya",
+    "mexico/puerto-vallarta",
+    "mexico/los-cabos",
+    "mexico/mazatlan",
+    "mexico/huatulco",
+    "mexico/ixtapa-zihuatanejo",
+    "mexico/cozumel",
+    "mexico/playa-mujeres",
+    "mexico/riviera-nayarit",
+    "mexico/tulum",
+    "mexico/isla-holbox",
+    # Dominican Republic (7 sub-destinations)
+    "dominican-republic/punta-cana",
+    "dominican-republic/puerto-plata",
+    "dominican-republic/la-romana",
+    "dominican-republic/samana",
+    "dominican-republic/santo-domingo",
+    "dominican-republic/cabarete",
+    "dominican-republic/sosua",
+    # Jamaica (3 sub-destinations)
+    "jamaica/montego-bay",
+    "jamaica/negril",
+    "jamaica/ocho-rios",
+    # Cuba (varadero page returns all Cuban destinations)
+    "cuba/varadero",
+    # Caribbean & Central America (10 standalone)
+    "costa-rica",
+    "aruba",
+    "barbados",
+    "saint-lucia",
+    "antigua",
+    "panama",
+    "grenada",
+    "cayman-islands",
+    "st-maarten",
+    "bermuda",
+    # Honduras
+    "honduras/roatan",
 ]
 
 GATEWAY_SLUGS = {
@@ -232,7 +267,11 @@ def fetch_deals_from_page(url: str) -> list[dict]:
         else:
             html = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "ignore")
     except Exception as e:
+        is_404 = "404" in str(e) or "HTTP Error 404" in str(e)
         if _cycle_proxy_opener:
+            if is_404:
+                logger.debug("404 (no flights) for %s — skipping", url)
+                return []
             logger.warning("Proxy error fetching %s: %s — retrying direct", url, e)
             try:
                 req = urllib.request.Request(
@@ -244,10 +283,16 @@ def fetch_deals_from_page(url: str) -> list[dict]:
                 )
                 html = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "ignore")
             except Exception as e2:
-                logger.warning("Direct retry also failed for %s: %s", url, e2)
+                if "404" in str(e2) or "HTTP Error 404" in str(e2):
+                    logger.debug("404 (no flights) for %s — skipping", url)
+                else:
+                    logger.warning("Direct retry also failed for %s: %s", url, e2)
                 return []
         else:
-            logger.warning("Failed to fetch %s: %s", url, e)
+            if is_404:
+                logger.debug("404 (no flights) for %s — skipping", url)
+            else:
+                logger.warning("Failed to fetch %s: %s", url, e)
             return []
 
     destinations = re.findall(r'adModuleHeading--\w+\">([^<]+)</h2>', html)
@@ -630,9 +675,9 @@ def run_scraper(once: bool = True) -> None:
             v2_signal_deals: dict = defaultdict(list)
 
             elapsed = 0
-            for category in CATEGORIES:
+            for slug in DESTINATION_SLUGS:
                 for gateway_code, city_slug in GATEWAY_SLUGS.items():
-                    url = f"https://www.selloffvacations.com/en/vacation-packages/{category}/from-{city_slug}"
+                    url = f"https://www.selloffvacations.com/en/{slug}/from-{city_slug}"
                     logger.info("Scraping %s", url)
 
                     deals = fetch_deals_from_page(url)
