@@ -103,16 +103,13 @@ def list_signal_matches(
     db: Session = Depends(get_db),
     clerk_user_id: str = Depends(get_clerk_user_id),
 ):
-    """Return active deals matched to a given signal, favourites first."""
+    """Return all deals matched to a given signal — active first, then expired."""
     _verify_signal_owner(signal_id, clerk_user_id, db)
     matches = (
         db.query(DealMatch)
         .join(Deal)
-        .filter(
-            DealMatch.signal_id == signal_id,
-            Deal.is_active == True,
-        )
-        .order_by(DealMatch.is_favourite.desc(), DealMatch.matched_at.desc())
+        .filter(DealMatch.signal_id == signal_id)
+        .order_by(Deal.is_active.desc(), DealMatch.is_favourite.desc(), DealMatch.matched_at.desc())
         .all()
     )
 
