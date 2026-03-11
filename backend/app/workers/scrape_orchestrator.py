@@ -27,9 +27,9 @@ logging.basicConfig(
 
 _SYSTEM_API_HEADERS = {"X-Admin-Token": os.getenv("ADMIN_TOKEN", "")}
 
-# Schedule: 3 daily windows in Eastern Time
+# Schedule: 1 daily window in Eastern Time (6–11 AM catches ~80% of new deals)
 _ET = ZoneInfo("America/Toronto")
-_SCRAPE_WINDOWS = [(7, 0, 9, 0), (12, 0, 14, 0), (18, 0, 20, 0)]
+_SCRAPE_WINDOWS = [(6, 0, 11, 0)]
 
 _shutdown_requested = False
 
@@ -185,7 +185,7 @@ def _cleanup_orphaned_runs() -> None:
 
 def run_orchestrator(once: bool = False) -> None:
     """Main entry point — manages scheduling and runs scraper cycles."""
-    logger.info("Scrape orchestrator starting (3 daily windows: ~8AM, ~1PM, ~7PM ET)")
+    logger.info("Scrape orchestrator starting (daily window: 6–11 AM ET)")
     _cleanup_orphaned_runs()
 
     if not once:
