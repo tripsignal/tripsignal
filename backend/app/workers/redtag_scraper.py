@@ -51,6 +51,8 @@ _TIMEOUT = 30
 _SYSTEM_API_HEADERS = {"X-Admin-Token": os.getenv("ADMIN_TOKEN", "")}
 
 # City slugs with /deals/{slug}/ listing pages on redtag.ca
+# Verified against RedTag sitemap — only cities with real deal inventory included.
+# Note: sydney=YQY (Cape Breton) and timmins=YTS are RedTag-only cities not in SellOff.
 REDTAG_DEAL_CITIES = {
     "toronto": "YYZ",
     "montreal": "YUL",
@@ -58,6 +60,35 @@ REDTAG_DEAL_CITIES = {
     "vancouver": "YVR",
     "edmonton": "YEG",
     "winnipeg": "YWG",
+    "ottawa": "YOW",
+    "st-johns": "YYT",
+    "saskatoon": "YXE",
+    "regina": "YQR",
+    "halifax": "YHZ",
+    "quebec-city": "YQB",
+    "fredericton": "YFC",
+    "moncton": "YQM",
+    "victoria": "YYJ",
+    "kelowna": "YLW",
+    "abbotsford": "YXX",
+    "grande-prairie": "YQU",
+    "nanaimo": "YCD",
+    "comox": "YQQ",
+    "hamilton": "YHM",
+    "london": "YXU",
+    "kitchener": "YKF",
+    "deer-lake": "YDF",
+    "fort-mcmurray": "YMM",
+    "prince-george": "YXS",
+    "sydney": "YQY",
+    "gander": "YQX",
+    "kamloops": "YKA",
+    "thunder-bay": "YQT",
+    "charlottetown": "YYG",
+    "sault-ste-marie": "YAM",
+    "saint-john": "YSJ",
+    "timmins": "YTS",
+    "windsor": "YQG",
 }
 
 # Regex to extract data-deal JSON from Continue buttons
@@ -73,7 +104,7 @@ _BLOCK_MARKERS = [
 # Rate limiting
 _DELAY_MIN = 10.0
 _DELAY_MAX = 25.0
-_MAX_PAGES_PER_RUN = 10
+_MAX_PAGES_PER_RUN = 40
 
 # Staleness threshold (RedTag runs ~1x/day, so higher threshold)
 DEACTIVATION_THRESHOLD = 5
@@ -188,14 +219,20 @@ def parse_deals_from_html(html_str: str, city: str) -> list[dict]:
     """Extract deal metadata dicts from data-deal JSON attributes in listing HTML.
 
     Only returns All Inclusive (MealType == "AI") packages.
+    Validates that each deal's DepartureCode matches the expected gateway for this city
+    to catch RedTag fallback pages that silently return deals from a different city.
     Deduplicates by dedupe_key.
     """
     raw_matches = _DATA_DEAL_RE.findall(html_str)
     if not raw_matches:
         return []
 
+    expected_gateway = REDTAG_DEAL_CITIES.get(city, "")
     deals = []
     seen_keys = set()
+    skipped_count = 0
+    total_count = len(raw_matches)
+    last_actual_departure = ""
 
     for encoded_json in raw_matches:
         try:
@@ -203,6 +240,22 @@ def parse_deals_from_html(html_str: str, city: str) -> list[dict]:
         except (json.JSONDecodeError, Exception) as e:
             logger.warning("Failed to parse data-deal JSON: %s", e)
             continue
+
+        # Validate departure code matches the expected city gateway.
+        # RedTag sometimes returns another city's deals (e.g. fallback to Toronto)
+        # when a city page has no real inventory.
+        if expected_gateway:
+            actual_departure_raw = deal.get("DepartureCode", "")
+            actual_departure = actual_departure_raw.split(",")[0].strip() if actual_departure_raw else ""
+            if actual_departure and actual_departure != expected_gateway:
+                logger.warning(
+                    "Departure code mismatch for %s: expected %s, got %s — skipping deal (hotel=%s)",
+                    city, expected_gateway, actual_departure,
+                    deal.get("HotelName", "unknown"),
+                )
+                skipped_count += 1
+                last_actual_departure = actual_departure
+                continue
 
         deal_meta = _parse_single_deal(deal, city)
         if not deal_meta:
@@ -212,6 +265,12 @@ def parse_deals_from_html(html_str: str, city: str) -> list[dict]:
             continue
         seen_keys.add(deal_meta["dedupe_key"])
         deals.append(deal_meta)
+
+    if skipped_count > 0:
+        logger.warning(
+            "%s: skipped %d/%d deals — departure code mismatch (got %s, expected %s)",
+            city, skipped_count, total_count, last_actual_departure, expected_gateway,
+        )
 
     return deals
 
