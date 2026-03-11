@@ -149,6 +149,7 @@ def list_signal_matches(
             previous_price_cents=previous_price,
             price_delta_cents=delta_cents,
             is_active=match.deal.is_active,
+            deactivated_at=match.deal.deactivated_at,
             hotel_name=match.deal.hotel_name,
             hotel_id=match.deal.hotel_id,
             discount_pct=match.deal.discount_pct,

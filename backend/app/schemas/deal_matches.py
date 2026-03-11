@@ -25,6 +25,7 @@ class DealOut(BaseModel):
     previous_price_cents: Optional[int] = None
     price_delta_cents: Optional[int] = None
     is_active: Optional[bool] = None
+    deactivated_at: Optional[datetime] = None
     hotel_name: Optional[str] = None
     hotel_id: Optional[str] = None
     discount_pct: Optional[int] = None
