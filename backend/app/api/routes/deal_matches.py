@@ -157,6 +157,7 @@ def list_signal_matches(
             tripadvisor_url=ta_urls.get(match.deal.hotel_id),
             found_at=match.deal.found_at,
             first_price_cents=first_price,
+            reactivated_at=match.deal.reactivated_at,
         )
         result.append(DealMatchOut(
             id=match.id,

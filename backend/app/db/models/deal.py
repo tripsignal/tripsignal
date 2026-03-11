@@ -44,6 +44,9 @@ class Deal(Base):
     deactivated_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True, index=True
     )
+    reactivated_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True, index=True
+    )
     last_seen_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()"),
     )

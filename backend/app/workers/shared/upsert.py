@@ -28,6 +28,7 @@ def upsert_deal(db: Session, provider: str, deal: dict) -> Optional[Deal]:
         if not existing.is_active:
             existing.is_active = True
             existing.deactivated_at = None
+            existing.reactivated_at = datetime.now(timezone.utc)
         if existing.price_cents != deal["price_cents"]:
             existing.price_cents = deal["price_cents"]
             db.commit()

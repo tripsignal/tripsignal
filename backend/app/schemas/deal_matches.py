@@ -33,6 +33,7 @@ class DealOut(BaseModel):
     tripadvisor_url: Optional[str] = None
     found_at: Optional[datetime] = None
     first_price_cents: Optional[int] = None
+    reactivated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
