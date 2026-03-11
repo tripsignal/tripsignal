@@ -56,6 +56,9 @@ PROXY_COUNTRY = os.getenv("PROXY_COUNTRY", "cr.ca")
 # Module-level proxy opener, set per cycle in run_scraper()
 _cycle_proxy_opener: Optional[urllib.request.OpenerDirector] = None
 
+# Set to True when last fetch was a 404 — skips rate-limit sleep in the scrape loop
+_last_fetch_was_404: bool = False
+
 # Scrape schedule: 3 daily windows in Eastern Time (America/Toronto)
 # Each tuple: (start_hour, start_min, end_hour, end_min)
 _ET = ZoneInfo("America/Toronto")
@@ -249,6 +252,8 @@ def _assert_safe_url(url: str) -> None:
 
 
 def fetch_deals_from_page(url: str) -> list[dict]:
+    global _last_fetch_was_404
+    _last_fetch_was_404 = False
     try:
         _assert_safe_url(url)
     except ValueError as e:
@@ -271,6 +276,7 @@ def fetch_deals_from_page(url: str) -> list[dict]:
         if _cycle_proxy_opener:
             if is_404:
                 logger.debug("404 (no flights) for %s — skipping", url)
+                _last_fetch_was_404 = True
                 return []
             logger.warning("Proxy error fetching %s: %s — retrying direct", url, e)
             try:
@@ -285,12 +291,14 @@ def fetch_deals_from_page(url: str) -> list[dict]:
             except Exception as e2:
                 if "404" in str(e2) or "HTTP Error 404" in str(e2):
                     logger.debug("404 (no flights) for %s — skipping", url)
+                    _last_fetch_was_404 = True
                 else:
                     logger.warning("Direct retry also failed for %s: %s", url, e2)
                 return []
         else:
             if is_404:
                 logger.debug("404 (no flights) for %s — skipping", url)
+                _last_fetch_was_404 = True
             else:
                 logger.warning("Failed to fetch %s: %s", url, e)
             return []
@@ -750,7 +758,8 @@ def run_scraper(once: bool = True) -> None:
                                 cycle_errors.append({"url": url, "error": str(e), "type": "error"})
                                 continue
 
-                    time.sleep(random.uniform(8, 20))
+                    if not _last_fetch_was_404:
+                        time.sleep(random.uniform(8, 20))
 
                     # Internal timeout: bail if cycle has been running too long
                     elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
