@@ -693,9 +693,20 @@ def run_scraper(once: bool = True) -> None:
                     if not deals:
                         cycle_errors.append({"url": url, "error": "No deals found", "type": "empty"})
 
+                    skipped_gateway_count = 0
                     with next(get_db()) as db:
                         for deal_meta in deals:
                             try:
+                                parsed_gateway = deal_meta.get("gateway", "")
+                                if parsed_gateway != gateway_code:
+                                    logger.warning(
+                                        "Gateway mismatch on %s page: expected %s, got %s — skipping (hotel=%s)",
+                                        city_slug, gateway_code, parsed_gateway,
+                                        deal_meta.get("hotel_name", "unknown"),
+                                    )
+                                    skipped_gateway_count += 1
+                                    continue
+
                                 deal = upsert_deal(db, deal_meta)
                                 if not deal:
                                     continue
@@ -757,6 +768,12 @@ def run_scraper(once: bool = True) -> None:
                                 logger.error("Error processing deal: %s", e)
                                 cycle_errors.append({"url": url, "error": str(e), "type": "error"})
                                 continue
+
+                    if skipped_gateway_count > 0:
+                        logger.warning(
+                            "%s: skipped %d deals due to gateway mismatch",
+                            city_slug, skipped_gateway_count,
+                        )
 
                     if not _last_fetch_was_404:
                         time.sleep(random.uniform(8, 20))
