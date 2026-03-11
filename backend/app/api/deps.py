@@ -25,7 +25,10 @@ def get_clerk_user_id(
 ) -> str:
     """Extract and verify the Clerk user ID from a JWT Bearer token.
 
-    Requires a valid, cryptographically signed JWT. No fallbacks.
+    Requires a valid, cryptographically signed JWT verified against Clerk's
+    JWKS endpoint (RS256). The user ID is derived from the verified `sub` claim.
+    The old pattern of trusting an `x-clerk-user-id` header has been removed.
+    No fallbacks.
     """
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Authentication required")

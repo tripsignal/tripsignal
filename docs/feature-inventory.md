@@ -129,7 +129,7 @@
 - **Data involved**:
   - Tables/models: `signals` (`backend/app/db/models/signal.py`), `deal_matches`
 - **Access control**:
-  - Auth: Clerk (`x-clerk-user-id` header)
+  - Auth: Clerk JWT (`Authorization: Bearer`, verified via JWKS RS256 in `deps.py:get_clerk_user_id()`)
   - Role: —
   - Plan gate: Free: 1 signal; Pro: 10 signals (frontend-enforced only)
 - **Notifications**:
