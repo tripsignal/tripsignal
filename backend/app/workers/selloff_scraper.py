@@ -7,8 +7,11 @@ import re
 import signal as _signal
 import time
 import traceback
+import ipaddress
+import socket
 import urllib.request
 from collections import defaultdict
+from urllib.parse import urlparse
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -191,7 +194,31 @@ def clean_url(url: str) -> str:
     return url.replace("&amp;", "&")
 
 
+_SCRAPER_ALLOWED_DOMAINS = {"www.selloffvacations.com", "selloffvacations.com"}
+
+
+def _assert_safe_url(url: str) -> None:
+    """Raise ValueError if url is not an allowed domain or resolves to a private IP."""
+    parsed = urlparse(url)
+    if parsed.hostname not in _SCRAPER_ALLOWED_DOMAINS:
+        raise ValueError(f"Blocked: domain '{parsed.hostname}' not in scraper allowlist")
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Blocked: scheme '{parsed.scheme}' not allowed")
+    try:
+        for addr_info in socket.getaddrinfo(parsed.hostname, None):
+            ip = ipaddress.ip_address(addr_info[4][0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                raise ValueError(f"Blocked: '{parsed.hostname}' resolves to private IP {addr_info[4][0]}")
+    except (socket.gaierror, ValueError):
+        raise
+
+
 def fetch_deals_from_page(url: str) -> list[dict]:
+    try:
+        _assert_safe_url(url)
+    except ValueError as e:
+        logger.warning("fetch_deals_from_page blocked: %s", e)
+        return []
     try:
         req = urllib.request.Request(
             url,
