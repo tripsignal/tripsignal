@@ -11,4 +11,4 @@ stripe>=8.0.0
 svix>=1.80.0
 slowapi>=0.1.9
 PyJWT>=2.9.0
-cryptography>=43.0.0
+cryptography>=46.0.5
