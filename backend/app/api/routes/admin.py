@@ -915,6 +915,13 @@ def list_hotels(
     """))
     db.commit()
 
+    # Auto-match any new hotels against TripAdvisor seed data
+    try:
+        from app.enrichment.auto_match import auto_match_new_hotels
+        auto_match_new_hotels(db)
+    except Exception:
+        logger.exception("Auto-match failed (non-fatal)")
+
     query = select(HotelLink).order_by(HotelLink.hotel_name)
     if search:
         query = query.where(HotelLink.hotel_name.ilike(f"%{search}%"))
