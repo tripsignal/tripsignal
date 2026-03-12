@@ -59,10 +59,11 @@ def welcome(*, user: "User", context: dict) -> tuple[str, str]:
 def first_signal(*, user: "User", context: dict) -> tuple[str, str]:
     signal_name = context.get("signal_name", "your signal")
     subject = f'Your signal "{signal_name}" is now active'
+    safe_name = esc(signal_name)
     body = (
         heading("Your signal is live")
         + para(
-            f"We've started monitoring deals for <strong>{signal_name}</strong>. "
+            f"We've started monitoring deals for <strong>{safe_name}</strong>. "
             "Prices are checked multiple times a day across our travel provider network."
         )
         + para(
@@ -75,7 +76,7 @@ def first_signal(*, user: "User", context: dict) -> tuple[str, str]:
             "and travel dates."
         )
     )
-    return subject, wrap(body, preheader=f"Monitoring started for {signal_name}", unsub_url=_unsub(context), user_email=_email(user))
+    return subject, wrap(body, preheader=f"Monitoring started for {safe_name}", unsub_url=_unsub(context), user_email=_email(user))
 
 
 def no_signal_reminder(*, user: "User", context: dict) -> tuple[str, str]:
@@ -160,7 +161,7 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
         deals = sig.get("deals", [])
         is_new_low = sig.get("new_low", False)
         pct_drop = sig.get("pct_drop", 0)
-        intel_sentence = sig.get("intel_sentence", "")
+        intel_sentence = esc(sig.get("intel_sentence", ""))
         days_monitoring = sig.get("days_monitoring", 0)
 
         # Cap at 2 deals per signal for clean presentation
@@ -437,6 +438,12 @@ def major_drop_alert(*, user: "User", context: dict) -> tuple[str, str]:
     depart = context.get("depart_date", "")
     deeplink = context.get("deeplink_url", "https://tripsignal.ca/signals")
 
+    safe_signal = esc(signal_name)
+    safe_hotel = esc(hotel_name)
+    safe_route = esc(route)
+    safe_drop = esc(drop_amount)
+    safe_depart = esc(depart)
+
     subject = f"Price dropped {drop_amount} on {signal_name}"
 
     stars = stars_html(star_rating)
@@ -444,14 +451,14 @@ def major_drop_alert(*, user: "User", context: dict) -> tuple[str, str]:
 
     dates_info = f"{duration} nights"
     if depart:
-        dates_info += f" · {depart}"
+        dates_info += f" · {safe_depart}"
 
     # Deal card
     card_inner = (
         f'<p style="margin:0 0 4px;font-size:16px;font-weight:600;color:#111;">'
-        f'{hotel_name}{stars}</p>'
+        f'{safe_hotel}{stars}</p>'
         f'<p style="margin:0 0 16px;font-size:13px;color:#666;">'
-        f'{route} · {dates_info}</p>'
+        f'{safe_route} · {dates_info}</p>'
     )
     if price:
         card_inner += (
@@ -466,7 +473,7 @@ def major_drop_alert(*, user: "User", context: dict) -> tuple[str, str]:
         f'<div style="padding:20px;">{card_inner}</div></div>'
     )
 
-    drop_info = f" — down <strong>{drop_amount}</strong>"
+    drop_info = f" — down <strong>{safe_drop}</strong>"
     if drop_pct:
         drop_info += f" ({drop_pct}%)"
 
@@ -474,7 +481,7 @@ def major_drop_alert(*, user: "User", context: dict) -> tuple[str, str]:
         (price_drop_banner(drop_pct) if drop_pct and drop_pct >= 10 else "")
         + heading("Significant price drop")
         + para(
-            f"<strong>{hotel_name}</strong> on your {signal_name} signal "
+            f"<strong>{safe_hotel}</strong> on your {safe_signal} signal "
             f"just dropped{drop_info}."
         )
         + deal_card
@@ -488,7 +495,7 @@ def major_drop_alert(*, user: "User", context: dict) -> tuple[str, str]:
     )
     return subject, wrap(
         body,
-        preheader=f"{drop_amount} price drop",
+        preheader=f"{safe_drop} price drop",
         show_daily_summary_nudge=_is_instant(context),
         unsub_url=_unsub(context),
         user_email=_email(user),
@@ -616,9 +623,10 @@ def payment_failed_reminder(*, user: "User", context: dict) -> tuple[str, str]:
 
 def subscription_canceled(*, user: "User", context: dict) -> tuple[str, str]:
     period_end = context.get("period_end", "")
+    safe_period = esc(period_end)
     subject = "Your Trip Signal Pro subscription has been canceled"
     period_note = (
-        f" You'll keep Pro access until <strong>{period_end}</strong>."
+        f" You'll keep Pro access until <strong>{safe_period}</strong>."
         if period_end else ""
     )
     body = (
@@ -637,7 +645,7 @@ def subscription_canceled(*, user: "User", context: dict) -> tuple[str, str]:
             '<a href="https://tripsignal.ca/account/settings" style="color:#1D4ED8;">Account Settings</a>.'
         )
     )
-    return subject, wrap(body, preheader="Pro canceled" + (f" — access until {period_end}" if period_end else ""), unsub_url=_unsub(context), user_email=_email(user))
+    return subject, wrap(body, preheader="Pro canceled" + (f" — access until {safe_period}" if period_end else ""), unsub_url=_unsub(context), user_email=_email(user))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -686,9 +694,10 @@ def account_deleted_pro(*, user: "User", context: dict) -> tuple[str, str]:
 def no_match_update(*, user: "User", context: dict) -> tuple[str, str]:
     signal_name = context.get("signal_name", "your signal")
     days_active = context.get("days_active", 14)
+    safe_name = esc(signal_name)
     subject = f"Update on {signal_name} — no matches yet"
     body = (
-        heading(f"No matches yet for {signal_name}")
+        heading(f"No matches yet for {safe_name}")
         + para(
             f"Your signal has been active for {days_active} days but hasn't matched "
             "any deals yet. This can happen with narrow criteria or destinations that "
@@ -752,9 +761,9 @@ def inactive_reengagement(*, user: "User", context: dict) -> tuple[str, str]:
     # ── Zone 2: Best missed deal ──
     if best_missed and best_missed.get("price_cents"):
         missed_price = format_price(best_missed["price_cents"])
-        missed_hotel = best_missed.get("hotel_name", "")
+        missed_hotel = esc(best_missed.get("hotel_name", ""))
         missed_nights = best_missed.get("duration_nights", 7)
-        missed_depart = best_missed.get("depart_date", "")
+        missed_depart = esc(best_missed.get("depart_date", ""))
 
         detail_parts = []
         if missed_hotel:
@@ -799,7 +808,7 @@ def inactive_reengagement(*, user: "User", context: dict) -> tuple[str, str]:
     # ── Zone 4: Current best deal ──
     if current_best and current_best.get("price_cents"):
         cur_price = format_price(current_best["price_cents"])
-        cur_hotel = current_best.get("hotel_name", "")
+        cur_hotel = esc(current_best.get("hotel_name", ""))
         cur_nights = current_best.get("duration_nights", 7)
         parts.append(para(
             f'<strong>Right now:</strong> {cur_price} '
@@ -853,11 +862,12 @@ def weekly_digest(*, user: "User", context: dict) -> tuple[str, str]:
     total_matches = context.get("total_matches", 0)
     days_monitoring = context.get("days_monitoring", 0)
     signal_name = context.get("signal_name", "your signal")
+    safe_name = esc(signal_name)
 
     parts: list[str] = []
 
     # ── Zone 1: Week summary ──
-    parts.append(heading(f"This week on {signal_name}"))
+    parts.append(heading(f"This week on {safe_name}"))
 
     summary_items = []
     if deal_count:
@@ -983,11 +993,11 @@ def _deal_delta_html(deal: dict) -> str:
 
 def _single_deal_card(deal: dict, route: str) -> str:
     """Render a prominent single-deal card with star rating, price, and delta."""
-    hotel = deal.get("hotel_name", "Hotel")
+    hotel = esc(deal.get("hotel_name", "Hotel"))
     rating = deal.get("star_rating")
     price = format_price(deal.get("price_cents"))
     duration = deal.get("duration_nights", 7)
-    depart = deal.get("depart_date", "")
+    depart = esc(deal.get("depart_date", ""))
 
     stars = stars_html(rating)
     delta = _deal_delta_html(deal)
@@ -996,7 +1006,8 @@ def _single_deal_card(deal: dict, route: str) -> str:
     if depart:
         dates_info += f" \u00b7 {depart}"
 
-    route_line = f"{route} \u00b7 {dates_info}" if route else dates_info
+    safe_route = esc(route)
+    route_line = f"{safe_route} \u00b7 {dates_info}" if route else dates_info
 
     provider = deal.get("provider", "")
     via = ""
@@ -1027,11 +1038,11 @@ def _multi_deal_list(deals: list[dict]) -> str:
     """Render a stacked list of deal rows with delta indicators."""
     rows: list[str] = []
     for i, deal in enumerate(deals):
-        hotel = deal.get("hotel_name", "Hotel")
+        hotel = esc(deal.get("hotel_name", "Hotel"))
         rating = deal.get("star_rating")
         price = format_price(deal.get("price_cents"))
         duration = deal.get("duration_nights", 7)
-        depart = deal.get("depart_date", "")
+        depart = esc(deal.get("depart_date", ""))
 
         stars = stars_html(rating)
         delta = _deal_delta_html(deal)

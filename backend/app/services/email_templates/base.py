@@ -1,6 +1,15 @@
 """Shared email layout wrapper."""
 from __future__ import annotations
 
+import html as _html
+
+
+def esc(value: str | None) -> str:
+    """HTML-escape a string to prevent injection in email templates."""
+    if value is None:
+        return ""
+    return _html.escape(str(value))
+
 
 def wrap(
     body_html: str,
@@ -43,7 +52,7 @@ def wrap(
     notif_url = unsub_url or "https://tripsignal.ca/account/notifications"
     links_html = (
         '<p style="font-size:12px;color:#999;margin:0 0 12px;text-align:center;line-height:1.6;">'
-        f'<a href="{notif_url}" style="color:#999;text-decoration:underline;">Email Notifications</a>'
+        f'<a href="{esc(notif_url)}" style="color:#999;text-decoration:underline;">Email Notifications</a>'
         ' &nbsp;|&nbsp; '
         '<a href="https://tripsignal.ca/privacy-policy" style="color:#999;text-decoration:underline;">Privacy Policy</a>'
         ' &nbsp;|&nbsp; '
@@ -83,10 +92,12 @@ def wrap(
 
 def button(text: str, href: str) -> str:
     """Render an orange CTA button."""
+    # Reject non-HTTP schemes (javascript:, data:, etc.)
+    safe_href = href if href.startswith(("https://", "http://")) else "#"
     return (
-        f'<a href="{href}" style="display:inline-block;background:#F97316;color:#fff;'
+        f'<a href="{esc(safe_href)}" style="display:inline-block;background:#F97316;color:#fff;'
         f'text-decoration:none;padding:14px 28px;border-radius:24px;font-size:14px;'
-        f'font-weight:600;margin:8px 0 24px;">{text}</a>'
+        f'font-weight:600;margin:8px 0 24px;">{esc(text)}</a>'
     )
 
 
@@ -169,7 +180,7 @@ def destination_index_html(destinations: list[dict]) -> str:
 
     rows = []
     for i, d in enumerate(destinations):
-        region = d["destination_region"].replace("_", " ").title()
+        region = esc(d["destination_region"].replace("_", " ").title())
         price = format_price(d["current_week_avg_cents"])
         wow = d.get("week_over_week_pct")
 
@@ -221,7 +232,7 @@ def departure_heatmap_html(weeks: list[dict]) -> str:
             d = date_type.fromisoformat(w["week"])
             label = d.strftime("%b %-d")
         except (ValueError, TypeError):
-            label = str(w["week"])
+            label = esc(str(w["week"]))
 
         if w.get("is_cheapest"):
             bg = "background:#dcfce7;"

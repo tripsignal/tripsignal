@@ -94,6 +94,14 @@ def _get_user_and_signals(db: Session, clerk_user_id: str):
     user = db.query(User).filter(User.clerk_id == clerk_user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    # Require Pro plan for Scout access
+    if user.plan_type != "pro":
+        raise HTTPException(
+            status_code=403,
+            detail="Scout requires a Pro subscription.",
+        )
+
     signals = (
         db.query(Signal)
         .filter(Signal.user_id == user.id, Signal.status == "active")

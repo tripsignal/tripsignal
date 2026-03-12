@@ -368,6 +368,11 @@ async def list_signals(
             except Exception:
                 logger.exception("Failed to compute empty-state insights for signal %s", signal.id)
 
+        # Strip detailed intel for non-Pro users (backend enforcement)
+        if user.plan_type != "pro":
+            intel_kwargs.pop("value_label", None)
+            intel_kwargs.pop("price_delta_amount", None)
+
         intel_data = SignalIntel(**intel_kwargs) if intel_kwargs else None
         out.append(
             s_out.model_copy(update={"match_count": int(match_count), "intel": intel_data})

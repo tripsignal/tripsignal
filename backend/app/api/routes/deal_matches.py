@@ -24,15 +24,15 @@ from app.schemas.deals import DealMatchCreate
 router = APIRouter(prefix="/signals", tags=["matches"])
 
 
-def _verify_signal_owner(signal_id: UUID, clerk_user_id: str, db: Session) -> Signal:
-    """Verify the caller owns the signal. Returns the signal or raises 404."""
+def _verify_signal_owner(signal_id: UUID, clerk_user_id: str, db: Session) -> tuple[Signal, User]:
+    """Verify the caller owns the signal. Returns (signal, user) or raises 404."""
     user = db.query(User).filter(User.clerk_id == clerk_user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     signal = db.query(Signal).filter(Signal.id == signal_id, Signal.user_id == user.id).first()
     if not signal:
         raise HTTPException(status_code=404, detail="Signal not found")
-    return signal
+    return signal, user
 
 
 def get_price_trend(db: Session, deal_id: UUID):
@@ -104,7 +104,8 @@ def list_signal_matches(
     clerk_user_id: str = Depends(get_clerk_user_id),
 ):
     """Return all deals matched to a given signal — active first, then expired."""
-    _verify_signal_owner(signal_id, clerk_user_id, db)
+    signal_obj, user = _verify_signal_owner(signal_id, clerk_user_id, db)
+    is_pro = user.plan_type == "pro"
     matches = (
         db.query(DealMatch)
         .join(Deal)
@@ -164,7 +165,7 @@ def list_signal_matches(
             id=match.id,
             matched_at=match.matched_at,
             is_favourite=match.is_favourite,
-            value_label=match.value_label,
+            value_label=match.value_label if is_pro else None,
             deal=deal_out,
         ))
 
@@ -179,7 +180,8 @@ def toggle_favourite(
     clerk_user_id: str = Depends(get_clerk_user_id),
 ):
     """Toggle the favourite status of a deal match."""
-    _verify_signal_owner(signal_id, clerk_user_id, db)
+    _, user = _verify_signal_owner(signal_id, clerk_user_id, db)
+    is_pro = user.plan_type == "pro"
     match = db.query(DealMatch).filter(
         DealMatch.id == match_id,
         DealMatch.signal_id == signal_id,
@@ -238,7 +240,7 @@ def toggle_favourite(
         id=match.id,
         matched_at=match.matched_at,
         is_favourite=match.is_favourite,
-        value_label=match.value_label,
+        value_label=match.value_label if is_pro else None,
         deal=deal_out,
     )
 
@@ -251,7 +253,7 @@ def create_signal_match(
     clerk_user_id: str = Depends(get_clerk_user_id),
 ):
     """Create a match between a signal and a deal (idempotent)."""
-    _verify_signal_owner(signal_id, clerk_user_id, db)
+    _, user = _verify_signal_owner(signal_id, clerk_user_id, db)
 
     run = SignalRun(
         signal_id=signal_id,

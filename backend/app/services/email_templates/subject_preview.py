@@ -16,6 +16,7 @@ Max 60 characters enforced.
 """
 from __future__ import annotations
 
+import html as _html
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
@@ -96,10 +97,10 @@ def build_match_preview(context: dict) -> str:
     deals = context.get("deals", [])
     best = deals[0] if deals else {}
     price = _fmt_price(best.get("price_cents"))
-    hotel = best.get("hotel_name", "")
+    hotel = _html.escape(best.get("hotel_name", ""))
     nights = best.get("duration_nights", 7)
-    depart = best.get("depart_date", "")
-    intel_sentence = context.get("intel_sentence", "")
+    depart = _html.escape(best.get("depart_date", ""))
+    intel_sentence = _html.escape(context.get("intel_sentence", ""))
 
     parts = []
     if hotel:
@@ -254,8 +255,8 @@ def build_preview(email_type: "EmailType", context: dict) -> str:
     if not template:
         return ""
 
-    # Safe interpolation: missing keys become empty string
-    safe = defaultdict(str, {k: str(v) for k, v in context.items() if v is not None})
+    # Safe interpolation: missing keys become empty string, all values HTML-escaped
+    safe = defaultdict(str, {k: _html.escape(str(v)) for k, v in context.items() if v is not None})
     return template.format_map(safe)
 
 
