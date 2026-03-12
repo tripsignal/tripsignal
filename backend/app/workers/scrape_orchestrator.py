@@ -373,9 +373,9 @@ def run_orchestrated_cycle() -> dict:
         else:
             results.append({"provider": "redtag", "status": "failed", "error": outcome.get("error", "unknown")})
 
-    # --- TripAdvisor enrichment (uses residential proxy) ---
-    if not _shutdown_requested:
-        _run_ta_enrichment(results)
+    # --- TripAdvisor enrichment disabled (DDG snippets unreliable) ---
+    # if not _shutdown_requested:
+    #     _run_ta_enrichment(results)
 
     # --- Refresh intelligence caches ---
     try:
