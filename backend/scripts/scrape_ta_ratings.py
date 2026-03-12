@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
-"""Scrape TripAdvisor ratings via Google search snippets.
+"""Scrape TripAdvisor ratings via DuckDuckGo search snippets.
 
-For each hotel with a tripadvisor_url but no ta_rating, searches Google for
-the TripAdvisor page and extracts rating + review count from the snippet.
+For each hotel with a tripadvisor_url but no ta_rating, searches DuckDuckGo
+for the TripAdvisor page and extracts rating, review count, and ranking
+from the snippet.
 
 Usage:
     cd backend
     python -m scripts.scrape_ta_ratings
     python -m scripts.scrape_ta_ratings --limit 50 --dry-run
 
+Designed to run locally (residential IP). Datacenter IPs get blocked by
+search engines.
+
 Requires DATABASE_URL or individual POSTGRES_* env vars.
 """
 
 import argparse
+import json
 import logging
 import os
 import re
@@ -24,28 +29,25 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 import requests
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import Session, sessionmaker
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.db.models.hotel_link import HotelLink
-
 logger = logging.getLogger("scrape_ta_ratings")
 
-# Google search with a browser-like User-Agent
 _HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     ),
     "Accept-Language": "en-US,en;q=0.9",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
-# Delay between Google requests to avoid rate limiting
-MIN_DELAY = 3.0
-MAX_DELAY = 6.0
+# Delay between requests to avoid rate limiting
+MIN_DELAY = 2.0
+MAX_DELAY = 5.0
+
+# Back off aggressively on rate limits
+RATE_LIMIT_BACKOFF = 30.0
 
 
 def get_engine():
@@ -60,117 +62,139 @@ def get_engine():
     return create_engine(url)
 
 
-def _extract_rating_from_snippet(text: str) -> tuple[float | None, int | None]:
-    """Extract rating and review count from a Google snippet.
-
-    Google snippets for TripAdvisor pages typically show:
-    - "Rating: 4.5 · ‎12,345 reviews"
-    - "4.5/5 · 12345 reviews"
-    - "Rated 4.5 of 5 · 12,345 reviews"
-    - "4.5 (12,345)"
-    """
-    rating = None
-    review_count = None
-
-    # Pattern 1: "Rating: X.X" or "Rated X.X"
-    m = re.search(r"(?:Rating|Rated)[:\s]+(\d+(?:\.\d+)?)", text, re.IGNORECASE)
-    if m:
-        rating = float(m.group(1))
-
-    # Pattern 2: "X.X/5" or "X.X out of 5"
-    if not rating:
-        m = re.search(r"(\d+(?:\.\d+)?)\s*/\s*5", text)
-        if m:
-            rating = float(m.group(1))
-
-    # Pattern 3: standalone rating-like number near "reviews" or "·"
-    if not rating:
-        m = re.search(r"(\d\.\d)\s*[·•\-–—]", text)
-        if m:
-            rating = float(m.group(1))
-
-    # Review count: "X,XXX reviews" or "(X,XXX)"
-    m = re.search(r"([\d,]+)\s*reviews", text, re.IGNORECASE)
-    if m:
-        review_count = int(m.group(1).replace(",", ""))
-
-    if not review_count:
-        m = re.search(r"\(([\d,]+)\)", text)
-        if m:
-            val = int(m.group(1).replace(",", ""))
-            if val > 10:  # likely a review count, not a year
-                review_count = val
-
-    # Sanity checks
-    if rating and (rating < 1.0 or rating > 5.0):
-        rating = None
-    if review_count and review_count > 500_000:
-        review_count = None
-
-    return rating, review_count
-
-
-def _extract_ranking_from_snippet(text: str) -> str | None:
-    """Extract ranking text like '#12 of 50 hotels in Punta Cana'."""
-    m = re.search(r"(#\d+\s+of\s+\d+\s+hotels?\s+in\s+[^.·\n]+)", text, re.IGNORECASE)
-    if m:
-        return m.group(1).strip()
-    return None
-
-
-def _search_google(query: str) -> str | None:
-    """Perform a Google search and return the raw HTML of the results page."""
-    url = f"https://www.google.com/search?q={quote_plus(query)}&hl=en&num=3"
+def _search_ddg(query: str) -> str | None:
+    """Search DuckDuckGo HTML and return the text content of the results page."""
+    url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
     try:
         resp = requests.get(url, headers=_HEADERS, timeout=15)
-        if resp.status_code == 429:
-            logger.warning("Google rate-limited (429) — backing off")
+        if resp.status_code == 429 or resp.status_code == 403:
+            logger.warning("DuckDuckGo rate-limited (%d) — backing off %.0fs",
+                           resp.status_code, RATE_LIMIT_BACKOFF)
+            time.sleep(RATE_LIMIT_BACKOFF)
             return None
         if resp.status_code != 200:
-            logger.warning("Google returned status %d", resp.status_code)
+            logger.warning("DuckDuckGo returned status %d", resp.status_code)
             return None
-        return resp.text
+        # Strip HTML tags to get plain text
+        text = re.sub(r"<[^>]+>", " ", resp.text)
+        return re.sub(r"\s+", " ", text)
     except requests.RequestException as e:
-        logger.warning("Google search failed: %s", e)
+        logger.warning("DuckDuckGo search failed: %s", e)
         return None
 
 
-def scrape_hotel_rating(hotel_name: str, tripadvisor_url: str) -> dict:
-    """Search Google for a hotel's TripAdvisor page and extract rating data.
+def _extract_from_ddg(text: str) -> dict:
+    """Extract rating, review count, and ranking from DDG search result text.
 
-    Returns dict with keys: ta_rating, ta_review_count, ta_ranking_text
+    DDG snippets for TripAdvisor pages typically contain:
+    - "rated 4 of 5 at Tripadvisor"
+    - "42,791 traveller reviews"
+    - "ranked #164 of 627 hotels in Bavaro"
     """
     result = {"ta_rating": None, "ta_review_count": None, "ta_ranking_text": None}
 
-    # Search for the specific TripAdvisor URL
-    query = f'site:tripadvisor.com "{hotel_name}"'
-    html = _search_google(query)
-    if not html:
-        return result
+    # Rating: "rated X of 5"
+    m = re.search(r"rated?\s+(\d\.?\d?)\s+of\s+5", text, re.IGNORECASE)
+    if m:
+        rating = float(m.group(1))
+        if 1.0 <= rating <= 5.0:
+            result["ta_rating"] = rating
 
-    # Extract text content from the search results (strip HTML tags)
-    # Focus on the snippet area
-    text = re.sub(r"<[^>]+>", " ", html)
-    text = re.sub(r"\s+", " ", text)
+    # Review count: "X,XXX traveller/traveler reviews"
+    m = re.search(r"(\d[\d,]*)\s+(?:travell?er\s+)?reviews", text, re.IGNORECASE)
+    if m:
+        count_str = m.group(1).replace(",", "")
+        if count_str.isdigit():
+            count = int(count_str)
+            if 0 < count < 500_000:
+                result["ta_review_count"] = count
 
-    rating, review_count = _extract_rating_from_snippet(text)
-    ranking = _extract_ranking_from_snippet(text)
-
-    result["ta_rating"] = rating
-    result["ta_review_count"] = review_count
-    result["ta_ranking_text"] = ranking
+    # Ranking: "ranked #X of Y hotels in Z" — stop at common delimiters
+    m = re.search(
+        r"ranked?\s+#(\d+)\s+of\s+(\d+)\s+hotels?\s+in\s+([A-Za-z\s]+?)(?:\s+and\s+|\s*[,.]|\s*$)",
+        text, re.IGNORECASE,
+    )
+    if m:
+        result["ta_ranking_text"] = f"#{m.group(1)} of {m.group(2)} hotels in {m.group(3).strip()}"
 
     return result
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Scrape TripAdvisor ratings via Google")
-    parser.add_argument("--limit", type=int, default=0, help="Max hotels to process (0 = all)")
-    parser.add_argument("--dry-run", action="store_true", help="Preview without writing")
-    parser.add_argument("--force", action="store_true", help="Re-scrape even if already fetched")
-    args = parser.parse_args()
+def scrape_hotel_rating(hotel_name: str) -> dict:
+    """Search DuckDuckGo for a hotel's TripAdvisor data.
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+    Returns dict with keys: ta_rating, ta_review_count, ta_ranking_text
+    """
+    query = f"tripadvisor {hotel_name}"
+    text = _search_ddg(query)
+    if not text:
+        return {"ta_rating": None, "ta_review_count": None, "ta_ranking_text": None}
+    return _extract_from_ddg(text)
+
+
+def _run_from_json(args):
+    """Run scraper from a JSON input file (no DB required).
+
+    Input: JSON array of {"hotel_id": "...", "hotel_name": "...", "tripadvisor_url": "..."}
+    Output: JSON file with scraped data added.
+    """
+    with open(args.input, "r", encoding="utf-8") as f:
+        hotels = json.load(f)
+
+    if args.limit:
+        hotels = hotels[:args.limit]
+
+    logger.info("Loaded %d hotels from %s", len(hotels), args.input)
+    stats = {"scraped": 0, "found_rating": 0, "found_reviews": 0, "no_data": 0, "errors": 0}
+    results = []
+
+    for i, hotel in enumerate(hotels):
+        name = hotel.get("hotel_name", "")
+        logger.info("[%d/%d] %s", i + 1, len(hotels), name)
+
+        try:
+            data = scrape_hotel_rating(name)
+        except Exception:
+            logger.exception("Error scraping %s", name)
+            stats["errors"] += 1
+            results.append({**hotel, "ta_rating": None, "ta_review_count": None, "ta_ranking_text": None})
+            continue
+
+        found = data["ta_rating"] or data["ta_review_count"]
+        if found:
+            if data["ta_rating"]:
+                stats["found_rating"] += 1
+            if data["ta_review_count"]:
+                stats["found_reviews"] += 1
+            logger.info("  → %s stars, %s reviews, %s",
+                        data["ta_rating"] or "?",
+                        f"{data['ta_review_count']:,}" if data["ta_review_count"] else "?",
+                        data["ta_ranking_text"] or "no ranking")
+        else:
+            stats["no_data"] += 1
+            logger.info("  → No data found")
+
+        results.append({**hotel, **data})
+        stats["scraped"] += 1
+
+        # Save progress periodically
+        if stats["scraped"] % 25 == 0:
+            _save_results(results, args.output)
+            logger.info("Saved progress (%d scraped)", stats["scraped"])
+
+        if i < len(hotels) - 1:
+            delay = random.uniform(MIN_DELAY, MAX_DELAY)
+            time.sleep(delay)
+
+    _save_results(results, args.output)
+    _print_stats(stats)
+
+
+def _run_from_db(args):
+    """Run scraper against the database directly."""
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import sessionmaker
+    from app.db.models.hotel_link import HotelLink
 
     engine = get_engine()
     SessionLocal = sessionmaker(bind=engine)
@@ -191,43 +215,58 @@ def main():
         hotels = db.execute(query).scalars().all()
         logger.info("Found %d hotels to scrape", len(hotels))
 
-        stats = {"scraped": 0, "found_rating": 0, "no_data": 0, "errors": 0}
+        if not hotels:
+            print("Nothing to scrape.")
+            return
+
+        stats = {"scraped": 0, "found_rating": 0, "found_reviews": 0, "no_data": 0, "errors": 0}
 
         for i, hotel in enumerate(hotels):
             logger.info("[%d/%d] %s", i + 1, len(hotels), hotel.hotel_name)
 
             try:
-                data = scrape_hotel_rating(hotel.hotel_name, hotel.tripadvisor_url)
+                data = scrape_hotel_rating(hotel.hotel_name)
             except Exception:
                 logger.exception("Error scraping %s", hotel.hotel_name)
                 stats["errors"] += 1
                 continue
 
-            if data["ta_rating"]:
-                stats["found_rating"] += 1
-                logger.info("  → %.1f stars, %s reviews",
-                            data["ta_rating"],
-                            f"{data['ta_review_count']:,}" if data["ta_review_count"] else "?")
+            found = data["ta_rating"] or data["ta_review_count"]
+            if found:
+                if data["ta_rating"]:
+                    stats["found_rating"] += 1
+                if data["ta_review_count"]:
+                    stats["found_reviews"] += 1
+                logger.info("  → %s stars, %s reviews, %s",
+                            data["ta_rating"] or "?",
+                            f"{data['ta_review_count']:,}" if data["ta_review_count"] else "?",
+                            data["ta_ranking_text"] or "no ranking")
             else:
                 stats["no_data"] += 1
-                logger.info("  → No rating found")
+                logger.info("  → No data found")
 
             if not args.dry_run:
-                hotel.ta_rating = data["ta_rating"]
-                hotel.ta_review_count = data["ta_review_count"]
-                hotel.ta_ranking_text = data["ta_ranking_text"]
+                if data["ta_rating"]:
+                    hotel.ta_rating = data["ta_rating"]
+                if data["ta_review_count"]:
+                    hotel.ta_review_count = data["ta_review_count"]
+                if data["ta_ranking_text"]:
+                    hotel.ta_ranking_text = data["ta_ranking_text"]
                 hotel.ta_data_fetched_at = datetime.now(timezone.utc)
 
             stats["scraped"] += 1
 
-            # Rate limiting
+            if not args.dry_run and stats["scraped"] % 50 == 0:
+                db.commit()
+                logger.info("Committed batch (%d scraped so far)", stats["scraped"])
+
             if i < len(hotels) - 1:
                 delay = random.uniform(MIN_DELAY, MAX_DELAY)
                 time.sleep(delay)
 
         if not args.dry_run:
             db.commit()
-            logger.info("Committed changes")
+            logger.info("Final commit done")
         else:
             db.rollback()
             logger.info("Dry run — no changes committed")
@@ -238,11 +277,39 @@ def main():
     finally:
         db.close()
 
+    _print_stats(stats)
+
+
+def _save_results(results: list, output_path: str):
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=2, ensure_ascii=False)
+
+
+def _print_stats(stats: dict):
     logger.info("Results: %s", stats)
-    print(f"\n  Scraped:       {stats['scraped']}")
-    print(f"  Found rating:  {stats['found_rating']}")
-    print(f"  No data:       {stats['no_data']}")
-    print(f"  Errors:        {stats['errors']}")
+    print(f"\n  Scraped:        {stats['scraped']}")
+    print(f"  Found rating:   {stats['found_rating']}")
+    print(f"  Found reviews:  {stats['found_reviews']}")
+    print(f"  No data:        {stats['no_data']}")
+    print(f"  Errors:         {stats['errors']}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Scrape TripAdvisor ratings via DuckDuckGo")
+    parser.add_argument("--input", help="JSON file of hotels (offline mode, no DB needed)")
+    parser.add_argument("--output", default="data/tripadvisor/ta_ratings.json",
+                        help="Output JSON file (offline mode)")
+    parser.add_argument("--limit", type=int, default=0, help="Max hotels to process (0 = all)")
+    parser.add_argument("--dry-run", action="store_true", help="Preview without writing (DB mode)")
+    parser.add_argument("--force", action="store_true", help="Re-scrape even if already fetched")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+    if args.input:
+        _run_from_json(args)
+    else:
+        _run_from_db(args)
 
 
 if __name__ == "__main__":
