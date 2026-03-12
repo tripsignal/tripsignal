@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from svix.webhooks import Webhook, WebhookVerificationError
 
+from app.core.email_validation import is_valid_email
 from app.db.models.user import User
 from app.db.session import get_db
 
@@ -65,6 +66,10 @@ async def clerk_webhook(
             email = email_addresses[0].get("email_address", "")
 
         first_name = data.get("first_name") or None
+
+        if email and not is_valid_email(email):
+            logger.warning("Clerk webhook: rejecting invalid email %s for clerk_id %s", email, clerk_id)
+            return {"ok": True, "skipped": "invalid_email"}
 
         # Update user in DB
         user = db.execute(

@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_clerk_user_id
+from app.core.email_validation import is_valid_email
 from app.core.rate_limit import limiter
 from app.db.models.user import User
 from app.db.session import get_db
@@ -91,6 +92,9 @@ def sync_user(
     client_ip = x_forwarded_for.split(",")[-1].strip() if x_forwarded_for else None
 
     email = (body.email or "").strip() if body else ""
+    if email and not is_valid_email(email):
+        logger.warning("Sync: rejecting invalid email %s for clerk_id %s", email, clerk_user_id)
+        email = ""
 
     user = db.execute(
         select(User).where(User.clerk_id == clerk_user_id)
