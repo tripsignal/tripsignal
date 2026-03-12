@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING
 from app.services.email_templates.base import (
     wrap, button, para, heading, info_box,
     stars_html, format_price, pricing_disclaimer, new_low_banner, price_drop_banner,
-    destination_index_html, departure_heatmap_html,
+    destination_index_html, departure_heatmap_html, arbitrage_line,
+    date_shift_line, budget_nudge_line,
 )
 
 if TYPE_CHECKING:
@@ -238,6 +239,15 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
             border_top = "border-top:1px solid #f3f4f6;" if j == 0 else ""
             border_bottom = "border-bottom:1px solid #f3f4f6;" if j < len(display_deals) - 1 else ""
 
+            # View Deal link
+            deal_link = deal.get("deeplink_url") or f"https://tripsignal.ca/deal/{deal.get('deal_id', '')}"
+            view_deal_html = (
+                f'<div style="margin-top:8px;">'
+                f'<a href="{deal_link}" style="color:#2563EB;font-size:13px;'
+                f'font-weight:600;text-decoration:none;">View Deal \u2192</a>'
+                f'</div>'
+            )
+
             parts.append(
                 f'<div style="padding:14px 20px;{border_top}{border_bottom}">'
                 f'<div style="margin:0 0 4px;">'
@@ -253,6 +263,7 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
                 f'<span style="font-size:12px;color:#999;margin-left:6px;">per person</span>'
                 f'</div>'
                 f'{value_badge}'
+                f'{view_deal_html}'
                 f'</div>'
             )
 
@@ -277,6 +288,27 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
                 f'{intel_sentence}</p>'
             )
 
+        # Pro-only insight lines (arbitrage, date shift, budget nudge)
+        plan_type = context.get("plan_type", "free")
+        if plan_type == "pro":
+            # Airport arbitrage insight
+            arbitrage = sig.get("arbitrage")
+            if arbitrage:
+                parts.append(arbitrage_line(
+                    arbitrage["arbitrage_airport"],
+                    arbitrage["arbitrage_savings_cents"],
+                ))
+
+            # Date shift saving
+            date_shift = sig.get("date_shift")
+            if date_shift:
+                parts.append(date_shift_line(date_shift))
+
+            # Budget nudge
+            budget_nudge = sig.get("budget_nudge")
+            if budget_nudge:
+                parts.append(budget_nudge_line(budget_nudge))
+
     # ── Still watching section ──
     quiet_signals = context.get("quiet_signals", [])
     if quiet_signals:
@@ -299,6 +331,70 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
             'No strong deals found yet.</p>'
         )
         parts.append('</div>')
+
+    # ── Scout teaser / Trial conversion teaser ──
+    plan_type = context.get("plan_type", "free")
+
+    if plan_type != "pro":
+        # Trial/free users: conversion teaser — reference computed savings
+        arb_saving = 0
+        arbitrage = context.get("arbitrage")
+        if arbitrage and isinstance(arbitrage, dict):
+            arb_saving = arbitrage.get("arbitrage_savings_cents", 0) / 100
+
+        ds_saving = 0
+        date_shift = context.get("date_shift")
+        if date_shift:
+            ds_saving = date_shift.get("saving_cents", 0) / 100
+
+        biggest_saving = max(arb_saving, ds_saving)
+
+        if biggest_saving >= 50:
+            teaser_text = f"We found a way to save ${biggest_saving:,.0f} on this trip."
+            teaser_cta = "Upgrade to Pro to see how \u2192"
+        else:
+            teaser_text = (
+                "Pro members get airport savings tips, date flex insights, "
+                "and budget recommendations."
+            )
+            teaser_cta = "Learn more \u2192"
+
+        parts.append(
+            '<div style="padding:16px 20px 8px 20px;text-align:center;'
+            'background-color:#F8F6F0;border-radius:6px;margin-bottom:16px;">'
+            f'<p style="font-size:13px;color:#3D3929;margin:0;font-weight:600;">'
+            f'{teaser_text}</p>'
+            f'<p style="margin:6px 0 0;">'
+            f'<a href="https://tripsignal.ca/pricing" style="color:#2563EB;'
+            f'font-size:13px;text-decoration:none;font-weight:600;">{teaser_cta}</a>'
+            f'</p></div>'
+        )
+    else:
+        # Pro users: data-driven Scout teaser
+        total = context.get("total_matches", 0)
+        if total > 5:
+            top_pct = context.get("percentile_rank")
+            if top_pct is not None and top_pct <= 0.25:
+                rank_pct = max(1, int(top_pct * 100))
+                teaser_text = (
+                    f"We\u2019re tracking {total} deals on your route. "
+                    f"This one ranks in the top {rank_pct}%."
+                )
+            else:
+                teaser_text = (
+                    f"We\u2019re tracking {total} deals on your route. "
+                    "See the full market picture."
+                )
+
+            parts.append(
+                '<div style="padding:16px 20px 8px 20px;text-align:center;'
+                'margin-bottom:16px;">'
+                f'<p style="font-size:13px;color:#6B6452;margin:0;">'
+                f'{teaser_text}'
+                f' <a href="https://tripsignal.ca/scout" style="color:#2563EB;'
+                f'text-decoration:none;font-weight:600;">Open Scout Insights \u2192</a>'
+                f'</p></div>'
+            )
 
     # ── Primary CTA ──
     parts.append(
@@ -963,4 +1059,34 @@ def _multi_deal_list(deals: list[dict]) -> str:
         'overflow:hidden;margin-bottom:24px;">'
         + ''.join(rows)
         + '</div>'
+    )
+
+
+def trial_extended(*, user: "User", context: dict) -> tuple[str, str]:
+    subject = "We've extended your trial"
+    body = (
+        heading("We\u2019ve extended your trial")
+        + para(
+            "Your signal hasn\u2019t found many matches yet, so we\u2019ve added "
+            "7 more days to your trial."
+        )
+        + para(
+            "This usually means your search criteria are quite specific. "
+            "You might see more deals if you:"
+        )
+        + info_box(
+            '<p style="margin:0;font-size:14px;color:#333;line-height:1.8;">'
+            "\u2022 Widen your travel dates by a few weeks<br>"
+            "\u2022 Increase your budget slightly<br>"
+            "\u2022 Try a broader destination (e.g. \u201cAll Mexico\u201d instead of a specific city)"
+            "</p>"
+        )
+        + para("We\u2019ll keep scanning \u2014 your next check runs tomorrow morning.")
+        + button("Adjust your signal", "https://tripsignal.ca/signals")
+    )
+    return subject, wrap(
+        body,
+        preheader="We've added 7 more days to find you better deals",
+        unsub_url=_unsub(context),
+        user_email=_email(user),
     )

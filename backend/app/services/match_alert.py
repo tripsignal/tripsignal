@@ -221,6 +221,89 @@ def _filter_repeat_deals(
     return filtered
 
 
+def _find_date_shift_saving(db: Session, deal: dict):
+    """Check if the same hotel/origin has a cheaper price on nearby dates (±7 days)."""
+    from datetime import date as date_type
+
+    if not deal.get("hotel_name") or not deal.get("origin") or not deal.get("depart_date"):
+        return None
+
+    depart = deal["depart_date"]
+    if isinstance(depart, str):
+        depart = date_type.fromisoformat(depart)
+
+    window_start = depart - timedelta(days=7)
+    window_end = depart + timedelta(days=7)
+
+    cheaper = db.query(Deal).filter(
+        Deal.hotel_name == deal["hotel_name"],
+        Deal.origin == deal["origin"],
+        Deal.depart_date >= window_start,
+        Deal.depart_date <= window_end,
+        Deal.depart_date != depart,
+        Deal.is_active == True,  # noqa: E712
+        Deal.price_cents < deal["price_cents"],
+    ).order_by(Deal.price_cents.asc()).first()
+
+    if not cheaper:
+        return None
+
+    saving_cents = deal["price_cents"] - cheaper.price_cents
+    if saving_cents < 5000:  # Only show if saving is at least $50
+        return None
+
+    return {
+        "saving_cents": saving_cents,
+        "alt_date": cheaper.depart_date,
+        "alt_price_cents": cheaper.price_cents,
+    }
+
+
+def _find_budget_nudge(db: Session, signal: Signal, current_best_stars: float):
+    """Find better-rated deals slightly above budget."""
+    budget_cents = None
+    try:
+        budget_cents = signal.config.get("budget", {}).get("target_pp", 0) * 100
+    except Exception:
+        return None
+
+    if not budget_cents or budget_cents <= 0:
+        return None
+
+    min_stars = (current_best_stars or 0) + 0.5  # Must be meaningfully better
+    nudge_ceiling = budget_cents + 15000  # Up to $150 over budget
+
+    # Build base filters matching the signal's criteria
+    regions = list(signal.destination_regions or [])
+    airports = list(signal.departure_airports or [])
+
+    query = db.query(Deal).filter(
+        Deal.is_active == True,  # noqa: E712
+        Deal.price_cents > budget_cents,
+        Deal.price_cents <= nudge_ceiling,
+        Deal.star_rating >= min_stars,
+    )
+
+    if airports:
+        query = query.filter(Deal.origin.in_(airports))
+    if regions:
+        query = query.filter(Deal.destination.in_(regions))
+
+    better = query.order_by(Deal.star_rating.desc(), Deal.price_cents.asc()).first()
+
+    if not better:
+        return None
+
+    extra_cents = better.price_cents - budget_cents
+
+    return {
+        "extra_cents": extra_cents,
+        "hotel_name": better.hotel_name,
+        "star_rating": float(better.star_rating) if better.star_rating else None,
+        "price_cents": better.price_cents,
+    }
+
+
 def _process_single_signal(
     db: Session,
     signal_id_str: str,
@@ -332,6 +415,7 @@ def _process_single_signal(
     sorted_deals = sorted(deals, key=lambda d: d["price_cents"])
     template_deals = [
         {
+            "deal_id": str(d.get("deal_id", "")),
             "hotel_name": d.get("hotel_name", ""),
             "star_rating": d.get("star_rating"),
             "price_cents": d["price_cents"],
@@ -400,6 +484,25 @@ def _process_single_signal(
         heatmap = get_departure_heatmap(db, deal_origin, deal_destination)
         if heatmap:
             signal_context["departure_heatmap"] = heatmap
+
+    # ── 4e. Date shift saving (check best deal only to limit queries) ──
+    date_shift = None
+    if sorted_deals:
+        best_deal_dict = {
+            "hotel_name": sorted_deals[0].get("hotel_name"),
+            "origin": sorted_deals[0].get("origin"),
+            "depart_date": sorted_deals[0].get("depart_date"),
+            "price_cents": sorted_deals[0]["price_cents"],
+        }
+        date_shift = _find_date_shift_saving(db, best_deal_dict)
+    signal_context["date_shift"] = date_shift
+
+    # ── 4f. Budget nudge (find better-star deals slightly above budget) ──
+    budget_nudge = None
+    if sorted_deals:
+        best_stars = sorted_deals[0].get("star_rating") or 0
+        budget_nudge = _find_budget_nudge(db, signal, float(best_stars))
+    signal_context["budget_nudge"] = budget_nudge
 
     # ── 4d. Departure window context (from route intel) ──────────────
     if route_intel:
@@ -476,6 +579,9 @@ def process_signal_matches(
             key=lambda sc: sc.get("best_price_cents") or float("inf"),
         )
 
+        # Fetch user for plan_type
+        user = db.query(User).filter(User.id == user_id).first()
+
         # Build consolidated context — primary signal fields at top level
         # for backward compat, plus new multi-signal fields
         context = {
@@ -486,6 +592,8 @@ def process_signal_matches(
             "quiet_signal_count": len(quiet_signal_ids),
             "signals_with_activity": signal_contexts,
             "quiet_signals": quiet_signals,
+            # Plan type for trial/pro conditional rendering
+            "plan_type": user.plan_type if user else "free",
         }
 
         # Idempotency key: one email per user per run

@@ -250,6 +250,42 @@ def departure_heatmap_html(weeks: list[dict]) -> str:
     )
 
 
+def date_shift_line(date_shift: dict) -> str:
+    """Render date shift saving insight line for email."""
+    if not date_shift:
+        return ""
+    saving = date_shift["saving_cents"] / 100
+    alt_date = date_shift["alt_date"]
+    if hasattr(alt_date, 'strftime'):
+        alt_date_str = alt_date.strftime("%b %-d")
+    else:
+        alt_date_str = str(alt_date)
+    return (
+        '<div style="background:#f0f7ff;border:1px solid #dbeafe;border-radius:8px;'
+        'padding:12px 16px;margin-bottom:20px;">'
+        f'<p style="margin:0;font-size:13px;color:#2563EB;">'
+        f'\U0001f4a1 <strong>Date flex:</strong> Depart {alt_date_str} instead '
+        f'\u2014 save ${saving:,.0f}/pp</p></div>'
+    )
+
+
+def budget_nudge_line(nudge: dict) -> str:
+    """Render budget nudge insight line for email."""
+    if not nudge:
+        return ""
+    extra = nudge["extra_cents"] / 100
+    stars = nudge.get("star_rating", 0)
+    hotel = nudge.get("hotel_name", "a higher-rated resort")
+    stars_str = f" {stars:.1f}\u2605" if stars else ""
+    return (
+        '<div style="background:#f0f7ff;border:1px solid #dbeafe;border-radius:8px;'
+        'padding:12px 16px;margin-bottom:20px;">'
+        f'<p style="margin:0;font-size:13px;color:#2563EB;">'
+        f'\U0001f4a1 <strong>Budget nudge:</strong> ${extra:,.0f}/pp more gets you '
+        f'{hotel}{stars_str}</p></div>'
+    )
+
+
 def pricing_disclaimer() -> str:
     """Standard pricing disclaimer for deal-related emails."""
     return (
