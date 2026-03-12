@@ -43,11 +43,11 @@ _HEADERS = {
 }
 
 # Delay between requests to avoid rate limiting
-MIN_DELAY = 2.0
-MAX_DELAY = 5.0
+MIN_DELAY = 4.0
+MAX_DELAY = 8.0
 
 # Back off aggressively on rate limits
-RATE_LIMIT_BACKOFF = 30.0
+RATE_LIMIT_BACKOFF = 60.0
 
 
 def get_engine():
@@ -67,11 +67,15 @@ def _search_ddg(query: str) -> str | None:
     url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
     try:
         resp = requests.get(url, headers=_HEADERS, timeout=15)
-        if resp.status_code == 429 or resp.status_code == 403:
+        if resp.status_code in (429, 403, 202):
             logger.warning("DuckDuckGo rate-limited (%d) — backing off %.0fs",
                            resp.status_code, RATE_LIMIT_BACKOFF)
             time.sleep(RATE_LIMIT_BACKOFF)
-            return None
+            # Retry once after backoff
+            resp = requests.get(url, headers=_HEADERS, timeout=15)
+            if resp.status_code != 200:
+                logger.warning("Still rate-limited after backoff (%d)", resp.status_code)
+                return None
         if resp.status_code != 200:
             logger.warning("DuckDuckGo returned status %d", resp.status_code)
             return None
