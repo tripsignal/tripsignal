@@ -1,5 +1,5 @@
 """HotelLink model — stores external URLs (TripAdvisor, etc.) keyed by SellOff hotel_id."""
-from sqlalchemy import Column, DateTime, Integer, Numeric, Text, func
+from sqlalchemy import Column, DateTime, Float, Integer, Numeric, Text, func
 
 from app.db.base import Base
 
@@ -23,3 +23,9 @@ class HotelLink(Base):
     suggested_url = Column(Text, nullable=True)   # best candidate URL for review items
     suggested_name = Column(Text, nullable=True)  # best candidate name for review items
     match_notes = Column(Text, nullable=True)
+
+    # TripAdvisor scraped data
+    ta_rating = Column(Float, nullable=True)          # e.g., 4.5
+    ta_review_count = Column(Integer, nullable=True)   # e.g., 12345
+    ta_ranking_text = Column(Text, nullable=True)      # e.g., "#12 of 50 hotels in Punta Cana"
+    ta_data_fetched_at = Column(DateTime(timezone=True), nullable=True)
