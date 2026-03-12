@@ -261,9 +261,11 @@ def _find_date_shift_saving(db: Session, deal: dict):
 
 def _find_budget_nudge(db: Session, signal: Signal, current_best_stars: float):
     """Find better-rated deals slightly above budget."""
+    from datetime import date as date_type
+
     budget_cents = None
     try:
-        budget_cents = signal.config.get("budget", {}).get("target_pp", 0) * 100
+        budget_cents = int(signal.config.get("budget", {}).get("target_pp", 0) * 100)
     except Exception:
         return None
 
@@ -279,6 +281,7 @@ def _find_budget_nudge(db: Session, signal: Signal, current_best_stars: float):
 
     query = db.query(Deal).filter(
         Deal.is_active == True,  # noqa: E712
+        Deal.depart_date >= date_type.today(),
         Deal.price_cents > budget_cents,
         Deal.price_cents <= nudge_ceiling,
         Deal.star_rating >= min_stars,
@@ -294,7 +297,7 @@ def _find_budget_nudge(db: Session, signal: Signal, current_best_stars: float):
     if not better:
         return None
 
-    extra_cents = better.price_cents - budget_cents
+    extra_cents = int(better.price_cents - budget_cents)
 
     return {
         "extra_cents": extra_cents,
@@ -421,7 +424,7 @@ def _process_single_signal(
             "price_cents": d["price_cents"],
             "duration_nights": d.get("duration_nights", 7),
             "depart_date": str(d.get("depart_date", "")),
-            "deeplink_url": d.get("deeplink_url", "https://tripsignal.ca/signals"),
+            "deeplink_url": d.get("deeplink_url") or "",
             "price_delta": d.get("price_delta", 0),
             "provider": d.get("provider", ""),
             "value_label": d.get("value_label"),

@@ -5,6 +5,7 @@ Each function signature: (user: User, context: dict) -> (subject: str, html: str
 """
 from __future__ import annotations
 
+from html import escape as esc
 from typing import TYPE_CHECKING
 
 from app.services.email_templates.base import (
@@ -152,6 +153,7 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
 
     # ── Render each signal with activity ──
     signals = context.get("signals_with_activity") or [context]
+    plan_type = context.get("plan_type", "free")
 
     for i, sig in enumerate(signals):
         route = sig.get("route", "")
@@ -206,15 +208,15 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
 
         # ── Deal rows inside the card ──
         for j, deal in enumerate(display_deals):
-            hotel = deal.get("hotel_name", "Hotel")
+            hotel = esc(deal.get("hotel_name", "Hotel"))
             rating = deal.get("star_rating")
             price = format_price(deal.get("price_cents"))
             duration = deal.get("duration_nights", 7)
-            depart = deal.get("depart_date", "")
+            depart = esc(str(deal.get("depart_date", "")))
 
             stars = stars_html(rating)
             delta = _deal_delta_html(deal)
-            value_label = deal.get("value_label") or ""
+            value_label = esc(deal.get("value_label") or "")
 
             provider = deal.get("provider", "")
             via = ""
@@ -239,8 +241,12 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
             border_top = "border-top:1px solid #f3f4f6;" if j == 0 else ""
             border_bottom = "border-bottom:1px solid #f3f4f6;" if j < len(display_deals) - 1 else ""
 
-            # View Deal link
-            deal_link = deal.get("deeplink_url") or f"https://tripsignal.ca/deal/{deal.get('deal_id', '')}"
+            # View Deal link — validate URL scheme to prevent injection
+            raw_link = deal.get("deeplink_url") or ""
+            if raw_link and raw_link.startswith(("https://", "http://")):
+                deal_link = esc(raw_link, quote=True)
+            else:
+                deal_link = f"https://tripsignal.ca/deal/{esc(deal.get('deal_id', ''), quote=True)}"
             view_deal_html = (
                 f'<div style="margin-top:8px;">'
                 f'<a href="{deal_link}" style="color:#2563EB;font-size:13px;'
@@ -289,7 +295,6 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
             )
 
         # Pro-only insight lines (arbitrage, date shift, budget nudge)
-        plan_type = context.get("plan_type", "free")
         if plan_type == "pro":
             # Airport arbitrage insight
             arbitrage = sig.get("arbitrage")
@@ -333,8 +338,6 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
         parts.append('</div>')
 
     # ── Scout teaser / Trial conversion teaser ──
-    plan_type = context.get("plan_type", "free")
-
     if plan_type != "pro":
         # Trial/free users: conversion teaser — reference computed savings
         arb_saving = 0

@@ -271,11 +271,12 @@ def date_shift_line(date_shift: dict) -> str:
 
 def budget_nudge_line(nudge: dict) -> str:
     """Render budget nudge insight line for email."""
+    from html import escape as _esc
     if not nudge:
         return ""
     extra = nudge["extra_cents"] / 100
     stars = nudge.get("star_rating", 0)
-    hotel = nudge.get("hotel_name", "a higher-rated resort")
+    hotel = _esc(nudge.get("hotel_name", "a higher-rated resort"))
     stars_str = f" {stars:.1f}\u2605" if stars else ""
     return (
         '<div style="background:#f0f7ff;border:1px solid #dbeafe;border-radius:8px;'
