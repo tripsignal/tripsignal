@@ -48,11 +48,11 @@ def wrap(
             f'</p>'
         )
 
-    # Links row: Email Notifications | Privacy Policy | Terms and Conditions
+    # Links row: Unsubscribe | Privacy Policy | Terms and Conditions
     notif_url = unsub_url or "https://tripsignal.ca/account/notifications"
     links_html = (
         '<p style="font-size:12px;color:#999;margin:0 0 12px;text-align:center;line-height:1.6;">'
-        f'<a href="{esc(notif_url)}" style="color:#999;text-decoration:underline;">Email Notifications</a>'
+        f'<a href="{esc(notif_url)}" style="color:#999;text-decoration:underline;">Unsubscribe</a>'
         ' &nbsp;|&nbsp; '
         '<a href="https://tripsignal.ca/privacy-policy" style="color:#999;text-decoration:underline;">Privacy Policy</a>'
         ' &nbsp;|&nbsp; '
@@ -81,7 +81,7 @@ def wrap(
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111;background:#fff;max-width:560px;margin:0 auto;padding:40px 24px;">
 {preheader_block}
 <div style="margin-bottom:24px;">
-  <img src="https://tripsignal.ca/new-logo-email.png" alt="Trip Signal" style="height:48px;width:auto;border-radius:8px;" />
+  <img src="https://tripsignal.ca/new-logo-email.png" alt="Trip Signal" style="height:38px;width:auto;border-radius:8px;" />
 </div>
 {body_html}
 <hr style="border:none;border-top:1px solid #eee;margin:32px 0;">

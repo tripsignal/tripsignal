@@ -1083,26 +1083,6 @@
 - **Key flows**: Standard CRUD on template override rows. Overrides take precedence over code-defined templates.
 - **References**: `backend/app/api/routes/admin.py:1197-1316`
 
-### F-A-025: Scraper Lab (Diagnostics)
-- **Status**: Active
-- **What it does**: Admin-only endpoints for testing SellOff scraper. Test page fetch by category and gateway. Returns parsed deals for validation.
-- **Entry points**:
-  - UI routes/pages: —
-  - API endpoints: POST `/admin/scraper-lab/test-scrape` (`backend/app/api/routes/scraper_lab.py`), GET `/admin/scraper-lab/test-scrape-categories` (`backend/app/api/routes/scraper_lab.py`)
-  - Jobs/cron: —
-- **Data involved**:
-  - Tables/models: —
-- **Access control**:
-  - Auth: Admin token
-  - Role: Admin
-  - Plan gate: Admin token
-- **Notifications**:
-  - Email templates: —
-  - SMS templates: —
-  - Trigger logic: —
-- **Key flows**: POST with category/gateway → scrape page → parse deals → return parsed results (no DB write).
-- **References**: `backend/app/api/routes/scraper_lab.py`
-
 ---
 
 ## 4. System Features
@@ -1566,7 +1546,6 @@
 | F-A-022 | Preview Email | Admin | Active | Admin token | POST `/admin/preview-email` | — | `admin.py` |
 | F-A-023 | List Email Types | Admin | Active | Admin token | GET `/admin/email-types` | — | `admin.py` |
 | F-A-024 | Template CRUD | Admin | Active | Admin token | GET/PUT/DELETE `/admin/email-templates` | — | `admin.py` |
-| F-A-025 | Scraper Lab | Admin | Active | Admin token | POST/GET `/admin/scraper-lab/*` | — | `scraper_lab.py` |
 | F-S-001 | Scraper | System | Active | N/A | — | — | `selloff_scraper.py` |
 | F-S-002 | Deal Matching | System | Active | N/A | — | — | `selloff_scraper.py`, `signals.py` |
 | F-S-003 | Scrape Reporting | System | Active | N/A | POST `/api/system/*` | — | `main.py` |
@@ -1631,7 +1610,7 @@
 **New features**:
 - Scraper reliability: outer try/except with crash reporting, run_id correlation, SIGTERM graceful shutdown
 - Graduated deal staleness: deals must miss 3 consecutive scrape cycles (~24h) before deactivation. New `last_seen_at` and `missed_cycles` columns on Deal model.
-- Admin panel: consolidated ScraperTab + ScraperLabTab into ScrapeDataTab
+- Admin panel: consolidated ScraperTab into ScrapeDataTab (Scraper Lab removed)
 - Frontend build fix: lazy-init Resend client in contact-submit route
 
 ### 2026-03-04 — Format v2.0 (initial)
