@@ -61,28 +61,31 @@ def auto_match_new_hotels(db: Session) -> int:
     count = 0
 
     for hotel in unmatched:
-        source = SourceHotel(
-            hotel_name=hotel.hotel_name or "",
-            hotel_id=hotel.hotel_id or "",
-            destination_str=hotel.destination or "",
-        )
-        result = matcher.match(source)
+        try:
+            source = SourceHotel(
+                hotel_name=hotel.hotel_name or "",
+                hotel_id=hotel.hotel_id or "",
+                destination_str=hotel.destination or "",
+            )
+            result = matcher.match(source)
 
-        hotel.match_confidence = result.match_confidence
-        hotel.match_method = result.match_method
-        hotel.review_status = result.review_status
-        hotel.match_notes = result.notes
+            hotel.match_confidence = result.match_confidence
+            hotel.match_method = result.match_method
+            hotel.review_status = result.review_status
+            hotel.match_notes = result.notes
 
-        if result.review_status == "matched" and result.tripadvisor_url:
-            hotel.tripadvisor_url = result.tripadvisor_url
-            hotel.tripadvisor_id = result.tripadvisor_id
-        elif result.tripadvisor_url:
-            hotel.suggested_url = result.tripadvisor_url
-            hotel.suggested_name = result.tripadvisor_matched_name
-            hotel.tripadvisor_id = result.tripadvisor_id
+            if result.review_status == "matched" and result.tripadvisor_url:
+                hotel.tripadvisor_url = result.tripadvisor_url
+                hotel.tripadvisor_id = result.tripadvisor_id
+            elif result.tripadvisor_url:
+                hotel.suggested_url = result.tripadvisor_url
+                hotel.suggested_name = result.tripadvisor_matched_name
+                hotel.tripadvisor_id = result.tripadvisor_id
 
-        hotel.updated_at = datetime.now(timezone.utc)
-        count += 1
+            hotel.updated_at = datetime.now(timezone.utc)
+            count += 1
+        except Exception:
+            logger.exception("Failed to match hotel %s", hotel.hotel_id)
 
     try:
         db.commit()

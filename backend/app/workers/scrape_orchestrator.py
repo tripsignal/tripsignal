@@ -129,6 +129,9 @@ def _run_ta_enrichment(results: list) -> None:
 
     Uses the same PROXY_* env vars as the deal scrapers. Non-fatal — failures
     are logged but don't block the rest of the cycle.
+
+    Uses short-lived DB sessions to avoid holding connections during slow
+    network operations (each hotel scrape takes 4-8s).
     """
     # 1. Scrape ratings for matched hotels missing TA data
     logger.info("=== Starting TA rating scrape ===")
@@ -138,48 +141,50 @@ def _run_ta_enrichment(results: list) -> None:
         from app.db.models.hotel_link import HotelLink
         from app.db.session import get_db
 
+        # Fetch hotel IDs + names with a short-lived session
         with next(get_db()) as db:
-            hotels = db.execute(
-                select(HotelLink).where(
+            hotel_rows = db.execute(
+                select(HotelLink.hotel_id, HotelLink.hotel_name).where(
                     HotelLink.tripadvisor_url.isnot(None),
                     HotelLink.tripadvisor_url != "",
                     HotelLink.ta_data_fetched_at.is_(None),
                 ).order_by(HotelLink.hotel_name)
-            ).scalars().all()
+            ).all()
 
-            if hotels:
-                logger.info("Scraping TA ratings for %d hotels", len(hotels))
-                found = 0
-                for i, hotel in enumerate(hotels):
-                    if _shutdown_requested:
-                        logger.info("Shutdown requested, stopping TA scrape at %d/%d", i, len(hotels))
-                        break
-                    try:
-                        data = scrape_hotel_rating(hotel.hotel_name)
-                        if data["ta_rating"] or data["ta_review_count"]:
-                            found += 1
-                            if data["ta_rating"]:
-                                hotel.ta_rating = data["ta_rating"]
-                            if data["ta_review_count"]:
-                                hotel.ta_review_count = data["ta_review_count"]
-                            if data["ta_ranking_text"]:
-                                hotel.ta_ranking_text = data["ta_ranking_text"]
-                        hotel.ta_data_fetched_at = datetime.now(timezone.utc)
-                    except Exception:
-                        logger.exception("Error scraping TA rating for %s", hotel.hotel_name)
+        total = len(hotel_rows)
+        if total:
+            logger.info("Scraping TA ratings for %d hotels", total)
+            found = 0
+            batch = []  # collect (hotel_id, data) tuples
 
-                    if (i + 1) % 50 == 0:
-                        db.commit()
+            for i, (hotel_id, hotel_name) in enumerate(hotel_rows):
+                if _shutdown_requested:
+                    logger.info("Shutdown requested, stopping TA scrape at %d/%d", i, total)
+                    break
+                try:
+                    data = scrape_hotel_rating(hotel_name)
+                    batch.append((hotel_id, data))
+                    if data["ta_rating"] or data["ta_review_count"]:
+                        found += 1
+                except Exception:
+                    logger.exception("Error scraping TA rating for %s", hotel_name)
 
-                    if i < len(hotels) - 1:
-                        time.sleep(random.uniform(4.0, 8.0))
+                # Flush batch to DB every 25 hotels — short session per batch
+                if len(batch) >= 25:
+                    _flush_rating_batch(batch)
+                    batch = []
 
-                db.commit()
-                logger.info("=== TA rating scrape done: %d/%d found ===", found, len(hotels))
-                results.append({"provider": "ta_ratings", "status": "completed", "total": len(hotels), "found": found})
-            else:
-                logger.info("No hotels need TA rating scrape")
-                results.append({"provider": "ta_ratings", "status": "completed", "total": 0, "found": 0})
+                if i < total - 1:
+                    time.sleep(random.uniform(4.0, 8.0))
+
+            if batch:
+                _flush_rating_batch(batch)
+
+            logger.info("=== TA rating scrape done: %d/%d found ===", found, total)
+            results.append({"provider": "ta_ratings", "status": "completed", "total": total, "found": found})
+        else:
+            logger.info("No hotels need TA rating scrape")
+            results.append({"provider": "ta_ratings", "status": "completed", "total": 0, "found": 0})
     except Exception as e:
         logger.exception("TA rating scrape failed (non-fatal)")
         results.append({"provider": "ta_ratings", "status": "failed", "error": str(e)})
@@ -195,56 +200,104 @@ def _run_ta_enrichment(results: list) -> None:
         from app.db.models.hotel_link import HotelLink
         from app.db.session import get_db
 
+        # Fetch IDs + names + destinations with a short-lived session
         with next(get_db()) as db:
-            hotels = db.execute(
-                select(HotelLink).where(
+            hotel_rows = db.execute(
+                select(HotelLink.hotel_id, HotelLink.hotel_name, HotelLink.destination).where(
                     HotelLink.tripadvisor_url.is_(None),
                     or_(
                         HotelLink.review_status == "not_found",
                         HotelLink.review_status.is_(None),
                     ),
                 ).order_by(HotelLink.hotel_name)
-            ).scalars().all()
+            ).all()
 
-            if hotels:
-                logger.info("Searching TA pages for %d unmatched hotels", len(hotels))
-                found = 0
-                for i, hotel in enumerate(hotels):
-                    if _shutdown_requested:
-                        logger.info("Shutdown requested, stopping TA search at %d/%d", i, len(hotels))
-                        break
-                    try:
-                        candidate = search_hotel(hotel.hotel_name, hotel.destination or "")
-                        if candidate:
-                            found += 1
-                            hotel.suggested_url = candidate["tripadvisor_url"]
-                            hotel.suggested_name = candidate["tripadvisor_name"]
-                            hotel.tripadvisor_id = candidate["tripadvisor_id"]
-                            hotel.review_status = "needs_manual_review"
-                            hotel.match_method = "ddg_search"
-                            hotel.match_notes = "Found via DuckDuckGo search"
-                        else:
-                            hotel.review_status = "not_found"
-                            hotel.match_notes = "No TripAdvisor page found via search"
-                        hotel.updated_at = datetime.now(timezone.utc)
-                    except Exception:
-                        logger.exception("Error searching TA for %s", hotel.hotel_name)
+        total = len(hotel_rows)
+        if total:
+            logger.info("Searching TA pages for %d unmatched hotels", total)
+            found = 0
+            batch = []  # collect (hotel_id, candidate_or_none) tuples
 
-                    if (i + 1) % 25 == 0:
-                        db.commit()
+            for i, (hotel_id, hotel_name, destination) in enumerate(hotel_rows):
+                if _shutdown_requested:
+                    logger.info("Shutdown requested, stopping TA search at %d/%d", i, total)
+                    break
+                try:
+                    candidate = search_hotel(hotel_name, destination or "")
+                    batch.append((hotel_id, candidate))
+                    if candidate:
+                        found += 1
+                except Exception:
+                    logger.exception("Error searching TA for %s", hotel_name)
 
-                    if i < len(hotels) - 1:
-                        time.sleep(random.uniform(4.0, 8.0))
+                if len(batch) >= 25:
+                    _flush_search_batch(batch)
+                    batch = []
 
-                db.commit()
-                logger.info("=== TA unmatched search done: %d/%d found ===", found, len(hotels))
-                results.append({"provider": "ta_search", "status": "completed", "total": len(hotels), "found": found})
-            else:
-                logger.info("No unmatched hotels to search")
-                results.append({"provider": "ta_search", "status": "completed", "total": 0, "found": 0})
+                if i < total - 1:
+                    time.sleep(random.uniform(4.0, 8.0))
+
+            if batch:
+                _flush_search_batch(batch)
+
+            logger.info("=== TA unmatched search done: %d/%d found ===", found, total)
+            results.append({"provider": "ta_search", "status": "completed", "total": total, "found": found})
+        else:
+            logger.info("No unmatched hotels to search")
+            results.append({"provider": "ta_search", "status": "completed", "total": 0, "found": 0})
     except Exception as e:
         logger.exception("TA unmatched search failed (non-fatal)")
         results.append({"provider": "ta_search", "status": "failed", "error": str(e)})
+
+
+def _flush_rating_batch(batch: list[tuple]) -> None:
+    """Write a batch of scraped ratings to DB using a short-lived session."""
+    from sqlalchemy import select
+    from app.db.models.hotel_link import HotelLink
+    from app.db.session import get_db
+
+    with next(get_db()) as db:
+        for hotel_id, data in batch:
+            hotel = db.execute(
+                select(HotelLink).where(HotelLink.hotel_id == hotel_id)
+            ).scalar_one_or_none()
+            if not hotel:
+                continue
+            if data["ta_rating"]:
+                hotel.ta_rating = data["ta_rating"]
+            if data["ta_review_count"]:
+                hotel.ta_review_count = data["ta_review_count"]
+            if data["ta_ranking_text"]:
+                hotel.ta_ranking_text = data["ta_ranking_text"]
+            hotel.ta_data_fetched_at = datetime.now(timezone.utc)
+        db.commit()
+
+
+def _flush_search_batch(batch: list[tuple]) -> None:
+    """Write a batch of search results to DB using a short-lived session."""
+    from sqlalchemy import select
+    from app.db.models.hotel_link import HotelLink
+    from app.db.session import get_db
+
+    with next(get_db()) as db:
+        for hotel_id, candidate in batch:
+            hotel = db.execute(
+                select(HotelLink).where(HotelLink.hotel_id == hotel_id)
+            ).scalar_one_or_none()
+            if not hotel:
+                continue
+            if candidate:
+                hotel.suggested_url = candidate["tripadvisor_url"]
+                hotel.suggested_name = candidate["tripadvisor_name"]
+                hotel.tripadvisor_id = candidate["tripadvisor_id"]
+                hotel.review_status = "needs_manual_review"
+                hotel.match_method = "ddg_search"
+                hotel.match_notes = "Found via DuckDuckGo search"
+            else:
+                hotel.review_status = "not_found"
+                hotel.match_notes = "No TripAdvisor page found via search"
+            hotel.updated_at = datetime.now(timezone.utc)
+        db.commit()
 
 
 def run_orchestrated_cycle() -> dict:

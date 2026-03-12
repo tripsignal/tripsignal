@@ -76,6 +76,7 @@ def _get_proxies() -> dict | None:
 
 
 def get_engine():
+    from sqlalchemy import create_engine
     url = os.getenv("DATABASE_URL")
     if not url:
         host = os.getenv("POSTGRES_HOST", "localhost")
@@ -105,11 +106,12 @@ def _search_ddg(query: str) -> str | None:
         if resp.status_code != 200:
             logger.warning("DuckDuckGo returned status %d", resp.status_code)
             return None
-        # Strip HTML tags to get plain text
-        text = re.sub(r"<[^>]+>", " ", resp.text)
+        # Strip HTML tags to get plain text, truncate to prevent regex issues
+        raw = resp.text[:50_000] if len(resp.text) > 50_000 else resp.text
+        text = re.sub(r"<[^>]+>", " ", raw)
         return re.sub(r"\s+", " ", text)
     except requests.RequestException as e:
-        logger.warning("DuckDuckGo search failed: %s", e)
+        logger.warning("DuckDuckGo search failed: %s", type(e).__name__)
         return None
 
 

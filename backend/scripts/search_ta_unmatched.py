@@ -104,7 +104,7 @@ def _search_ddg_html(query: str) -> str | None:
             return None
         return resp.text
     except requests.RequestException as e:
-        logger.warning("DDG search failed: %s", e)
+        logger.warning("DDG search failed: %s", type(e).__name__)
         return None
 
 

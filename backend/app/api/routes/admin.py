@@ -924,7 +924,8 @@ def list_hotels(
 
     query = select(HotelLink).order_by(HotelLink.hotel_name)
     if search:
-        query = query.where(HotelLink.hotel_name.ilike(f"%{search}%"))
+        safe_search = search.replace("%", "\\%").replace("_", "\\_")
+        query = query.where(HotelLink.hotel_name.ilike(f"%{safe_search}%"))
 
     rows = db.execute(query).scalars().all()
 
@@ -963,10 +964,14 @@ def list_hotels(
     }
 
 
+class UpdateHotelLinkIn(BaseModel):
+    tripadvisor_url: str | None = None
+
+
 @router.put("/hotels/{hotel_id}")
 def update_hotel_link(
     hotel_id: str,
-    payload: dict,
+    payload: UpdateHotelLinkIn,
     db: Session = Depends(get_db),
 ):
     """Update the TripAdvisor URL for a hotel."""
@@ -978,7 +983,9 @@ def update_hotel_link(
     if not hotel:
         raise HTTPException(status_code=404, detail="Hotel not found")
 
-    url = (payload.get("tripadvisor_url") or "").strip()
+    url = (payload.tripadvisor_url or "").strip()
+    if url and not url.startswith(("https://www.tripadvisor.", "https://tripadvisor.")):
+        raise HTTPException(status_code=400, detail="URL must be a TripAdvisor link")
     hotel.tripadvisor_url = url if url else None
     hotel.updated_at = datetime.now(timezone.utc)
 
