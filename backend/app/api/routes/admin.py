@@ -936,6 +936,13 @@ def list_hotels(
                 "destination": h.destination,
                 "star_rating": float(h.star_rating) if h.star_rating else None,
                 "tripadvisor_url": h.tripadvisor_url,
+                "tripadvisor_id": h.tripadvisor_id,
+                "match_confidence": float(h.match_confidence) if h.match_confidence else None,
+                "match_method": h.match_method,
+                "review_status": h.review_status,
+                "suggested_url": h.suggested_url,
+                "suggested_name": h.suggested_name,
+                "match_notes": h.match_notes,
                 "active_deals": deal_counts.get(h.hotel_id, 0),
                 "created_at": h.created_at.isoformat() if h.created_at else None,
                 "updated_at": h.updated_at.isoformat() if h.updated_at else None,
@@ -964,6 +971,12 @@ def update_hotel_link(
     url = (payload.get("tripadvisor_url") or "").strip()
     hotel.tripadvisor_url = url if url else None
     hotel.updated_at = datetime.now(timezone.utc)
+
+    # When admin confirms a URL, mark as matched and clear suggestion fields
+    if url:
+        hotel.review_status = "matched"
+        hotel.suggested_url = None
+        hotel.suggested_name = None
     db.commit()
 
     return {"ok": True, "hotel_id": hotel_id, "tripadvisor_url": hotel.tripadvisor_url}
