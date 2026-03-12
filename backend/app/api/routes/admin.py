@@ -946,7 +946,6 @@ def list_hotels(
                 "hotel_id": h.hotel_id,
                 "hotel_name": h.hotel_name,
                 "destination": h.destination,
-                "star_rating": float(h.star_rating) if h.star_rating else None,
                 "tripadvisor_url": h.tripadvisor_url,
                 "active_deals": deal_counts.get(h.hotel_id, 0),
                 "created_at": h.created_at.isoformat() if h.created_at else None,
