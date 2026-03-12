@@ -121,6 +121,132 @@ def _run_with_timeout(target, name: str, timeout_seconds: int) -> dict:
     return result
 
 
+TA_ENRICHMENT_TIMEOUT = int(os.getenv("TA_ENRICHMENT_TIMEOUT", "3600"))  # 1 hour
+
+
+def _run_ta_enrichment(results: list) -> None:
+    """Run TripAdvisor enrichment: scrape ratings + search unmatched hotels.
+
+    Uses the same PROXY_* env vars as the deal scrapers. Non-fatal — failures
+    are logged but don't block the rest of the cycle.
+    """
+    # 1. Scrape ratings for matched hotels missing TA data
+    logger.info("=== Starting TA rating scrape ===")
+    try:
+        from scripts.scrape_ta_ratings import scrape_hotel_rating
+        from sqlalchemy import select
+        from app.db.models.hotel_link import HotelLink
+        from app.db.session import get_db
+
+        with next(get_db()) as db:
+            hotels = db.execute(
+                select(HotelLink).where(
+                    HotelLink.tripadvisor_url.isnot(None),
+                    HotelLink.tripadvisor_url != "",
+                    HotelLink.ta_data_fetched_at.is_(None),
+                ).order_by(HotelLink.hotel_name)
+            ).scalars().all()
+
+            if hotels:
+                logger.info("Scraping TA ratings for %d hotels", len(hotels))
+                found = 0
+                for i, hotel in enumerate(hotels):
+                    if _shutdown_requested:
+                        logger.info("Shutdown requested, stopping TA scrape at %d/%d", i, len(hotels))
+                        break
+                    try:
+                        data = scrape_hotel_rating(hotel.hotel_name)
+                        if data["ta_rating"] or data["ta_review_count"]:
+                            found += 1
+                            if data["ta_rating"]:
+                                hotel.ta_rating = data["ta_rating"]
+                            if data["ta_review_count"]:
+                                hotel.ta_review_count = data["ta_review_count"]
+                            if data["ta_ranking_text"]:
+                                hotel.ta_ranking_text = data["ta_ranking_text"]
+                        hotel.ta_data_fetched_at = datetime.now(timezone.utc)
+                    except Exception:
+                        logger.exception("Error scraping TA rating for %s", hotel.hotel_name)
+
+                    if (i + 1) % 50 == 0:
+                        db.commit()
+
+                    if i < len(hotels) - 1:
+                        time.sleep(random.uniform(4.0, 8.0))
+
+                db.commit()
+                logger.info("=== TA rating scrape done: %d/%d found ===", found, len(hotels))
+                results.append({"provider": "ta_ratings", "status": "completed", "total": len(hotels), "found": found})
+            else:
+                logger.info("No hotels need TA rating scrape")
+                results.append({"provider": "ta_ratings", "status": "completed", "total": 0, "found": 0})
+    except Exception as e:
+        logger.exception("TA rating scrape failed (non-fatal)")
+        results.append({"provider": "ta_ratings", "status": "failed", "error": str(e)})
+
+    # 2. Search for unmatched hotels' TA pages
+    if _shutdown_requested:
+        return
+
+    logger.info("=== Starting TA unmatched search ===")
+    try:
+        from scripts.search_ta_unmatched import search_hotel
+        from sqlalchemy import select, or_
+        from app.db.models.hotel_link import HotelLink
+        from app.db.session import get_db
+
+        with next(get_db()) as db:
+            hotels = db.execute(
+                select(HotelLink).where(
+                    HotelLink.tripadvisor_url.is_(None),
+                    or_(
+                        HotelLink.review_status == "not_found",
+                        HotelLink.review_status.is_(None),
+                    ),
+                ).order_by(HotelLink.hotel_name)
+            ).scalars().all()
+
+            if hotels:
+                logger.info("Searching TA pages for %d unmatched hotels", len(hotels))
+                found = 0
+                for i, hotel in enumerate(hotels):
+                    if _shutdown_requested:
+                        logger.info("Shutdown requested, stopping TA search at %d/%d", i, len(hotels))
+                        break
+                    try:
+                        candidate = search_hotel(hotel.hotel_name, hotel.destination or "")
+                        if candidate:
+                            found += 1
+                            hotel.suggested_url = candidate["tripadvisor_url"]
+                            hotel.suggested_name = candidate["tripadvisor_name"]
+                            hotel.tripadvisor_id = candidate["tripadvisor_id"]
+                            hotel.review_status = "needs_manual_review"
+                            hotel.match_method = "ddg_search"
+                            hotel.match_notes = "Found via DuckDuckGo search"
+                        else:
+                            hotel.review_status = "not_found"
+                            hotel.match_notes = "No TripAdvisor page found via search"
+                        hotel.updated_at = datetime.now(timezone.utc)
+                    except Exception:
+                        logger.exception("Error searching TA for %s", hotel.hotel_name)
+
+                    if (i + 1) % 25 == 0:
+                        db.commit()
+
+                    if i < len(hotels) - 1:
+                        time.sleep(random.uniform(4.0, 8.0))
+
+                db.commit()
+                logger.info("=== TA unmatched search done: %d/%d found ===", found, len(hotels))
+                results.append({"provider": "ta_search", "status": "completed", "total": len(hotels), "found": found})
+            else:
+                logger.info("No unmatched hotels to search")
+                results.append({"provider": "ta_search", "status": "completed", "total": 0, "found": 0})
+    except Exception as e:
+        logger.exception("TA unmatched search failed (non-fatal)")
+        results.append({"provider": "ta_search", "status": "failed", "error": str(e)})
+
+
 def run_orchestrated_cycle() -> dict:
     """Run all enabled scrapers in sequence. Returns combined summary."""
     cycle_start = datetime.now(timezone.utc)
@@ -193,6 +319,10 @@ def run_orchestrated_cycle() -> dict:
             results.append({"provider": "redtag", "status": "timeout", "error": outcome["error"]})
         else:
             results.append({"provider": "redtag", "status": "failed", "error": outcome.get("error", "unknown")})
+
+    # --- TripAdvisor enrichment (uses residential proxy) ---
+    if not _shutdown_requested:
+        _run_ta_enrichment(results)
 
     # --- Refresh intelligence caches ---
     try:

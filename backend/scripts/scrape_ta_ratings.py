@@ -10,8 +10,8 @@ Usage:
     python -m scripts.scrape_ta_ratings
     python -m scripts.scrape_ta_ratings --limit 50 --dry-run
 
-Designed to run locally (residential IP). Datacenter IPs get blocked by
-search engines.
+Uses DataImpulse residential proxy when PROXY_ENABLED=true (same env vars
+as scrape_orchestrator). Falls back to direct connection otherwise.
 
 Requires DATABASE_URL or individual POSTGRES_* env vars.
 """
@@ -50,6 +50,31 @@ MAX_DELAY = 8.0
 RATE_LIMIT_BACKOFF = 60.0
 
 
+def _build_proxy_config() -> dict | None:
+    """Build requests-compatible proxies dict from env vars. Returns None if disabled."""
+    if os.getenv("PROXY_ENABLED", "false").lower() not in ("true", "1", "yes"):
+        return None
+    proxy_user = os.getenv("PROXY_USER", "")
+    if not proxy_user:
+        return None
+    proxy_host = os.getenv("PROXY_HOST", "gw.dataimpulse.com")
+    proxy_port = os.getenv("PROXY_PORT", "823")
+    proxy_pass = os.getenv("PROXY_PASS", "")
+    proxy_country = os.getenv("PROXY_COUNTRY", "cr.ca")
+    proxy_url = f"http://{proxy_user}__{proxy_country}:{proxy_pass}@{proxy_host}:{proxy_port}"
+    return {"http": proxy_url, "https": proxy_url}
+
+
+_PROXIES = None  # initialized lazily
+
+
+def _get_proxies() -> dict | None:
+    global _PROXIES
+    if _PROXIES is None:
+        _PROXIES = _build_proxy_config() or {}
+    return _PROXIES or None
+
+
 def get_engine():
     url = os.getenv("DATABASE_URL")
     if not url:
@@ -65,14 +90,15 @@ def get_engine():
 def _search_ddg(query: str) -> str | None:
     """Search DuckDuckGo HTML and return the text content of the results page."""
     url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
+    proxies = _get_proxies()
     try:
-        resp = requests.get(url, headers=_HEADERS, timeout=15)
+        resp = requests.get(url, headers=_HEADERS, proxies=proxies, timeout=15)
         if resp.status_code in (429, 403, 202):
             logger.warning("DuckDuckGo rate-limited (%d) — backing off %.0fs",
                            resp.status_code, RATE_LIMIT_BACKOFF)
             time.sleep(RATE_LIMIT_BACKOFF)
             # Retry once after backoff
-            resp = requests.get(url, headers=_HEADERS, timeout=15)
+            resp = requests.get(url, headers=_HEADERS, proxies=proxies, timeout=15)
             if resp.status_code != 200:
                 logger.warning("Still rate-limited after backoff (%d)", resp.status_code)
                 return None
