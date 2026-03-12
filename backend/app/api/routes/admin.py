@@ -887,16 +887,15 @@ def users_unified(
     return {"users": results, "total": total}
 
 
-@router.get("/hotels")
-def list_hotels(
-    search: str = "",
-    db: Session = Depends(get_db),
-):
-    """List all hotels with their TripAdvisor links."""
+@router.post("/hotels/sync")
+def sync_hotels(db: Session = Depends(get_db)):
+    """Sync new hotels from deals and auto-match against TripAdvisor seed data.
 
-    # Sync any new hotels from deals that aren't in hotel_links yet
-    # Use the earliest found_at from deals as created_at (first time we ever saw this hotel)
-    db.execute(text("""
+    Called once when the admin Hotels tab loads. Separated from GET to keep
+    reads fast and side-effect-free.
+    """
+    # Insert any new hotels from deals that aren't in hotel_links yet
+    result = db.execute(text("""
         INSERT INTO hotel_links (hotel_id, hotel_name, destination, star_rating, created_at)
         SELECT d.hotel_id, d.hotel_name, d.destination_str, d.star_rating, earliest.first_seen
         FROM (
@@ -913,14 +912,26 @@ def list_hotels(
             GROUP BY hotel_id
         ) earliest ON d.hotel_id = earliest.hotel_id
     """))
+    new_count = result.rowcount
     db.commit()
 
     # Auto-match any new hotels against TripAdvisor seed data
+    matched = 0
     try:
         from app.enrichment.auto_match import auto_match_new_hotels
-        auto_match_new_hotels(db)
+        matched = auto_match_new_hotels(db)
     except Exception:
         logger.exception("Auto-match failed (non-fatal)")
+
+    return {"synced": new_count, "matched": matched}
+
+
+@router.get("/hotels")
+def list_hotels(
+    search: str = "",
+    db: Session = Depends(get_db),
+):
+    """List all hotels with their TripAdvisor links (read-only)."""
 
     query = select(HotelLink).order_by(HotelLink.hotel_name)
     if search:
@@ -929,7 +940,7 @@ def list_hotels(
 
     rows = db.execute(query).scalars().all()
 
-    # Count active deals per hotel
+    # Count active deals per hotel in a single query
     deal_counts = dict(db.execute(
         select(Deal.hotel_id, func.count())
         .where(Deal.is_active)

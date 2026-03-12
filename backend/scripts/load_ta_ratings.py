@@ -22,24 +22,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
 from app.db.models.hotel_link import HotelLink
+from scripts.utils import get_engine
 
 logger = logging.getLogger("load_ta_ratings")
-
-
-def get_engine():
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        host = os.getenv("POSTGRES_HOST", "localhost")
-        port = os.getenv("POSTGRES_PORT", "5432")
-        user = os.getenv("POSTGRES_USER", "postgres")
-        pw = os.getenv("POSTGRES_PASSWORD", "postgres")
-        db = os.getenv("POSTGRES_DB", "tripsignal")
-        url = f"postgresql+psycopg://{user}:{pw}@{host}:{port}/{db}"
-    return create_engine(url)
 
 
 def main():

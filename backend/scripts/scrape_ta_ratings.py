@@ -50,20 +50,7 @@ MAX_DELAY = 8.0
 RATE_LIMIT_BACKOFF = 60.0
 
 
-def _build_proxy_config() -> dict | None:
-    """Build requests-compatible proxies dict from env vars. Returns None if disabled."""
-    if os.getenv("PROXY_ENABLED", "false").lower() not in ("true", "1", "yes"):
-        return None
-    proxy_user = os.getenv("PROXY_USER", "")
-    if not proxy_user:
-        return None
-    proxy_host = os.getenv("PROXY_HOST", "gw.dataimpulse.com")
-    proxy_port = os.getenv("PROXY_PORT", "823")
-    proxy_pass = os.getenv("PROXY_PASS", "")
-    proxy_country = os.getenv("PROXY_COUNTRY", "cr.ca")
-    proxy_url = f"http://{proxy_user}__{proxy_country}:{proxy_pass}@{proxy_host}:{proxy_port}"
-    return {"http": proxy_url, "https": proxy_url}
-
+from scripts.utils import build_proxy_config, get_engine  # noqa: E402
 
 _PROXIES = None  # initialized lazily
 
@@ -71,21 +58,8 @@ _PROXIES = None  # initialized lazily
 def _get_proxies() -> dict | None:
     global _PROXIES
     if _PROXIES is None:
-        _PROXIES = _build_proxy_config() or {}
+        _PROXIES = build_proxy_config() or {}
     return _PROXIES or None
-
-
-def get_engine():
-    from sqlalchemy import create_engine
-    url = os.getenv("DATABASE_URL")
-    if not url:
-        host = os.getenv("POSTGRES_HOST", "localhost")
-        port = os.getenv("POSTGRES_PORT", "5432")
-        user = os.getenv("POSTGRES_USER", "postgres")
-        pw = os.getenv("POSTGRES_PASSWORD", "postgres")
-        db = os.getenv("POSTGRES_DB", "tripsignal")
-        url = f"postgresql+psycopg://{user}:{pw}@{host}:{port}/{db}"
-    return create_engine(url)
 
 
 def _search_ddg(query: str) -> str | None:
