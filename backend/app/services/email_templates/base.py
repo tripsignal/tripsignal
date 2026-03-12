@@ -30,11 +30,12 @@ def wrap(
         )
 
     # "This email was sent to …"
+    from html import escape as _esc
     sent_to_line = ""
     if user_email:
         sent_to_line = (
             f'<p style="font-size:12px;color:#999;margin:0 0 12px;text-align:center;line-height:1.6;">'
-            f'This email was sent to {user_email}'
+            f'This email was sent to {_esc(user_email)}'
             f'</p>'
         )
 
@@ -147,13 +148,14 @@ def value_score_badge(score: int) -> str:
 
 def arbitrage_line(airport: str, savings_cents: int) -> str:
     """Render an airport arbitrage savings line."""
+    from html import escape as _esc
     savings = format_price(savings_cents)
     return (
         '<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;'
         'padding:12px 16px;margin-bottom:20px;">'
         f'<p style="margin:0;font-size:13px;color:#92400E;">'
         f'\u2708\ufe0f Same resort is <strong>{savings}/pp cheaper</strong> from '
-        f'<strong>{airport}</strong></p></div>'
+        f'<strong>{_esc(airport)}</strong></p></div>'
     )
 
 

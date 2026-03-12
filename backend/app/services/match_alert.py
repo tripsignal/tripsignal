@@ -378,7 +378,7 @@ def _process_single_signal(
         route_intel=route_intel,
         hero_deal=best_deal_for_route,
     )
-    days_monitoring = (datetime.now(timezone.utc) - signal.created_at).days if signal.created_at else 0
+    days_monitoring = (now - signal.created_at).days if signal.created_at else 0
     is_top_25 = bool(intel and intel.current_deal_percentile is not None and intel.current_deal_percentile <= 0.25)
 
     # ── 3c. Fetch user for mode + threshold checks ─────────────────
@@ -468,6 +468,7 @@ def _process_single_signal(
         "trend_inflection": intel.trend_inflection if intel else False,
         # Internal: user_id for grouping (not passed to template)
         "_user_id": str(signal.user_id),
+        "_plan_type": user.plan_type if hasattr(user, "plan_type") else "free",
     }
 
     # ── 4b. Airport arbitrage (computed per-email, not cached) ──────
@@ -489,22 +490,30 @@ def _process_single_signal(
             signal_context["departure_heatmap"] = heatmap
 
     # ── 4e. Date shift saving (check best deal only to limit queries) ──
+    # Wrapped in try/except — these are optional insights that must never
+    # prevent the core deal alert from sending.
     date_shift = None
     if sorted_deals:
-        best_deal_dict = {
-            "hotel_name": sorted_deals[0].get("hotel_name"),
-            "origin": sorted_deals[0].get("origin"),
-            "depart_date": sorted_deals[0].get("depart_date"),
-            "price_cents": sorted_deals[0]["price_cents"],
-        }
-        date_shift = _find_date_shift_saving(db, best_deal_dict)
+        try:
+            best_deal_dict = {
+                "hotel_name": sorted_deals[0].get("hotel_name"),
+                "origin": sorted_deals[0].get("origin"),
+                "depart_date": sorted_deals[0].get("depart_date"),
+                "price_cents": sorted_deals[0]["price_cents"],
+            }
+            date_shift = _find_date_shift_saving(db, best_deal_dict)
+        except Exception:
+            logger.debug("match_alert: date_shift query failed for signal %s", signal_id_str, exc_info=True)
     signal_context["date_shift"] = date_shift
 
     # ── 4f. Budget nudge (find better-star deals slightly above budget) ──
     budget_nudge = None
     if sorted_deals:
-        best_stars = sorted_deals[0].get("star_rating") or 0
-        budget_nudge = _find_budget_nudge(db, signal, float(best_stars))
+        try:
+            best_stars = sorted_deals[0].get("star_rating") or 0
+            budget_nudge = _find_budget_nudge(db, signal, float(best_stars))
+        except Exception:
+            logger.debug("match_alert: budget_nudge query failed for signal %s", signal_id_str, exc_info=True)
     signal_context["budget_nudge"] = budget_nudge
 
     # ── 4d. Departure window context (from route intel) ──────────────
@@ -582,8 +591,11 @@ def process_signal_matches(
             key=lambda sc: sc.get("best_price_cents") or float("inf"),
         )
 
-        # Fetch user for plan_type
-        user = db.query(User).filter(User.id == user_id).first()
+        # Extract plan_type from signal contexts (already fetched in _process_single_signal)
+        plan_type = signal_contexts[0].get("_plan_type", "free")
+        # Strip internal _plan_type from all signal contexts before passing to template
+        for sc in signal_contexts:
+            sc.pop("_plan_type", None)
 
         # Build consolidated context — primary signal fields at top level
         # for backward compat, plus new multi-signal fields
@@ -596,7 +608,7 @@ def process_signal_matches(
             "signals_with_activity": signal_contexts,
             "quiet_signals": quiet_signals,
             # Plan type for trial/pro conditional rendering
-            "plan_type": user.plan_type if user else "free",
+            "plan_type": plan_type,
         }
 
         # Idempotency key: one email per user per run

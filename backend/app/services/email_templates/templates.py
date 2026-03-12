@@ -179,7 +179,7 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
         )
 
         # Signal heading — route as the primary label
-        heading_text = route or sig.get("signal_name", "your signal")
+        heading_text = esc(route or sig.get("signal_name", "your signal"))
         parts.append(
             f'<div style="padding:16px 20px 0;">'
             f'<p style="margin:0 0 6px;font-size:15px;font-weight:600;color:#111;">'
@@ -326,7 +326,7 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
             'letter-spacing:0.3px;">Still watching your signals</p>'
         )
         for qs in quiet_signals:
-            qname = qs.get("signal_name", "signal")
+            qname = esc(qs.get("signal_name", "signal"))
             parts.append(
                 f'<p style="margin:0 0 4px;font-size:14px;color:#666;line-height:1.5;">'
                 f'{qname}</p>'
