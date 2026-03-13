@@ -1,0 +1,496 @@
+hotel_name|destination|star_rating|deal_count
+Novus Plaza Hodelpa|Santo Domingo, Dominican Republic|3.0|77
+Bahia Principe Luxury Bouganville|La Romana, Dominican Republic|5.0|69
+Bahia Principe Grand La Romana|La Romana, Dominican Republic|4.0|66
+Whala Bocachica|Santo Domingo, Dominican Republic|3.0|62
+HM Alma de Bayahibe|La Romana, Dominican Republic|4.0|58
+Dreams Tulum Resort and Spa|Riviera Maya, Mexico|5.0|53
+Las Palmas By The Sea|Puerto Vallarta, Mexico|3.0|53
+Secrets Tulum Resort and Beach Club|Riviera Maya, Mexico|5.0|50
+Catalonia Royal Tulum Beach & Spa|Cancun, Mexico|4.5|49
+Hodelpa Caribe Colonial|Santo Domingo, Dominican Republic|4.0|49
+Sunscape Coco Punta Cana|Punta Cana, Dominican Republic|4.0|49
+Casa Marina Sosua Trademark by Wyndham All Inclusive|Puerto Plata, Dominican Republic|3.5|47
+Krystal Grand Cancun|Cancun, Mexico|4.0|43
+Hacienda Buenaventura Hotel & Mexican Charm|Puerto Vallarta, Mexico|3.0|42
+The Sens Riviera|Riviera Maya, Mexico|4.0|42
+Villas HM Paraíso del Mar|Isla Holbox, Mexico|4.0|42
+Grand Oasis Riviera|Riviera Maya, Mexico|4.0|42
+Riu Lupita|Riviera Maya, Mexico|4.0|41
+All Ritmo Cancun Resort and Waterpark|Cancun, Mexico|3.0|41
+Bluebay Grand Esmeralda|Riviera Maya, Mexico|4.5|40
+Krystal Puerto Vallarta|Puerto Vallarta, Mexico|4.0|39
+The Grand Oasis Cancun|Cancun, Mexico|4.0|39
+Catalonia Yucatan Beach|Riviera Maya, Mexico|4.0|39
+Friendly Fun Vallarta|Puerto Vallarta, Mexico|4.0|39
+GR Solaris Caribe Adults Only|Cancun, Mexico|4.0|38
+Oh Cancun The Urban Oasis|Cancun, Mexico|4.0|37
+Barcelo Huatulco|Huatulco|4.5|37
+Plaza Pelicanos Club Beach Resort|Puerto Vallarta, Mexico|3.0|36
+Grand Oasis Palm|Cancun, Mexico|4.0|36
+Starfish Jolly Beach Resort|Antigua|3.0|36
+Catalonia Bavaro Beach and Golf Resort|Punta Cana, Dominican Republic|4.0|35
+Villas HM Palapas del Mar|Isla Holbox, Mexico|4.5|34
+Catalonia Riviera Maya|Riviera Maya, Mexico|4.0|34
+Bluebay Villas Doradas|Puerto Plata, Dominican Republic|4.0|33
+Hodelpa Garden Suites Golf and Convention Center|Santo Domingo, Dominican Republic|4.0|32
+Krystal Grand Los Cabos|Los Cabos, Mexico|4.0|32
+Senator Puerto Plata Hotel|Puerto Plata, Dominican Republic|4.5|31
+Crown Paradise Club Cancun|Cancun, Mexico|4.0|30
+Santo Domingo Bay Resort and Casino|Santo Domingo, Dominican Republic|4.0|30
+Royal Solaris Cancun|Cancun, Mexico|4.0|30
+GR Solaris Cancun|Cancun, Mexico|4.5|30
+Canto del Sol Puerto Vallarta All Inclusive|Puerto Vallarta, Mexico|4.0|30
+Viva Tangerine by Wyndham|Puerto Plata, Dominican Republic|4.0|30
+Marina El Cid Spa and Beach Resort|Riviera Maya, Mexico|5.0|29
+Ocean Coral and Turquesa|Riviera Maya, Mexico|4.0|29
+Secrets Huatulco Rst and Spa|Huatulco|5.0|29
+Sunscape Dorado Pacifico Ixtapa|Ixtapa, Mexico|4.0|28
+Krystal Grand Nuevo Vallarta|Puerto Vallarta, Mexico|4.0|27
+Riu Republica|Punta Cana, Dominican Republic|5.0|27
+Royalton Splash Riviera Cancun|Riviera Maya, Mexico|5.0|27
+Fiesta Americana Riviera Nayarit Resort and Spa|Puerto Vallarta, Mexico|4.0|27
+The Sens Cancun|Cancun, Mexico|4.5|27
+Holiday Inn Resort Ixtapa|Ixtapa, Mexico|4.0|26
+Royalton Riviera Cancun An Autograph Collection All Inclusive Resort and Casino|Riviera Maya, Mexico|5.0|26
+Park Royal Huatulco|Huatulco|3.5|26
+Grand Decameron Complex, Trademark|Puerto Vallarta, Mexico|4.0|25
+Whala Bavaro|Punta Cana, Dominican Republic|4.0|24
+Catalonia Bayahibe|La Romana, Dominican Republic|4.0|24
+Tesoro Los Cabos|Los Cabos|3.5|24
+Grand Sirenis Punta Cana Resort|Punta Cana, Dominican Republic|4.5|24
+Royalton CHIC Cancun An Autograph Collection All Inclusive Resort Adults Only|Cancun, Mexico|5.0|23
+Playabachata|Puerto Plata, Dominican Republic|4.0|23
+Occidental Caribe|Punta Cana, Dominican Republic|4.0|23
+Park Royal Beach Resort Ixtapa|Ixtapa, Mexico|4.0|23
+Viva Heavens by Wyndham|Puerto Plata, Dominican Republic|4.0|23
+Emotions By Hodelpa Juan Dolio|Santo Domingo, Dominican Republic|4.5|23
+Royal Solaris Los Cabos|Los Cabos, Mexico|4.0|23
+Iberostar Selection Riviera Cancun|Cancun, Mexico|4.5|22
+Occidental Tamarindo|null, Costa Rica|3.5|22
+Princess Senses The Mangrove|Negril, Jamaica|5.0|22
+Ocean Eden Bay|Montego Bay, Jamaica|5.0|22
+Iberostar Waves Rose Hall Beach|Montego Bay, Jamaica|4.0|21
+Azul Beach Resort Negril|Negril, Jamaica|4.0|21
+Krystal Cancun|Cancun, Mexico|4.0|21
+Bahia Principe Grand Punta Cana|Punta Cana, Dominican Republic|4.5|21
+Dreams Huatulco|Huatulco|4.5|20
+Bahia Principe Grand Turquesa|Punta Cana, Dominican Republic|5.0|20
+Planet Hollywood Adult Scene Cancun by Royalton, An Autograph Collection All Inclusive Resort Adults|Cancun, Mexico|5.0|20
+Riu Dunamar|Cancun, Mexico|5.0|20
+Occidental Punta Cana|Punta Cana, Dominican Republic|4.0|20
+Barcelo Gran Faro Los Cabos|Los Cabos|4.5|20
+Royalton Hideaway Riviera Cancun, An Autograph Collection All Inclusive Resort Adults Only|Riviera Maya, Mexico|5.0|20
+Occidental Costa Cancun|Cancun|4.0|20
+Coral Costa Caribe Resort|Santo Domingo, Dominican Republic|4.0|20
+Delta Hotels Riviera Nayarit|Puerto Vallarta, Mexico|4.5|19
+Occidental Tucancun|Cancun, Mexico|4.0|19
+Occidental Papagayo|Liberia, Costa Rica|4.5|19
+Vamar Vallarta All Inclusive Marina and Beach Resort|Puerto Vallarta, Mexico|3.0|19
+Viva Maya by Wyndham|Riviera Maya, Mexico|4.0|19
+Marina Fiesta Resort & Spa|Los Cabos, Mexico|4.0|18
+Dreams Dominicus La Romana|Punta Cana, Dominican Republic|5.0|18
+Samba Vallarta Hotel|Riviera Nayarit, Mexico|4.0|18
+Emotions by Hodelpa Puerto Plata|Puerto Plata, Dominican Republic|4.5|18
+Viva Miches by Wyndham|Punta Cana, Dominican Republic|4.0|18
+Grand Sunset Princess|Riviera Maya, Mexico|5.0|18
+VH Gran Ventana Beach Resort|Puerto Plata, Dominican Republic|4.0|17
+Krystal Grand Puerto Vallarta|Puerto Vallarta, Mexico|4.5|17
+Decameron Isla Coral Guayabitos, Ramada|Puerto Vallarta, Mexico|3.0|17
+Catalonia Royal Bavaro|Punta Cana, Dominican Republic|4.5|17
+Park Royal Beach Cancun|Cancun, Mexico|3.5|17
+Ocean Coral Spring|Montego Bay, Jamaica|5.0|17
+Riu Palace Aquarelle|Montego Bay, Jamaica|5.0|17
+Bahia Principe Grand Samana - Adults Only|Samana, Dominican Republic|5.0|17
+Ocean Blue & Sand|Punta Cana, Dominican Republic|4.5|17
+Moon Palace Jamaica|Ocho Rios, Jamaica|5.0|17
+Riu Vallarta|Riviera Nayarit, Mexico|5.0|16
+Riu Montego Bay|Montego Bay, Jamaica|5.0|16
+Princess Grand Jamaica|Negril, Jamaica|5.0|16
+HOTEL DOS PLAYAS FARANDA|Cancun, Mexico|3.0|16
+Ocean Riviera Paradise|Riviera Maya, Mexico|4.5|16
+Bakour Punta Cana Suites|Punta Cana, Dominican Republic|4.0|16
+Couples Tower Isle|Ocho Rios, Jamaica|4.0|16
+Riu Tequila|Riviera Maya, Mexico|4.5|15
+Oleo Cancun Playa|Cancun|4.5|15
+Riu Jalisco|Riviera Nayarit, Mexico|4.5|15
+Iberostar Selection Hacienda Dominicus|La Romana, Dominican Republic|4.5|15
+Ocean Coral and Turquesa El Beso|Riviera Maya, Mexico|4.0|15
+Planet Hollywood Costa Rica, An Autograph Collection All-Inclusive Resort|Liberia, Costa Rica|5.0|15
+Vista Sol Punta Cana|Punta Cana, Dominican Republic|4.0|14
+Planet Hollywood Cancun by Royalton, An Autograph Collection All Inclusive Resort|Cancun, Mexico|5.0|14
+Riu Reggae|Montego Bay, Jamaica|5.0|14
+Hodelpa Nicolas De Ovando|Santo Domingo, Dominican Republic|5.0|14
+El Cid Granada|Mazatlán, Mexico|3.5|14
+SEADUST CANCUN FAMILY RESORT|Cancun, Mexico|4.0|14
+Caribe Deluxe Princess|Punta Cana, Dominican Republic|5.0|14
+Iberostar Waves Dominicana|Punta Cana, Dominican Republic|4.0|14
+Sandos Caracol Nature Resort and Water Park|Riviera Maya, Mexico|4.0|14
+Riu Bambu|Punta Cana, Dominican Republic|5.0|14
+Decameron La Marina Guayabitos Ramada|Riviera Nayarit, Mexico|4.0|14
+Azura Beach Resort Samara|Liberia, Costa Rica|5.0|14
+Ocean El Faro|Punta Cana, Dominican Republic|5.0|13
+Armony Marival Resort and Spa - MGallery|Puerto Vallarta, Mexico|4.5|13
+Impressive Resorts & Spas Punta Cana|Punta Cana, Dominican Republic|4.0|13
+Marival Emotions Resort and Suites Riviera Nayarit by Mercure|Riviera Nayarit, Mexico|4.0|13
+Starfish Cuatro Palmas|Varadero|3.5|13
+Hacienda Encantada Resort|Los Cabos, Mexico|4.5|13
+Iberostar Selection Playa Mita|Puerto Vallarta, Mexico|4.5|13
+Grand Park Royal Cancun Caribe|Cancun|4.5|13
+Dreams Cap Cana|Punta Cana, Dominican Republic|5.0|13
+Couples Sans Souci|Ocho Rios, Jamaica|4.0|13
+Decameron Los Cocos Guayabitos Ramada|Riviera Nayarit, Mexico|3.0|12
+Grand Bavaro Princess|Punta Cana, Dominican Republic|5.0|12
+Riu Ocho Rios|Ocho Rios, Jamaica|5.0|12
+Royalton Hicacos Resort and Spa|Varadero, Cuba|5.0|12
+Barcelo Aruba|Aruba, Aruba|4.5|12
+Renaissance Wind Creek Aruba Resort|Aruba, Aruba|4.5|12
+Riu Palace Pacifico|Riviera Nayarit, Mexico|5.0|12
+Grand Park Royal Cozumel|Cozumel, Mexico|4.0|12
+Grand Palladium Jamaica Resort & Spa|Montego Bay, Jamaica|4.5|12
+Ventus at Marina El Cid Spa and Beach Resort|Riviera Maya, Mexico|5.0|11
+Melia Las Antillas|Varadero, Cuba|4.0|11
+Cofresi Palm Beach Resort and Spa|Puerto Plata, Dominican Republic|3.5|11
+Wyndham Grand Cancun All Inclusive Resort and Villas|Cancun, Mexico|4.0|11
+Couples Swept Away|Negril, Jamaica|4.0|11
+Samsara Cliff Resort|Negril, Jamaica|3.0|11
+Grand Palladium Lady Hamilton Resort & Spa|Montego Bay, Jamaica|4.5|11
+Hotel Villa Taina|Puerto Plata, Dominican Republic|3.5|11
+El Cid Castilla Beach|Mazatlán, Mexico|4.0|11
+Bel Jou Hotel|St Lucia|4.5|11
+Bahia Principe Grand El Portillo|Samana, Dominican Republic|4.5|11
+Star Palace Beach Hotel|Mazatlán, Mexico|3.5|10
+Viva V Samana by Wyndham, A Trademark Adults All Inclusive|Samana, Dominican Republic|4.0|10
+Meliá Caribe Beach Resort|Punta Cana, Dominican Republic|4.5|10
+Catalonia Royal La Romana|La Romana, Dominican Republic|5.0|10
+VIK Hotel Arena Blanca|Punta Cana, Dominican Republic|3.5|10
+Occidental Cozumel|Cozumel, Mexico|4.0|10
+Catalonia Playa Maroma|Cancun, Mexico|4.0|10
+Riu Negril|Negril, Jamaica|5.0|10
+Sunset Palace Beach Hotel|Mazatlán, Mexico|3.5|10
+Paradise Village|Riviera Nayarit|4.5|10
+Allegro Cozumel|Cozumel, Mexico|4.0|10
+Ventus Ha at Marina El Cid Spa & Beach Resort|Riviera Maya, Mexico|5.0|10
+Iberostar Selection Rose Hall Suites|Montego Bay, Jamaica|4.5|10
+Pacific Palace|Mazatlán, Mexico|3.5|10
+Oceano Palace|Mazatlán, Mexico|3.5|10
+Riu Palace Jamaica|Montego Bay, Jamaica|5.0|10
+Dreams Vista Cancun Golf & Spa Resort|Cancun, Mexico|5.0|10
+Melia Puerto Vallarta|Puerto Vallarta, Mexico|4.0|9
+El Cid La Ceiba Beach Resort|Cozumel, Mexico|4.0|9
+Riu Santa Fe|Los Cabos, Mexico|4.5|9
+Ocean Riviera Paradise El Beso|Cancun, Mexico|4.5|9
+Wyndham Alltra Samana|Samana, Dominican Republic|4.0|9
+Fiesta Americana Puerto Vallarta|Puerto Vallarta|4.5|9
+Couples Negril|Negril, Jamaica|4.0|9
+Melia Casa Maya|Riviera Maya, Mexico|4.0|8
+Grand Memories Varadero|Varadero|4.5|8
+S HOTEL MONTEGO BAY|Montego Bay, Jamaica|5.0|8
+Grand Palladium Vallarta Resort & Spa|Puerto Vallarta, Mexico|4.0|8
+Family Club at Grand Bavaro Princess|Punta Cana, Dominican Republic|5.0|8
+Hideaway at Royalton St. Lucia, An Autograph Collection All-Inclusive Resort - Adults Only|St Lucia, Saint Lucia|5.0|8
+Fun Holiday Beach Resort|Negril, Jamaica|3.0|8
+Sunscape Dominicus La Romana|La Romana, Dominican Republic|4.0|8
+Divi Village Golf & Beach Resort|Aruba, Aruba|4.0|8
+Holiday Inn Resort Aruba|Aruba, Aruba|3.5|8
+Aruba Marriott Resort and Stellaris Casino|Aruba, Aruba|4.0|8
+Sensira Resort & Spa Riviera Maya|Riviera Maya, Mexico|5.0|8
+Legends Beach Resort|Negril, Jamaica|3.0|7
+Divi Little Bay Beach Resort St. Maarten|St. Maarten, St Maarten|3.5|7
+Sanctuary White Sands|Cayo Coco, Cuba|4.0|7
+Riu Emerald Bay|Mazatlán, Mexico|5.0|7
+Viva Azteca by Wyndham|Riviera Maya, Mexico|4.0|7
+Secrets St. Lucia Resort & Spa|St Lucia, Saint Lucia|5.0|7
+Meliá Cozumel|Cozumel, Mexico|4.0|7
+Ocean El Faro-el Beso Adults Only|Punta Cana|4.5|7
+Royalton Splash Punta Cana An Autograph Collection All Inclusive Resort and Casino|Punta Cana, Dominican Republic|5.0|7
+Iberostar Waves Cozumel|Cozumel, Mexico|4.0|7
+JOIA Aruba by Iberostar|Aruba, Aruba|5.0|7
+Iberostar Waves Punta Cana|Punta Cana, Dominican Republic|4.0|7
+Warwick Paradise Island Resort|Nassau|4.0|7
+Impressive Premium Resorts & Spas Punta Cana|Punta Cana, Dominican Republic|4.5|7
+Lifestyle Tropical Beach Resort and Spa|Puerto Plata, Dominican Republic|3.5|7
+Sunset at the Palms Resort and Spa|Negril, Jamaica|4.0|7
+Royalton Saint Lucia, an Autograph Collection All-Inclusive Resort|St Lucia, Saint Lucia|5.0|7
+Royalton Antigua, An Autograph Collection All-inclusive Resort|Antigua, Antigua and Barbuda|5.0|7
+Panama Jack Resorts Cancun|Cancun|4.5|6
+GRAND OASIS PALM|Cancun, Mexico|4.0|6
+ZEL Punta Cana|Punta Cana, Dominican Republic|5.0|6
+Riu Palace Bavaro|Punta Cana, Dominican Republic|5.0|6
+Riu Palace Mexico|Riviera Maya, Mexico|5.0|6
+Riu Latino|Cancun, Mexico|5.0|6
+Bahia Principe Fantasia Punta Cana|Punta Cana, Dominican Republic|5.0|6
+Vik Hotel Cayena Beach|Punta Cana|4.0|6
+GROTTO BAY BEACH RESORT BERMUDA|Bermuda, Bermuda|5.0|6
+Zoetry Marigot Bay Resort and Marina|St Lucia, Saint Lucia|5.0|6
+Windjammer Landing Resort and Residences|St Lucia, Saint Lucia|5.0|6
+Sol Palmeras Resort and Bungalows|Varadero, Cuba|4.0|6
+Bahia Principe Grand Aquamarine - Adults only|Punta Cana, Dominican Republic|5.0|6
+Iberostar Waves Paraiso Beach|Riviera Maya, Mexico|4.0|6
+Oceans at Divi Little Bay|St. Maarten, St Maarten|3.5|6
+Dreams Sands Cancun Resort and Spa|Cancun|4.5|6
+Riu Yucatan|Riviera Maya, Mexico|5.0|6
+COCO REEF BERMUDA|Bermuda, Bermuda|3.5|5
+Hotel Villas Playa Samara|Liberia, Costa Rica|3.5|5
+Grand Park Royal Puerto Vallarta|Puerto Vallarta, Mexico|4.0|5
+Secrets Playa Mujeres Golf and Spa Resort|Cancun, Mexico|5.0|5
+Sandals Royal Plantation Beach & Villa Golf Resort|Ocho Rios, Jamaica|5.0|5
+El Cozumeleno Beach Resort|Cozumel, Mexico|4.0|5
+The Sands Barbados|Bridgetown|4.0|5
+Emporio Ixtapa|Ixtapa-Zihuatanejo, Mexico|3.5|5
+El Dorado Seaside Palms|Riviera Maya, Mexico|5.0|5
+Royalton Cayo Santa Maria|Cayo Santa Maria, Cuba|5.0|5
+Viva Dominicus Palace by Wyndham|La Romana, Dominican Republic|4.0|5
+Sunscape Puerto Vallarta Resort & Spa|Puerto Vallarta, Mexico|4.0|5
+Grand Memories Santa Maria|Cayo Santa Maria, Cuba|4.0|5
+Riu Palace Tropical Bay|Negril, Jamaica|5.0|5
+Breathless Cancun Soul Resort and Spa|Cancun, Mexico|5.0|5
+The Club, Barbados Resort & Spa|Barbados, Barbados|4.0|5
+Memories Flamenco Beach Resort|Cayo Coco|4.5|5
+Beaches Negril Resort and Spa|Montego Bay, Jamaica|5.0|5
+Catalonia Grand Costa Mujeres All Suites & Spa|Cancun, Mexico|5.0|5
+Bahia Principe Luxury Runaway Bay|Runaway Bay|5.0|5
+Nyx Hotel Cancun|Cancun|4.0|5
+Paradisus Rio de Oro Resort and Spa|Holguin, Cuba|5.0|5
+Sanctuary at Grand Memories Santa Maria|Cayo Santa Maria, Cuba|4.0|5
+Iberostar Waves Costa Dorada|Puerto Plata, Dominican Republic|4.5|5
+Grand Palladium Palace Resort Spa & Casino|Punta Cana, Dominican Republic|4.5|5
+Iberostar Selection Bavaro Suites|Punta Cana, Dominican Republic|4.5|5
+Gran Evenia Bijao|Playa Blanca-Playa Bonita, Panama|4.0|4
+Secrets Aura Cozumel|Cozumel, Mexico|5.0|4
+Bahia Principe Grand Coba|Riviera Maya|4.0|4
+Villa La Valencia Beach Resort & Spa Los Cabos, México|Los Cabos|5.0|4
+Iberostar Grand Hotel Bavaro|Punta Cana|5.0|4
+The Pyramid Cancun|Cancun, Mexico|4.5|4
+Posada Real Los Cabos|Los Cabos|3.5|4
+Pueblo Bonito Rose Resort and Spa|Los Cabos, Mexico|5.0|4
+Pueblo Bonito Mazatlan Resort|Mazatlán, Mexico|4.5|4
+Crown Paradise Golden Puerto Vallarta|Puerto Vallarta|4.5|4
+Playa Mazatlan Beach Hotel|Mazatlán, Mexico|4.0|4
+Lifestyle Residence Suites|Puerto Plata, Dominican Republic|3.5|4
+El Cid Marina Beach|Mazatlán, Mexico|4.0|4
+Grand Memories Holguin|Holguin, Cuba|4.0|4
+Grand Palladium Colonial Resort & Spa|Riviera Maya, Mexico|4.5|4
+Dreams Bahia Mita Surf & Spa Resort|Puerto Vallarta, Mexico|5.0|4
+Fiesta Resort All Inclusive|Liberia, Costa Rica|4.0|4
+Grand Palladium Punta Cana|Punta Cana|4.5|4
+Dreams Estrella del Mar Mazatlan Golf and Spa Resort|Mazatlán, Mexico|5.0|4
+Las Brisas Huatulco|Huatulco|4.5|4
+Luna Palace Hotel and Suites|Mazatlán, Mexico|3.5|4
+Barbados Beach Club|Bridgetown|3.0|4
+Riu Palace Cabo San Lucas|Los Cabos, Mexico|5.0|4
+Playa Blanca Hotel and Resort All Inclusive Panama|Playa Blanca-Playa Bonita, Panama|4.0|4
+Serenade All Suites Adults Only Resort|Punta Cana, Dominican Republic|4.5|4
+Viva Dominicus Beach by Wyndham|La Romana, Dominican Republic|3.0|4
+Dreams Puerto Morelos Resort and Spa|Cancun, Mexico|5.0|4
+Riu Ventura|Cancun, Mexico|5.0|4
+Iberostar Waves Tucan|Riviera Maya, Mexico|4.0|4
+Reef Playacar|Riviera Maya|4.0|4
+Eurostars Grand Cayacoa|Samana, Dominican Republic|4.0|4
+Riu Playa Blanca|Playa Blanca-Playa Bonita, Panama|5.0|4
+Pueblo Bonito Emerald Bay Resort and Spa|Mazatlán, Mexico|5.0|4
+El Dorado Seaside Suites|Riviera Maya, Mexico|5.0|4
+Buenaventura Grand Hotel and Great Moments|Puerto Vallarta, Mexico|4.0|3
+Breezes Resort|Nassau|3.0|3
+WYNDHAM GRAND BARBADOS SAM LORDS CASTLE|Barbados, Barbados|3.0|3
+Riu Guanacaste|Liberia, Costa Rica|5.0|3
+Sandals Ochi Beach Resort|Ocho Rios|5.0|3
+Playa Pesquero Resort Suites and Spa|Holguin, Cuba|4.0|3
+Melia Trinidad Peninsula|Trinidad, Cuba|4.5|3
+Secrets Baby Beach Aruba|Aruba, Aruba|5.0|3
+Hard Rock Hotel Vallarta|Puerto Vallarta, Mexico|4.5|3
+Ocean Point Resort and Spa|Antigua|3.0|3
+Sandals Negril Beach Resort and Spa|Negril, Jamaica|5.0|3
+Blue Diamond Luxury Boutique Hotel|Riviera Maya, Mexico|5.0|3
+Royalton CHIC Punta Cana, An Autograph Collection All-Inclusive Resort & Casino - Adults Only|Punta Cana, Dominican Republic|5.0|3
+Royalton Grenada, an Autograph Collection All-Inclusive Resort|Grenada, Grenada|5.0|3
+Tropical Deluxe Princess|Punta Cana, Dominican Republic|5.0|3
+BLUE HORIZONS GARDEN RESORT|Grenada, Grenada|3.0|3
+Serenade Punta Cana Beach and Spa Resort|Punta Cana, Dominican Republic|4.5|3
+Platinum Yucatan Princess|Riviera Maya, Mexico|5.0|3
+Embassy Suites by Hilton Aruba Resort|Aruba, Aruba|4.0|3
+Riu Playacar|Riviera Maya, Mexico|5.0|3
+True Blue Bay Boutique Resort and Villas|Grenada, Grenada|3.0|3
+RADISSON GRENADA BEACH RESORT|Grenada, Grenada|3.0|3
+COSTA CLUB PUNTA ARENA|Puerto Vallarta, Mexico|4.0|3
+Dreams Aventuras Riviera Maya|Riviera Maya, Mexico|4.5|3
+Riu Cancun|Cancun, Mexico|5.0|3
+Secrets Tides Punta Cana|Punta Cana, Dominican Republic|5.0|3
+Paradisus La Perla Adults Only Riviera Maya|Riviera Maya, Mexico|5.0|3
+Riu Caribe|Cancun, Mexico|4.5|3
+SUGAR CANE CLUB HOTEL AND SPA|Barbados, Barbados|3.0|3
+Iberostar Waves Quetzal|Riviera Maya, Mexico|4.0|3
+El Cid El Moro Beach Hotel|Mazatlán, Mexico|4.0|3
+Camino Real Zaashila|Huatulco|4.0|3
+Savannah Beach Hotel|Bridgetown|3.5|3
+Sonesta Maho Beach Resort, Casino & Spa|St. Maarten, St Maarten|4.5|3
+Riu Palace Kukulkan|Cancun, Mexico|5.0|3
+Media Luna|Roatan, Honduras|3.5|3
+Royalton CHIC Antigua, An Autograph Collection All-Inclusive Resort - Adults Only|Antigua, Antigua and Barbuda|5.0|3
+Marival Distinct All Suites & World Spa|Puerto Vallarta, Mexico|5.0|3
+Island Inn Hotel|Bridgetown|3.0|3
+BAY GARDENS HOTEL|Saint Lucia, Saint Lucia|3.0|2
+The Hacienda at Krystal Grand|Puerto Vallarta, Mexico|4.5|2
+Emporio Cancun|Cancun, Mexico|4.0|2
+Secrets the Vine Cancun|Cancun|5.0|2
+Melia Punta Cana Beach Resort|Punta Cana|4.5|2
+Hampton by Hilton Grand Cayman|Grand Cayman, Cayman Islands|3.0|2
+Plaza Pelicanos Grand Beach Resort|Puerto Vallarta|4.0|2
+El Dorado Royale|Riviera Maya, Mexico|5.0|2
+Nickelodeon Hotels and Resorts Punta Cana|Punta Cana, Dominican Republic|5.0|2
+Krystal Ixtapa|Ixtapa, Mexico|3.5|2
+Royal Villas Resort|Mazatlán, Mexico|4.0|2
+Royalton Blue Waters|Montego Bay|5.0|2
+Seagarden Beach Resort|Montego Bay|3.5|2
+Allegro Playacar|Riviera Maya|4.0|2
+Cayo Levantado Resort|Samana, Dominican Republic|5.0|2
+HOLIDAY INN RESORT GRAND CAYMAN|Grand Cayman, Cayman Islands|3.0|2
+The Sunshine Hotel and Suites|Grand Cayman, Cayman Islands|3.5|2
+Breathless Riviera Cancun Rst and Spa|Riviera Maya|5.0|2
+Tamarijn Aruba All Inclusive|Aruba, Aruba|4.0|2
+Pueblo Bonito Sunset Beach Resort|Los Cabos, Mexico|5.0|2
+Ocean Allure Costa Mujeres|Cancun, Mexico|5.0|2
+Iberostar Waves Paraiso Del Mar|Riviera Maya, Mexico|4.0|2
+Sandos Cancun|Cancun, Mexico|5.0|2
+Iberostar Selection Coral Cancun|Cancun, Mexico|5.0|2
+Henry Morgan Beach Resort|Roatan, Honduras|3.5|2
+Dreams Playa Bonita Panama|Panama, Panama|5.0|2
+Joia Rose Hall by Iberostar|Montego Bay, Jamaica|5.0|2
+Majestic Elegance Punta Cana|Punta Cana, Dominican Republic|5.0|2
+Dreams La Romana|La Romana|4.5|2
+HARMONY MARINA SUITES|Saint Lucia, Saint Lucia|4.0|2
+Hard Rock Hotel Cancun|Cancun, Mexico|5.0|2
+Majestic Colonial Punta Cana|Punta Cana, Dominican Republic|4.5|2
+Royalton Punta Cana An Autograph Collection All Inclusive Resort and Casino|Punta Cana, Dominican Republic|5.0|2
+Casa De Campo Resort and Villas|La Romana, Dominican Republic|5.0|2
+Grand Cayman Marriott Resort|Grand Cayman, Cayman Islands|4.5|2
+GRAND CAYMANIAN RESORT|Grand Cayman, Cayman Islands|3.5|2
+Viaggio Resort Mazatlan|Mazatlán, Mexico|4.5|2
+Bahia Principe Luxury Sian Ka'an|Riviera Maya|4.5|2
+Infinity Bay Spa & Beach Resort|Roatan, Honduras|4.0|2
+Zoetry Agua Punta Cana|Punta Cana, Dominican Republic|5.0|2
+The Westin Grand Cayman Seven Mile Beach Resort & Spa|Grand Cayman, Cayman Islands|4.5|2
+Posada Real Puerto Escondido|Puerto Escondido|3.0|2
+Sugar Bay Barbados|Bridgetown|4.0|2
+AVA Resort Cancun|Cancun, Mexico|5.0|2
+Dreams Jade Resort and Spa|Riviera Maya, Mexico|5.0|2
+The SoCo House|St Lucia, Saint Lucia|4.0|2
+Ocean Maya Royale|Riviera Maya, Mexico|4.0|2
+Secrets Bahia Mita Surf and Spa Resort|Riviera Nayarit, Mexico|5.0|2
+Sandals Regency La Toc|St Lucia, Saint Lucia|5.0|2
+Dreams Natura Resort and Spa|Riviera Maya, Mexico|4.5|2
+Barcelo Maya Beach|Riviera Maya|4.5|2
+Grand Decameron Panama Trademark|Panama, Panama|4.0|1
+The Westin Reserva Conchal Golf Resort and Spa|Liberia, Costa Rica|5.0|1
+Pueblo Bonito Los Cabos Beach Resort|Los Cabos, Mexico|5.0|1
+Secrets Papagayo Costa Rica|Liberia, Costa Rica|5.0|1
+Lopesan Costa Bavaro Resort Spa and Casino|Punta Cana, Dominican Republic|5.0|1
+Hard Rock Hotel and Casino Punta Cana|Punta Cana|5.0|1
+Bahia Principe Luxury Ambar|Punta Cana|4.5|1
+Iberostar Selection Coral Bavaro|Punta Cana, Dominican Republic|4.5|1
+The Royal Suites Turquesa by Palladium|Punta Cana|5.0|1
+Grand Sirenis Riviera Maya Resort and Spa|Riviera Maya, Mexico|4.5|1
+Floris Suite Hotel Spa and Beach Club|Curacao|5.0|1
+Grand Palladium Select Bavaro|Punta Cana, Dominican Republic|4.5|1
+Royalton Bavaro An Autograph Collection All Inclusive Resort and Casino|Punta Cana, Dominican Republic|5.0|1
+CAMBRIDGE BEACHES RESORT AND SPA|Bermuda, Bermuda|4.0|1
+Riu Palace Peninsula|Cancun, Mexico|5.0|1
+St. James&#x27;s Club & Villas Antigua|Antigua, Antigua and Barbuda|4.0|1
+Barcelo Bavaro Beach|Punta Cana|4.5|1
+Dreams Macao Beach Punta Cana|Punta Cana, Dominican Republic|5.0|1
+Valentin Imperial Riviera Maya|Riviera Maya, Mexico|5.0|1
+TRS Yucatan Hotel|Riviera Maya, Mexico|5.0|1
+Riu Palace Punta Cana|Punta Cana, Dominican Republic|5.0|1
+Sandals Royal Curacao|Curacao|4.5|1
+BAY GARDENS BEACH RESORT AND SPA|Saint Lucia, Saint Lucia|3.0|1
+Corendon Mangrove Beach Resort|Curacao|4.5|1
+The Fives Oceanfront Puerto Morelos|Riviera Maya, Mexico|5.0|1
+Grand Palladium Kantenah Resort & Spa|Riviera Maya, Mexico|4.5|1
+Waves Resort & Spa, Barbados, An Autograph Collection All-Inclusive Resort|Barbados, Barbados|4.5|1
+Iberostar Selection Paraiso Maya Suites|Riviera Maya, Mexico|4.5|1
+Dreams Sapphire Resort & Spa|Riviera Maya, Mexico|4.5|1
+Grand Fiesta Americana Los Cabos|Los Cabos, Mexico|4.5|1
+Sandos Playacar|Riviera Maya, Mexico|4.0|1
+Le Blanc Spa Resort Cancun|Cancun, Mexico|5.0|1
+Hyatt Zilara Riviera Maya|Riviera Maya, Mexico|5.0|1
+Hilton La Romana All Inclusive Adult Resort|La Romana|4.5|1
+Adults Only Club at Lopesan Costa Bavaro|Punta Cana, Dominican Republic|5.0|1
+Margaritaville Island Reserve Riviera Maya - Adults Only|Cancun, Mexico|5.0|1
+Atelier Playa Mujeres|Cancun, Mexico|5.0|1
+Dreams Royal Beach Punta Cana|Punta Cana, Dominican Republic|5.0|1
+Impression Isla Mujeres by Secrets|Cancun, Mexico|5.0|1
+Dreams Flora Resort & Spa|Punta Cana, Dominican Republic|5.0|1
+Paradisus Palma Real Golf and Spa Resort|Punta Cana, Dominican Republic|5.0|1
+Pueblo Bonito Pacifica Golf & Spa Resort|Los Cabos, Mexico|5.0|1
+The Westin Cozumel|Cozumel, Mexico|4.5|1
+Select Sosua Adults Only Trademark by Wyndham All Inclusive|Puerto Plata, Dominican Republic|4.0|1
+Barcelo Bavaro Palace|Punta Cana, Dominican Republic|5.0|1
+Binniguenda Huatulco|Huatulco|3.5|1
+The Rif At Mangrove Bch Corendon Curacao|Curacao|4.5|1
+Secrets Moxche Playa Del Carmen|Riviera Maya, Mexico|5.0|1
+The Reef 28 Playa Del Carmen|Riviera Maya|4.5|1
+Iberostar Selection Cancun|Cancun, Mexico|4.5|1
+Moon Palace Cancun|Riviera Maya, Mexico|5.0|1
+HAWKSBILL RESORT ANTIGUA|Antigua, Antigua and Barbuda|3.0|1
+Bahia Principe Luxury Esmeralda|Punta Cana, Dominican Republic|5.0|1
+Paradisus Cancun|Cancun, Mexico|5.0|1
+Sunscape Curacao Resort Spa and Casino|Curacao|4.0|1
+Riu Palace Baja California|Los Cabos, Mexico|5.0|1
+Riu Palace Riviera Maya|Riviera Maya, Mexico|5.0|1
+Villa Premiere Hotel & Romantic Getaway|Puerto Vallarta, Mexico|4.5|0
+Sonesta Ocean Point Resort|St. Maarten, St Maarten|5.0|0
+Sanctuary at Grand Memories Varadero|Varadero|4.5|0
+Dreams Vallarta Bay Resort & Spa|Puerto Vallarta, Mexico|4.5|0
+Iberostar Laguna Azul|Varadero|4.0|0
+Live Aqua Beach Resort Punta Cana|Punta Cana, Dominican Republic|5.0|0
+Royalton White Sands Beach Rst and Spa|Montego Bay|5.0|0
+Hyatt Zilara Rose Hall|Montego Bay|5.0|0
+Memories Caribe Beach Resort|Cayo Coco|4.0|0
+Hilton Cancun Mar Caribe|Cancun, Mexico|5.0|0
+Family Club at Grand Riviera Princess|Riviera Maya, Mexico|5.0|0
+Barcelo Solymar|Varadero|4.0|0
+Secrets Cap Cana Resort and Spa|Punta Cana, Dominican Republic|5.0|0
+Dreams Onyx Resort & Spa|Punta Cana, Dominican Republic|5.0|0
+The Fives Beach Hotel & Residences|Cancun, Mexico|5.0|0
+Riu Palace Las Americas|Cancun, Mexico|5.0|0
+Secrets Mirabel Cancun Resort and Spa|Cancun, Mexico|5.0|0
+Akumal Bay Beach and Spa Resort|Riviera Maya, Mexico|5.0|0
+Dreams Cozumel Cape Resort and Spa|Cozumel, Mexico|4.5|0
+Grand Decameron Los Cabos, Trademark|Los Cabos, Mexico|4.0|0
+Crown Paradise Club Puerto Vallarta|Puerto Vallarta, Mexico|4.0|0
+Hotel Bella Costa|Varadero|3.5|0
+Secrets Puerto Los Cabos Golf & Spa Resort|Los Cabos, Mexico|5.0|0
+COZUMEL HOTEL AND RESORT|Cozumel, Mexico|4.0|0
+Breathless Punta Cana Resort And Spa|Punta Cana, Dominican Republic|5.0|0
+Riu Palace Macao|Punta Cana, Dominican Republic|5.0|0
+Hotel Los Cactus|Varadero|3.5|0
+Jewel Grande Montego Bay Resort and Spa|Montego Bay|5.0|0
+Be Live Experience Varadero|Varadero|3.5|0
+Sandos Finisterra Los Cabos|Los Cabos, Mexico|4.5|0
+Riu Palace Antillas|Aruba, Aruba|5.0|0
+The Westin Playa Bonita|Panama, Panama|5.0|0
+Memories Jibacoa|Varadero|4.0|0
+Pineapple Beach Club|Antigua|4.0|0
+Paradisus Grand Cana All Suites|Punta Cana, Dominican Republic|5.0|0
+Secrets Playa Blanca Costa Mujeres|Cancun, Mexico|5.0|0
+Serenity at Coconut Bay|St Lucia, Saint Lucia|5.0|0
+Paradisus Los Cabos - Adults Only|Los Cabos, Mexico|5.0|0
+Margaritaville Island Reserve Riviera Cancun|Riviera Maya, Mexico|5.0|0
+WYNDHAM ALLTRA PUNTA CANA|Punta Cana, Dominican Republic|4.0|0
+Royalton Hideaway Punta Cana An Autograph Collection All Inclusive Resort and Casino Adults Only|Punta Cana, Dominican Republic|5.0|0
+Royal Decameron Club Caribbean|Runaway Bay|3.0|0
+Riu Palace Costa Mujeres|Cancun, Mexico|5.0|0
+Dreams Curaçao Resort, Spa & Casino|Curacao, Curacao|5.0|0
+Secrets Riviera Cancun Resort & Spa|Riviera Maya, Mexico|5.0|0
+Hideaway at Royalton Negril, An Autograph Collection All-Inclusive Resort - Adults Only|Negril, Jamaica|5.0|0
+Hilton Rose Hall Resort and Spa|Montego Bay|4.5|0
+Starfish Varadero|Varadero|3.5|0
+Royalton Negril An Autograph Collection All Inclusive Resort|Negril, Jamaica|5.0|0
+Flamingo Cancun Resort|Cancun, Mexico|3.5|0
+Margaritaville Beach Resort Playa Flamingo|Liberia, Costa Rica|4.0|0
+Dreams Riviera Cancun Resort & Spa|Riviera Maya, Mexico|5.0|0
+Secrets Maroma Beach Riviera Cancun|Riviera Maya, Mexico|5.0|0
+Hyatt Ziva Los Cabos|Los Cabos, Mexico|5.0|0
+Riu Palace Costa Rica|Liberia, Costa Rica|5.0|0
+CC Beach Front Papagayo|Liberia, Costa Rica|4.0|0
+Generations Riviera Maya|Cancun, Mexico|5.0|0
