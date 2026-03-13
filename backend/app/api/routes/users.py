@@ -12,6 +12,9 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_clerk_user_id
 from app.core.email_validation import is_valid_email
 from app.core.rate_limit import limiter
+from app.db.models.deal import Deal
+from app.db.models.deal_match import DealMatch
+from app.db.models.signal import Signal
 from app.db.models.user import User
 from app.db.session import get_db
 from app.services.account import delete_account as _delete_account
@@ -62,6 +65,8 @@ def get_user_by_clerk_id(
         "email_enabled": user.email_enabled,
         "notification_delivery_frequency": user.notification_delivery_frequency,
         "notification_weekly_summary": user.notification_weekly_summary,
+        "display_name": user.display_name,
+        "name_prompt_dismissed": user.name_prompt_dismissed,
     }
 
 
@@ -156,6 +161,10 @@ def get_prefs(
 
 # ── PUT /users/prefs ────────────────────────────────────────────────────────
 
+class UpdateDisplayNameRequest(BaseModel):
+    display_name: str
+
+
 class UpdatePrefsRequest(BaseModel):
     notification_delivery_frequency: str | None = None
     email_enabled: bool | None = None
@@ -204,6 +213,115 @@ def update_prefs(
 
     db.commit()
     return {"ok": True}
+
+
+# ── PUT /users/display-name ─────────────────────────────────────────────────
+
+@router.put("/display-name")
+def update_display_name(
+    body: UpdateDisplayNameRequest,
+    db: Session = Depends(get_db),
+    clerk_user_id: str = Depends(get_clerk_user_id),
+):
+    user = _get_user_by_clerk(clerk_user_id, db)
+    name = body.display_name.strip()[:100]
+    if not name:
+        raise HTTPException(status_code=400, detail="Display name cannot be empty")
+    user.display_name = name
+    db.commit()
+    return {"ok": True, "display_name": user.display_name}
+
+
+# ── POST /users/dismiss-name-prompt ────────────────────────────────────────
+
+@router.post("/dismiss-name-prompt")
+def dismiss_name_prompt(
+    db: Session = Depends(get_db),
+    clerk_user_id: str = Depends(get_clerk_user_id),
+):
+    user = _get_user_by_clerk(clerk_user_id, db)
+    user.name_prompt_dismissed = True
+    db.commit()
+    return {"ok": True}
+
+
+# ── GET /users/me/export ─────────────────────────────────────────────────────
+
+@router.get("/me/export")
+@limiter.limit("5/hour")
+def export_my_data(
+    request: Request,
+    db: Session = Depends(get_db),
+    clerk_user_id: str = Depends(get_clerk_user_id),
+):
+    """Export all user data as JSON (PIPEDA data portability)."""
+    user = _get_user_by_clerk(clerk_user_id, db)
+
+    # Gather signals
+    signals = db.execute(
+        select(Signal).where(Signal.user_id == user.id)
+    ).scalars().all()
+
+    signals_data = []
+    for sig in signals:
+        # Gather deal matches for this signal
+        matches = db.execute(
+            select(DealMatch, Deal)
+            .join(Deal, DealMatch.deal_id == Deal.id)
+            .where(DealMatch.signal_id == sig.id)
+            .order_by(DealMatch.matched_at.desc())
+            .limit(500)
+        ).all()
+
+        matches_data = [
+            {
+                "matched_at": dm.matched_at.isoformat() if dm.matched_at else None,
+                "deal": {
+                    "provider": deal.provider,
+                    "origin": deal.origin,
+                    "destination": deal.destination,
+                    "hotel_name": deal.hotel_name,
+                    "depart_date": str(deal.depart_date) if deal.depart_date else None,
+                    "return_date": str(deal.return_date) if deal.return_date else None,
+                    "price_cents": deal.price_cents,
+                    "currency": deal.currency,
+                    "star_rating": deal.star_rating,
+                },
+            }
+            for dm, deal in matches
+        ]
+
+        signals_data.append({
+            "id": str(sig.id),
+            "name": sig.name,
+            "status": sig.status,
+            "departure_airports": sig.departure_airports,
+            "destination_regions": sig.destination_regions,
+            "config": sig.config,
+            "created_at": sig.created_at.isoformat() if sig.created_at else None,
+            "deal_matches": matches_data,
+        })
+
+    return {
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "account": {
+            "id": str(user.id),
+            "email": user.email,
+            "display_name": user.display_name,
+            "plan_type": user.plan_type,
+            "plan_status": user.plan_status,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "timezone": user.timezone,
+            "notification_preferences": {
+                "email_enabled": user.email_enabled,
+                "delivery_frequency": user.notification_delivery_frequency,
+                "weekly_summary": user.notification_weekly_summary,
+            },
+            "email_opt_out": user.email_opt_out,
+            "unsubscribe_reason": user.unsubscribe_reason,
+        },
+        "signals": signals_data,
+    }
 
 
 # ── DELETE /users/me ─────────────────────────────────────────────────────────

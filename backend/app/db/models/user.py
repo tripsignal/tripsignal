@@ -23,6 +23,10 @@ class User(Base):
     clerk_id: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
     email: Mapped[str] = mapped_column(Text, nullable=False)
     first_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    display_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    name_prompt_dismissed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false"),
+    )
     role: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'user'"))
     plan_type: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'free'"))
     plan_status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'active'"))
@@ -42,6 +46,7 @@ class User(Base):
     email_opt_out: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false"),
     )
+    unsubscribe_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     email_suppressed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false"),
     )

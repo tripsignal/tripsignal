@@ -72,7 +72,7 @@ _VALID_FREQUENCIES = {"all", "morning", "noon", "evening"}
 
 class UnsubscribeRequest(BaseModel):
     token: str
-    action: str  # "opt_out" | "resubscribe" | "change_frequency" | "update_prefs" | "pause"
+    action: str  # "opt_out" | "submit_feedback" | "resubscribe" | "update_prefs" | "pause"
     email_enabled: Optional[bool] = None
     notification_delivery_frequency: Optional[str] = None
     notification_weekly_summary: Optional[bool] = None
@@ -86,12 +86,17 @@ def update_preferences(request: Request, body: UnsubscribeRequest, db: Session =
     user = _get_user_from_token(body.token, db)
 
     if body.action == "opt_out":
-        if body.reason:
-            safe_reason = body.reason[:200].replace("\n", " ").replace("\r", "")
-            logger.info("Unsubscribe reason for user %s: %s", user.id, safe_reason)
         user.email_opt_out = True
         db.commit()
         return {"ok": True, "message": "You have been unsubscribed from deal alert emails."}
+
+    elif body.action == "submit_feedback":
+        if body.reason:
+            safe_reason = body.reason[:200].replace("\n", " ").replace("\r", "")
+            user.unsubscribe_reason = safe_reason
+            db.commit()
+            logger.info("Unsubscribe feedback for user %s: %s", user.id, safe_reason)
+        return {"ok": True, "message": "Thank you for your feedback."}
 
     elif body.action == "pause":
         user.email_enabled = False

@@ -280,6 +280,25 @@ def toggle_test_user(
 
 
 
+@router.patch("/users/{user_id}/display-name")
+def admin_set_display_name(
+    user_id: str,
+    display_name: str = "",
+    db: Session = Depends(get_db),
+):
+    user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    name = display_name.strip()[:100]
+    user.display_name = name if name else None
+    db.commit()
+
+    logger.info("[ADMIN] set_display_name: %s → display_name=%s", user.email, user.display_name)
+
+    return {"id": str(user.id), "email": user.email, "display_name": user.display_name}
+
+
 @router.patch("/users/{user_id}/set-plan")
 def set_user_plan(
     user_id: str,
@@ -498,6 +517,7 @@ def get_user_feedback(
         "deleted_by": user.deleted_by,
         "deleted_reason": user.deleted_reason,
         "deleted_reason_other": user.deleted_reason_other,
+        "unsubscribe_reason": user.unsubscribe_reason,
     }
 
 
@@ -878,11 +898,13 @@ def users_unified(
             "notification_weekly_summary": u.notification_weekly_summary,
             "timezone": u.timezone,
             "email_mode": u.email_mode,
+            "display_name": u.display_name,
             # Soft-delete fields
             "deleted_at": u.deleted_at.isoformat() if u.deleted_at else None,
             "deleted_by": u.deleted_by,
             "deleted_reason": u.deleted_reason,
             "deleted_reason_other": u.deleted_reason_other,
+            "unsubscribe_reason": u.unsubscribe_reason,
         })
 
     return {"users": results, "total": total}
