@@ -1,11 +1,11 @@
 """Deal match endpoints."""
 
 from uuid import UUID
-from typing import List
+from typing import List, Optional
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import get_clerk_user_id
@@ -60,27 +60,47 @@ def _verify_signal_owner(signal_id: UUID, clerk_user_id: str, db: Session) -> tu
     return signal, user
 
 
-def get_price_trend(db: Session, deal_id: UUID):
-    """Return (price_trend, previous_price_cents, delta_cents) comparing current vs previous price."""
-    history = (
-        db.query(DealPriceHistory)
-        .filter(DealPriceHistory.deal_id == deal_id)
-        .order_by(DealPriceHistory.recorded_at.asc())
-        .all()
+def _build_deal_out(
+    deal: Deal,
+    *,
+    trend: Optional[str] = None,
+    previous_price: Optional[int] = None,
+    delta_cents: Optional[int] = None,
+    first_price: Optional[int] = None,
+    hist_rows: Optional[list] = None,
+    ta_url: Optional[str] = None,
+) -> DealOut:
+    """Construct a DealOut from a Deal model — single source of truth for API response shape."""
+    return DealOut(
+        id=deal.id,
+        provider=deal.provider,
+        origin=deal.origin,
+        destination=deal.destination,
+        depart_date=deal.depart_date,
+        return_date=deal.return_date,
+        price_cents=deal.price_cents,
+        currency=deal.currency,
+        deeplink_url=deal.deeplink_url,
+        airline=deal.airline,
+        cabin=deal.cabin,
+        stops=deal.stops,
+        dedupe_key=deal.dedupe_key,
+        price_trend=trend,
+        previous_price_cents=previous_price,
+        price_delta_cents=delta_cents,
+        is_active=deal.is_active,
+        deactivated_at=deal.deactivated_at,
+        hotel_name=deal.hotel_name,
+        hotel_id=deal.hotel_id,
+        discount_pct=deal.discount_pct,
+        destination_str=_normalize_destination_display(deal.destination_str, deal.destination),
+        star_rating=deal.star_rating,
+        tripadvisor_url=ta_url,
+        found_at=deal.found_at,
+        first_price_cents=first_price,
+        reactivated_at=deal.reactivated_at,
+        price_history=hist_rows if hist_rows and len(hist_rows) > 1 else None,
     )
-    if len(history) < 2:
-        return None, None, None
-
-    previous_price = history[-2].price_cents
-    current_price = history[-1].price_cents
-    delta_cents = current_price - previous_price
-
-    if delta_cents < 0:
-        return "down", previous_price, abs(delta_cents)
-    elif delta_cents > 0:
-        return "up", previous_price, delta_cents
-    else:
-        return "stable", previous_price, 0
 
 
 def _batch_price_trends(db: Session, deal_ids: list[UUID]) -> dict[UUID, tuple]:
@@ -137,6 +157,7 @@ def list_signal_matches(
     matches = (
         db.query(DealMatch)
         .join(Deal)
+        .options(joinedload(DealMatch.deal))
         .filter(DealMatch.signal_id == signal_id)
         .order_by(Deal.is_active.desc(), DealMatch.is_favourite.desc(), DealMatch.matched_at.desc())
         .all()
@@ -153,42 +174,21 @@ def list_signal_matches(
         )
         ta_urls = {r.hotel_id: r.tripadvisor_url for r in rows}
 
-    # Batch-fetch price trends (fixes N+1)
+    # Batch-fetch price trends
     deal_ids = [m.deal.id for m in matches]
     price_trends = _batch_price_trends(db, deal_ids)
 
     result = []
     for match in matches:
         trend, previous_price, delta_cents, first_price, hist_rows = price_trends.get(match.deal.id, (None, None, None, None, None))
-        deal_out = DealOut(
-            id=match.deal.id,
-            provider=match.deal.provider,
-            origin=match.deal.origin,
-            destination=match.deal.destination,
-            depart_date=match.deal.depart_date,
-            return_date=match.deal.return_date,
-            price_cents=match.deal.price_cents,
-            currency=match.deal.currency,
-            deeplink_url=match.deal.deeplink_url,
-            airline=match.deal.airline,
-            cabin=match.deal.cabin,
-            stops=match.deal.stops,
-            dedupe_key=match.deal.dedupe_key,
-            price_trend=trend,
-            previous_price_cents=previous_price,
-            price_delta_cents=delta_cents,
-            is_active=match.deal.is_active,
-            deactivated_at=match.deal.deactivated_at,
-            hotel_name=match.deal.hotel_name,
-            hotel_id=match.deal.hotel_id,
-            discount_pct=match.deal.discount_pct,
-            destination_str=_normalize_destination_display(match.deal.destination_str, match.deal.destination),
-            star_rating=match.deal.star_rating,
-            tripadvisor_url=ta_urls.get(match.deal.hotel_id),
-            found_at=match.deal.found_at,
-            first_price_cents=first_price,
-            reactivated_at=match.deal.reactivated_at,
-            price_history=hist_rows if hist_rows and len(hist_rows) > 1 else None,
+        deal_out = _build_deal_out(
+            match.deal,
+            trend=trend,
+            previous_price=previous_price,
+            delta_cents=delta_cents,
+            first_price=first_price,
+            hist_rows=hist_rows,
+            ta_url=ta_urls.get(match.deal.hotel_id),
         )
         result.append(DealMatchOut(
             id=match.id,
@@ -225,46 +225,23 @@ def toggle_favourite(
     db.commit()
     db.refresh(match)
 
-    trend, previous_price, delta_cents = get_price_trend(db, match.deal.id)
-    # Get first price from history
-    first_hist = (
-        db.query(DealPriceHistory.price_cents)
-        .filter(DealPriceHistory.deal_id == match.deal.id)
-        .order_by(DealPriceHistory.recorded_at.asc())
-        .first()
-    )
-    first_price = first_hist[0] if first_hist else None
+    price_trends = _batch_price_trends(db, [match.deal.id])
+    trend, previous_price, delta_cents, first_price, hist_rows = price_trends.get(match.deal.id, (None, None, None, None, None))
+
     ta_url = None
     if match.deal.hotel_id:
         ta_url = db.query(HotelLink.tripadvisor_url).filter(
             HotelLink.hotel_id == match.deal.hotel_id
         ).scalar()
-    deal_out = DealOut(
-        id=match.deal.id,
-        provider=match.deal.provider,
-        origin=match.deal.origin,
-        destination=match.deal.destination,
-        depart_date=match.deal.depart_date,
-        return_date=match.deal.return_date,
-        price_cents=match.deal.price_cents,
-        currency=match.deal.currency,
-        deeplink_url=match.deal.deeplink_url,
-        airline=match.deal.airline,
-        cabin=match.deal.cabin,
-        stops=match.deal.stops,
-        dedupe_key=match.deal.dedupe_key,
-        price_trend=trend,
-        previous_price_cents=previous_price,
-        price_delta_cents=delta_cents,
-        is_active=match.deal.is_active,
-        hotel_name=match.deal.hotel_name,
-        hotel_id=match.deal.hotel_id,
-        discount_pct=match.deal.discount_pct,
-        destination_str=match.deal.destination_str,
-        star_rating=match.deal.star_rating,
-        tripadvisor_url=ta_url,
-        found_at=match.deal.found_at,
-        first_price_cents=first_price,
+
+    deal_out = _build_deal_out(
+        match.deal,
+        trend=trend,
+        previous_price=previous_price,
+        delta_cents=delta_cents,
+        first_price=first_price,
+        hist_rows=hist_rows,
+        ta_url=ta_url,
     )
 
     return DealMatchOut(
