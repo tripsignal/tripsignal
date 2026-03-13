@@ -583,11 +583,20 @@ def run_matching_only(db: Session) -> None:
                 vlabel = score_deal_for_match(db, deal, stats_cache=value_stats_cache)
             except Exception:
                 vlabel = None
+            prev_match = db.execute(
+                select(DealMatch).where(
+                    DealMatch.signal_id == signal.id,
+                    DealMatch.deal_id == deal.id,
+                ).order_by(DealMatch.matched_at.desc())
+            ).scalar_one_or_none()
+            prev_price = prev_match.deal.price_cents if prev_match and prev_match.deal else None
+            delta_cents = (deal.price_cents - prev_price) if prev_price is not None else None
             match = DealMatch(
                 signal_id=signal.id,
                 deal_id=deal.id,
                 price_per_night_cents=ppn,
                 value_label=vlabel,
+                price_delta_cents=delta_cents,
             )
             db.add(match)
             db.commit()
@@ -864,11 +873,20 @@ def _run_scraper_inner(once: bool, defer_alerts: bool = False) -> dict | None:
                                         vlabel = score_deal_for_match(db, deal, stats_cache=scrape_value_stats_cache)
                                     except Exception:
                                         vlabel = None
+                                    prev_match = db.execute(
+                                        select(DealMatch).where(
+                                            DealMatch.signal_id == signal.id,
+                                            DealMatch.deal_id == deal.id,
+                                        ).order_by(DealMatch.matched_at.desc())
+                                    ).scalar_one_or_none()
+                                    prev_price = prev_match.deal.price_cents if prev_match and prev_match.deal else None
+                                    delta_cents = (deal.price_cents - prev_price) if prev_price is not None else None
                                     match = DealMatch(
                                         signal_id=signal.id,
                                         deal_id=deal.id,
                                         price_per_night_cents=ppn,
                                         value_label=vlabel,
+                                        price_delta_cents=delta_cents,
                                     )
                                     db.add(match)
                                     db.commit()

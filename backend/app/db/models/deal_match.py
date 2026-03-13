@@ -79,6 +79,11 @@ class DealMatch(Base):
         String(30), nullable=True,
     )
 
+    # Price delta vs previous match for same (signal_id, deal_id) pair
+    price_delta_cents: Mapped[int | None] = mapped_column(
+        Integer, nullable=True,
+    )
+
     # Relationships
     deal: Mapped["Deal"] = relationship("Deal", back_populates="deal_matches")
     signal: Mapped["Signal"] = relationship("Signal", back_populates="deal_matches")

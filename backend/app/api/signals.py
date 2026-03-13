@@ -35,6 +35,17 @@ from app.services.market_intel import (
 logger = logging.getLogger("signals")
 
 
+def get_price_trend(price_delta_cents: int | None) -> str:
+    """Return 'up', 'down', or 'stable' based on price delta."""
+    if price_delta_cents is None:
+        return "stable"
+    if price_delta_cents < 0:
+        return "down"
+    if price_delta_cents > 0:
+        return "up"
+    return "stable"
+
+
 router = APIRouter(prefix="/api/signals", tags=["signals"])
 
 
