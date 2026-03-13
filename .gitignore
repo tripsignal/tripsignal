@@ -23,3 +23,6 @@ deal_matches.py
 
 # accidental nested backend copy
 backend/app/backend/
+
+# Old TA enrichment data
+backend/data/tripadvisor/
