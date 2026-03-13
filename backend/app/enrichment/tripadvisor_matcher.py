@@ -266,6 +266,11 @@ class TripAdvisorMatcher:
         else:
             result.review_status = "not_found"
             if best_seed:
+                result.tripadvisor_url = best_seed.tripadvisor_url
+                result.tripadvisor_id = best_seed.tripadvisor_id
+                result.tripadvisor_matched_name = best_seed.tripadvisor_name
+                result.match_confidence = round(best_score, 4)
+                result.match_method = best_method
                 result.notes = f"Best candidate: {best_seed.tripadvisor_name} ({best_score:.2f})"
 
         return result

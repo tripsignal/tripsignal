@@ -109,3 +109,5 @@ Key rules:
 5. **AIRPORT_CITY_MAP** in `selloff_scraper.py` maps IATA codes to readable Canadian city names for emails.
 
 6. **`validate_user_for_email()`** checks: user exists → not opted out → has active plan (pro or active trial). All three must pass before sending.
+
+7. **CRITICAL: Never run more than one deal scraper at a time.** Concurrent scrapers risk getting proxy IPs blocked, which would disable deal ingestion entirely. The SellOff scraper enforces this via a Postgres advisory lock (`pg_try_advisory_lock`). Never remove or bypass this lock. Never manually exec a scraper without confirming no other scraper is running.
