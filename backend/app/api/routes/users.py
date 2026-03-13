@@ -227,6 +227,14 @@ def update_display_name(
     name = body.display_name.strip()[:100]
     if not name:
         raise HTTPException(status_code=400, detail="Display name cannot be empty")
+
+    from app.services.email_templates.base import _name_is_clean
+    if not _name_is_clean(name):
+        raise HTTPException(
+            status_code=400,
+            detail="Easy there. Let's keep it friendly — try your actual name.",
+        )
+
     user.display_name = name
     db.commit()
     return {"ok": True, "display_name": user.display_name}

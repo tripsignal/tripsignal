@@ -146,6 +146,8 @@ def delete_account(
 
     user.email = sentinel_email
     user.clerk_id = f"deleted:{user_id_str}"
+    user.first_name = None
+    user.display_name = None
     user.last_login_ip = None
     user.last_login_user_agent = None
     user.stripe_customer_id = None
