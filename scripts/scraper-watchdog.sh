@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-CONTAINER="tripsignal-selloff-scraper"
+CONTAINER="tripsignal-scrape-orchestrator"
 ALERT_AFTER_SECONDS="${ALERT_AFTER_SECONDS:-10800}"    # 3 hours
 KILL_AFTER_SECONDS="${KILL_AFTER_SECONDS:-14400}"      # 4 hours
 ALERT_EMAIL="${ALERT_EMAIL:-hello@tripsignal.ca}"

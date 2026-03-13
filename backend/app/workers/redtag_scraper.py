@@ -3,8 +3,7 @@
 Fetches public marketing pages at www.redtag.ca/deals/{city}/ and extracts
 structured deal data from data-deal JSON attributes on Continue buttons.
 
-Only targets pages allowed by robots.txt. No session-based APIs, no browser
-spoofing, no booking engine access.
+Only targets pages allowed by robots.txt.
 
 Usage:
   python -m app.workers.redtag_scraper --dry-run --once   # test one city, print results
@@ -20,11 +19,11 @@ import re
 import signal as _signal
 import time
 import traceback
-import urllib.request
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
+from curl_cffi.requests import Session as CffiSession
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -34,6 +33,12 @@ from app.db.session import get_db
 from app.workers.shared.regions import map_destination_to_region
 from app.workers.shared.matching import match_deal_to_signals
 from app.workers.shared.upsert import upsert_deal
+from app.workers.shared.browser_profiles import (
+    check_ua_staleness,
+    pick_cycle_profile,
+    build_request_headers,
+    human_delay,
+)
 
 logger = logging.getLogger("redtag_extractor")
 logging.basicConfig(
@@ -45,7 +50,6 @@ logging.basicConfig(
 # Constants
 # ---------------------------------------------------------------------------
 
-USER_AGENT = "TripSignal-IngestionLab/0.1 (contact: hello@tripsignal.com)"
 BASE_URL = "https://www.redtag.ca"
 _TIMEOUT = 30
 _SYSTEM_API_HEADERS = {"X-Admin-Token": os.getenv("ADMIN_TOKEN", "")}
@@ -102,8 +106,6 @@ _BLOCK_MARKERS = [
 ]
 
 # Rate limiting
-_DELAY_MIN = 15.0
-_DELAY_MAX = 45.0
 _MAX_PAGES_PER_RUN = 40
 
 # Staleness threshold (RedTag runs ~1x/day, so higher threshold)
@@ -127,8 +129,8 @@ _signal.signal(_signal.SIGINT, _handle_signal)
 # Proxy
 # ---------------------------------------------------------------------------
 
-def _build_proxy_opener() -> Optional[urllib.request.OpenerDirector]:
-    """Build a urllib opener routed through DataImpulse proxy, or None if disabled."""
+def _build_proxy_url() -> Optional[str]:
+    """Build proxy URL from env vars. Returns None if not configured."""
     proxy_enabled = os.getenv("PROXY_ENABLED", "false").lower() == "true"
     proxy_user = os.getenv("PROXY_USER", "")
     if not proxy_enabled or not proxy_user:
@@ -137,13 +139,16 @@ def _build_proxy_opener() -> Optional[urllib.request.OpenerDirector]:
     proxy_port = os.getenv("PROXY_PORT", "823")
     proxy_pass = os.getenv("PROXY_PASS", "")
     proxy_country = os.getenv("PROXY_COUNTRY", "cr.ca")
-    proxy_url = f"http://{proxy_user}__{proxy_country}:{proxy_pass}@{proxy_host}:{proxy_port}"
-    proxy_handler = urllib.request.ProxyHandler({
-        "http": proxy_url,
-        "https": proxy_url,
-    })
     logger.info("Proxy enabled: %s:%s (country=%s)", proxy_host, proxy_port, proxy_country)
-    return urllib.request.build_opener(proxy_handler)
+    return f"http://{proxy_user}__{proxy_country}:{proxy_pass}@{proxy_host}:{proxy_port}"
+
+
+def _create_session(profile: dict, proxy_url: Optional[str] = None) -> CffiSession:
+    """Create a curl_cffi session with browser impersonation and optional proxy."""
+    session = CffiSession(impersonate=profile["impersonate"])
+    if proxy_url:
+        session.proxies = {"http": proxy_url, "https": proxy_url}
+    return session
 
 
 # ---------------------------------------------------------------------------
@@ -161,40 +166,30 @@ def _is_blocked(status_code: int, body: str = "") -> bool:
 # Page fetching
 # ---------------------------------------------------------------------------
 
-def fetch_listing_page(city: str, opener: Optional[urllib.request.OpenerDirector] = None) -> Optional[str]:
+def fetch_listing_page(city: str, session: Optional[CffiSession] = None, profile: Optional[dict] = None) -> Optional[str]:
     """Fetch a RedTag deals listing page. Returns HTML string or None."""
     url = f"{BASE_URL}/deals/{city}/"
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": USER_AGENT,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-CA,en;q=0.9",
-        },
-    )
+    headers = build_request_headers(profile or {})
 
     try:
-        if opener:
-            response = opener.open(req, timeout=_TIMEOUT)
+        if session:
+            response = session.get(url, headers=headers, timeout=_TIMEOUT)
         else:
-            response = urllib.request.urlopen(req, timeout=_TIMEOUT)
-    except urllib.error.HTTPError as e:
-        if _is_blocked(e.code):
-            logger.error("BLOCKED: HTTP %d fetching %s — stopping", e.code, url)
-            return None
-        logger.error("HTTP %d fetching %s", e.code, url)
-        return None
+            response = CffiSession().get(url, headers=headers, timeout=_TIMEOUT)
     except Exception as e:
+        err_str = str(e)
+        # Check for block-like status codes in the error
+        if any(str(code) in err_str for code in _BLOCK_STATUS_CODES):
+            logger.error("BLOCKED: %s fetching %s — stopping", e, url)
+            return None
         logger.error("Failed to fetch %s: %s", url, e)
         return None
 
-    body = response.read().decode("utf-8", "ignore")
-
-    if _is_blocked(response.status, body):
+    if _is_blocked(response.status_code, response.text):
         logger.error("BLOCKED: Block markers detected in response from %s — stopping", url)
         return None
 
-    return body
+    return response.text
 
 
 # ---------------------------------------------------------------------------
@@ -368,10 +363,19 @@ def run_once(dry_run: bool = False) -> dict:
     # Accumulator for match alerts (returned to orchestrator)
     v2_signal_deals: dict = defaultdict(list)
 
-    opener = _build_proxy_opener()
+    # Browser profile + curl_cffi session for this cycle
+    check_ua_staleness()
+    cycle_profile = pick_cycle_profile()
+    proxy_url = _build_proxy_url()
+    session = _create_session(cycle_profile, proxy_url)
+    logger.info("Cycle browser profile: %s (%s)", cycle_profile["impersonate"], cycle_profile["platform"])
+
+    # Shuffle city order each cycle for unpredictable access pattern
+    city_items = list(REDTAG_DEAL_CITIES.items())
+    random.shuffle(city_items)
 
     pages_fetched = 0
-    for city, default_gateway in REDTAG_DEAL_CITIES.items():
+    for city, default_gateway in city_items:
         if _shutdown_requested or blocked:
             break
         if pages_fetched >= _MAX_PAGES_PER_RUN:
@@ -379,7 +383,7 @@ def run_once(dry_run: bool = False) -> dict:
             break
 
         logger.info("Fetching %s deals page", city)
-        html = fetch_listing_page(city, opener)
+        html = fetch_listing_page(city, session=session, profile=cycle_profile)
         pages_fetched += 1
 
         if html is None:
@@ -468,9 +472,9 @@ def run_once(dry_run: bool = False) -> dict:
                         cycle_errors.append({"city": city, "error": str(e), "type": "error"})
                         continue
 
-        # Polite delay between pages
+        # Human-like delay between pages
         if pages_fetched < len(REDTAG_DEAL_CITIES):
-            delay = random.uniform(_DELAY_MIN, _DELAY_MAX)
+            delay = human_delay()
             logger.debug("Sleeping %.1fs before next page", delay)
             time.sleep(delay)
 
@@ -522,6 +526,12 @@ def run_once(dry_run: bool = False) -> dict:
         except Exception as e:
             logger.error("Expired deal cleanup failed: %s", e)
             cycle_errors.append({"error": str(e), "type": "expired_cleanup"})
+
+    # Clean up session
+    try:
+        session.close()
+    except Exception:
+        pass
 
     completed_at = datetime.now(timezone.utc)
     elapsed = (completed_at - started_at).total_seconds()

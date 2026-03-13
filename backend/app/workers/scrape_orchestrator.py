@@ -28,9 +28,11 @@ logging.basicConfig(
 
 _SYSTEM_API_HEADERS = {"X-Admin-Token": os.getenv("ADMIN_TOKEN", "")}
 
-# Schedule: 1 daily window in Eastern Time (6:30–8:30 AM)
+# Schedule: daily window in Eastern Time, varies by day of week
+# Weekdays: wider 5:00–10:00 AM window  |  Weekends: 7:00 AM–1:00 PM
 _ET = ZoneInfo("America/Toronto")
-_SCRAPE_WINDOWS = [(6, 30, 8, 30)]
+_WEEKDAY_WINDOW = (5, 0, 10, 0)   # Mon-Fri: 5:00 AM – 10:00 AM ET
+_WEEKEND_WINDOW = (7, 0, 13, 0)   # Sat-Sun: 7:00 AM – 1:00 PM ET
 
 # Hard timeouts (seconds) — prevents hung scrapers from blocking the entire pipeline
 SELLOFF_HARD_TIMEOUT = int(os.getenv("SELLOFF_HARD_TIMEOUT", "21600"))  # 6 hours
@@ -49,26 +51,31 @@ _signal.signal(_signal.SIGTERM, _handle_signal)
 _signal.signal(_signal.SIGINT, _handle_signal)
 
 
+def _window_for_date(dt: datetime) -> tuple[int, int, int, int]:
+    """Return (start_h, start_m, end_h, end_m) for the given date's day of week."""
+    if dt.weekday() < 5:  # Mon=0 .. Fri=4
+        return _WEEKDAY_WINDOW
+    return _WEEKEND_WINDOW
+
+
 def _in_scrape_window() -> bool:
     now_et = datetime.now(_ET)
-    for sh, sm, eh, em in _SCRAPE_WINDOWS:
-        ws = now_et.replace(hour=sh, minute=sm, second=0, microsecond=0)
-        we = now_et.replace(hour=eh, minute=em, second=0, microsecond=0)
-        if ws <= now_et < we:
-            return True
-    return False
+    sh, sm, eh, em = _window_for_date(now_et)
+    ws = now_et.replace(hour=sh, minute=sm, second=0, microsecond=0)
+    we = now_et.replace(hour=eh, minute=em, second=0, microsecond=0)
+    return ws <= now_et < we
 
 
 def _next_scrape_time() -> datetime:
     now_et = datetime.now(_ET)
     for day_offset in range(3):
         base = now_et + timedelta(days=day_offset)
-        for sh, sm, eh, em in _SCRAPE_WINDOWS:
-            window_start = base.replace(hour=sh, minute=sm, second=0, microsecond=0)
-            window_end = base.replace(hour=eh, minute=em, second=0, microsecond=0)
-            if window_start > now_et:
-                offset = random.randint(0, int((window_end - window_start).total_seconds()))
-                return (window_start + timedelta(seconds=offset)).astimezone(timezone.utc)
+        sh, sm, eh, em = _window_for_date(base)
+        window_start = base.replace(hour=sh, minute=sm, second=0, microsecond=0)
+        window_end = base.replace(hour=eh, minute=em, second=0, microsecond=0)
+        if window_start > now_et:
+            offset = random.randint(0, int((window_end - window_start).total_seconds()))
+            return (window_start + timedelta(seconds=offset)).astimezone(timezone.utc)
     return datetime.now(timezone.utc) + timedelta(hours=6)
 
 
@@ -426,7 +433,7 @@ def _cleanup_orphaned_runs() -> None:
 
 def run_orchestrator(once: bool = False) -> None:
     """Main entry point — manages scheduling and runs scraper cycles."""
-    logger.info("Scrape orchestrator starting (1 daily window: ~7AM ET (±60min jitter))")
+    logger.info("Scrape orchestrator starting (weekdays 5-10AM ET, weekends 7AM-1PM ET)")
     _cleanup_orphaned_runs()
 
     if not once:

@@ -1,5 +1,4 @@
 """SellOff Vacations scraper and signal matcher."""
-import http.cookiejar
 import json
 import logging
 import os
@@ -10,13 +9,13 @@ import time
 import traceback
 import ipaddress
 import socket
-import urllib.request
 from collections import defaultdict
 from urllib.parse import urlparse
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 
+from curl_cffi.requests import Session as CffiSession
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
@@ -26,12 +25,26 @@ from app.db.models.deal_price_history import DealPriceHistory
 from app.db.models.signal import Signal
 from app.db.models.user import User
 from app.db.session import get_db
+from app.workers.shared.browser_profiles import (
+    check_ua_staleness,
+    pick_cycle_profile,
+    build_request_headers,
+    human_delay,
+    category_pause,
+    select_cycle_destinations,
+    select_cycle_gateways,
+    SELLOFF_NAV_PAGES,
+    SELLOFF_WARMUP_PAGES,
+)
 
 logger = logging.getLogger("selloff_scraper")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 NEXT_SCAN_FILE = "/tmp/next_scan.json"
 _SYSTEM_API_HEADERS = {"X-Admin-Token": os.getenv("ADMIN_TOKEN", "")}
 MAX_CYCLE_SECONDS = int(os.getenv("MAX_CYCLE_SECONDS", "18000"))  # 5 hours default
+
+# Postgres advisory lock key — prevents concurrent scrape cycles
+_SCRAPE_ADVISORY_LOCK_KEY = 8675309  # arbitrary unique integer
 
 # Graceful shutdown — finish current cycle before exiting
 _shutdown_requested = False
@@ -61,10 +74,8 @@ PROXY_USER = os.getenv("PROXY_USER", "")
 PROXY_PASS = os.getenv("PROXY_PASS", "")
 PROXY_COUNTRY = os.getenv("PROXY_COUNTRY", "cr.ca")
 
-# Module-level proxy opener, set per cycle in run_scraper()
-_cycle_proxy_opener: Optional[urllib.request.OpenerDirector] = None
-# Module-level direct opener (no proxy, but with cookie jar)
-_cycle_direct_opener: Optional[urllib.request.OpenerDirector] = None
+# curl_cffi session — one per IP rotation segment, set in _run_scraper_inner
+_cycle_session: Optional[CffiSession] = None
 
 # Set to True when last fetch was a 404 — skips rate-limit sleep in the scrape loop
 _last_fetch_was_404: bool = False
@@ -72,47 +83,12 @@ _last_fetch_was_404: bool = False
 # Referer chain: tracks the last successfully fetched URL
 _last_page_url: Optional[str] = None
 
-# User agent for this cycle — one picked at cycle start, consistent for the session
-_cycle_ua: Optional[str] = None
+# Browser profile for this cycle (set at cycle start)
+_cycle_profile: Optional[dict] = None
 
-# User agent pool — one picked per cycle to simulate a single browser session
-_USER_AGENTS = [
-    # Chrome on Windows
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-    # Chrome on Mac
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-    # Firefox on Windows
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0",
-    # Firefox on Mac
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0",
-    # Edge on Windows
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
-]
-
-
-def _build_request_headers(referer: Optional[str] = None) -> dict:
-    """Build realistic browser headers with the cycle's UA and referer chain."""
-    ua = _cycle_ua or random.choice(_USER_AGENTS)
-    headers = {
-        "User-Agent": ua,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "en-CA,en-US;q=0.9,en;q=0.8",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-User": "?1",
-        "Cache-Control": "max-age=0",
-    }
-    if referer:
-        headers["Referer"] = referer
-        headers["Sec-Fetch-Site"] = "same-origin"
-    else:
-        headers["Sec-Fetch-Site"] = "none"
-    return headers
+# IP rotation: rotate proxy IP every N pages to avoid single-IP detection
+_pages_on_current_ip: int = 0
+_ip_rotation_threshold: int = 0
 
 
 def _build_proxy_url() -> Optional[str]:
@@ -122,20 +98,39 @@ def _build_proxy_url() -> Optional[str]:
     return f"http://{PROXY_USER}__{PROXY_COUNTRY}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
 
 
-def _build_proxy_opener(proxy_url: str, cookie_jar: Optional[http.cookiejar.CookieJar] = None) -> urllib.request.OpenerDirector:
-    """Build a urllib opener that routes through the proxy with cookie persistence."""
-    handlers = [urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url})]
-    if cookie_jar is not None:
-        handlers.append(urllib.request.HTTPCookieProcessor(cookie_jar))
-    return urllib.request.build_opener(*handlers)
+def _create_session(proxy_url: Optional[str] = None) -> CffiSession:
+    """Create a new curl_cffi session with the cycle's browser profile.
+
+    Each session gets a fresh cookie jar and, if proxied, a new IP from
+    DataImpulse's rotating residential pool.
+    """
+    profile = _cycle_profile or pick_cycle_profile()
+    session = CffiSession(impersonate=profile["impersonate"])
+    if proxy_url:
+        session.proxies = {"http": proxy_url, "https": proxy_url}
+    return session
 
 
-def _build_direct_opener(cookie_jar: Optional[http.cookiejar.CookieJar] = None) -> urllib.request.OpenerDirector:
-    """Build a urllib opener for direct connections with cookie persistence."""
-    handlers = []
-    if cookie_jar is not None:
-        handlers.append(urllib.request.HTTPCookieProcessor(cookie_jar))
-    return urllib.request.build_opener(*handlers)
+def _maybe_rotate_ip(proxy_url: Optional[str]) -> None:
+    """Rotate proxy IP by creating a fresh session after N pages.
+
+    DataImpulse residential proxies assign a new IP per connection by default.
+    Creating a new session forces a new connection = new IP. Costs nothing extra
+    (DataImpulse charges per GB, not per IP).
+    """
+    global _cycle_session, _pages_on_current_ip, _ip_rotation_threshold
+    _pages_on_current_ip += 1
+    if _pages_on_current_ip >= _ip_rotation_threshold:
+        old_session = _cycle_session
+        _cycle_session = _create_session(proxy_url)
+        if old_session:
+            try:
+                old_session.close()
+            except Exception:
+                pass
+        _ip_rotation_threshold = random.randint(30, 80)
+        _pages_on_current_ip = 0
+        logger.debug("Rotated proxy IP (new session, next rotation in %d pages)", _ip_rotation_threshold)
 
 
 DESTINATION_SLUGS = [
@@ -292,43 +287,23 @@ def fetch_deals_from_page(url: str) -> list[dict]:
         logger.warning("fetch_deals_from_page blocked: %s", e)
         return []
     try:
-        req = urllib.request.Request(url, headers=_build_request_headers(referer=_last_page_url))
-        if _cycle_proxy_opener:
-            html = _cycle_proxy_opener.open(req, timeout=30).read().decode("utf-8", "ignore")
-        elif _cycle_direct_opener:
-            html = _cycle_direct_opener.open(req, timeout=30).read().decode("utf-8", "ignore")
-        else:
-            html = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "ignore")
+        headers = build_request_headers(_cycle_profile or {}, referer=_last_page_url)
+        resp = _cycle_session.get(url, headers=headers, timeout=30)
+        if resp.status_code == 404:
+            logger.debug("404 (no flights) for %s — skipping", url)
+            _last_fetch_was_404 = True
+            return []
+        resp.raise_for_status()
+        html = resp.text
         _last_page_url = url
     except Exception as e:
-        is_404 = "404" in str(e) or "HTTP Error 404" in str(e)
-        if _cycle_proxy_opener:
-            if is_404:
-                logger.debug("404 (no flights) for %s — skipping", url)
-                _last_fetch_was_404 = True
-                return []
-            logger.warning("Proxy error fetching %s: %s — retrying direct", url, e)
-            try:
-                req = urllib.request.Request(url, headers=_build_request_headers(referer=_last_page_url))
-                if _cycle_direct_opener:
-                    html = _cycle_direct_opener.open(req, timeout=30).read().decode("utf-8", "ignore")
-                else:
-                    html = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "ignore")
-                _last_page_url = url
-            except Exception as e2:
-                if "404" in str(e2) or "HTTP Error 404" in str(e2):
-                    logger.debug("404 (no flights) for %s — skipping", url)
-                    _last_fetch_was_404 = True
-                else:
-                    logger.warning("Direct retry also failed for %s: %s", url, e2)
-                return []
+        err_str = str(e)
+        if "404" in err_str:
+            logger.debug("404 (no flights) for %s — skipping", url)
+            _last_fetch_was_404 = True
         else:
-            if is_404:
-                logger.debug("404 (no flights) for %s — skipping", url)
-                _last_fetch_was_404 = True
-            else:
-                logger.warning("Failed to fetch %s: %s", url, e)
-            return []
+            logger.warning("Failed to fetch %s: %s", url, e)
+        return []
 
     destinations = re.findall(r'adModuleHeading--\w+\">([^<]+)</h2>', html)
     hotels = re.findall(r'adModuleSubheading--\w+\">([^<]+)</p>', html)
@@ -393,27 +368,30 @@ def fetch_deals_from_page(url: str) -> list[dict]:
 def _warmup_session() -> None:
     """Hit a few top-level pages to establish a realistic browsing session and collect cookies."""
     global _last_page_url
-    warmup_urls = [
-        "https://www.selloffvacations.com/en",
-        "https://www.selloffvacations.com/en/mexico",
-        "https://www.selloffvacations.com/en/caribbean",
-    ]
     # Pick 1-2 random warmup pages
-    selected = random.sample(warmup_urls, k=random.randint(1, 2))
+    selected = random.sample(SELLOFF_WARMUP_PAGES, k=random.randint(1, 2))
     for url in selected:
         try:
-            req = urllib.request.Request(url, headers=_build_request_headers(referer=_last_page_url))
-            if _cycle_proxy_opener:
-                _cycle_proxy_opener.open(req, timeout=15).read()
-            elif _cycle_direct_opener:
-                _cycle_direct_opener.open(req, timeout=15).read()
-            else:
-                urllib.request.urlopen(req, timeout=15).read()
+            headers = build_request_headers(_cycle_profile or {}, referer=_last_page_url)
+            _cycle_session.get(url, headers=headers, timeout=15)
             _last_page_url = url
             logger.debug("Warmup: visited %s", url)
             time.sleep(random.uniform(3, 8))
         except Exception as e:
             logger.debug("Warmup failed for %s: %s (continuing)", url, e)
+
+
+def _visit_nav_page() -> None:
+    """Occasionally visit a non-deal page to make browsing pattern more realistic."""
+    global _last_page_url
+    url = random.choice(SELLOFF_NAV_PAGES)
+    try:
+        headers = build_request_headers(_cycle_profile or {}, referer=_last_page_url)
+        _cycle_session.get(url, headers=headers, timeout=15)
+        _last_page_url = url
+        logger.debug("Nav visit: %s", url)
+    except Exception as e:
+        logger.debug("Nav visit failed for %s: %s (continuing)", url, e)
 
 
 def upsert_deal(db: Session, deal: dict) -> Optional[Deal]:
@@ -649,9 +627,48 @@ def run_matching_only(db: Session) -> None:
     logger.info("Match-only complete. New matches: %d", total_matches)
 
 
+def _acquire_scrape_lock(db: Session) -> bool:
+    """Try to acquire a Postgres advisory lock (non-blocking).
+
+    Returns True if the lock was acquired, False if another scraper holds it.
+    The lock is held for the lifetime of the DB session/connection and is
+    automatically released on disconnect, crash, or session close.
+    """
+    result = db.execute(
+        text("SELECT pg_try_advisory_lock(:key)"),
+        {"key": _SCRAPE_ADVISORY_LOCK_KEY},
+    ).scalar()
+    return bool(result)
+
+
 def run_scraper(once: bool = True) -> None:
     logger.info("SellOff scraper starting")
 
+    # Acquire advisory lock — prevents concurrent scrape cycles.
+    # Hold a reference to the generator so GC doesn't close the session
+    # (and release the lock) prematurely.
+    _lock_gen = get_db()
+    lock_db = next(_lock_gen)
+    if not _acquire_scrape_lock(lock_db):
+        logger.error(
+            "SCRAPE BLOCKED: another scraper is already running (advisory lock held). Exiting."
+        )
+        _lock_gen.close()
+        return
+    logger.info("Advisory lock acquired — this is the only running scraper")
+
+    try:
+        _run_scraper_inner(once)
+    finally:
+        # Release the advisory lock by closing the generator (which closes the session)
+        try:
+            _lock_gen.close()
+            logger.info("Advisory lock released")
+        except Exception:
+            pass
+
+
+def _run_scraper_inner(once: bool) -> None:
     while True:
         cycle_errors: list = []
         total_deals = 0
@@ -664,43 +681,52 @@ def run_scraper(once: bool = True) -> None:
         run_id = None
 
         try:
-            # Cookie jar for this cycle — simulates one browser session
-            cycle_cookie_jar = http.cookiejar.CookieJar()
-
-            # Proxy setup for this cycle
-            global _cycle_proxy_opener, _cycle_direct_opener, _last_page_url, _cycle_ua
-            _cycle_proxy_opener = None
-            _cycle_direct_opener = None
+            # Browser profile + curl_cffi session for this cycle
+            global _cycle_session, _last_page_url, _cycle_profile
+            global _pages_on_current_ip, _ip_rotation_threshold
             _last_page_url = None  # Reset referer chain for new cycle
-            _cycle_ua = random.choice(_USER_AGENTS)  # One UA per cycle = one browser session
+            _cycle_profile = pick_cycle_profile()
+            _pages_on_current_ip = 0
+            _ip_rotation_threshold = random.randint(30, 80)
+            logger.info(
+                "Cycle browser profile: %s (%s), IP rotation every ~%d pages",
+                _cycle_profile["impersonate"], _cycle_profile["platform"],
+                _ip_rotation_threshold,
+            )
+
+            # Check UA staleness at cycle start
+            check_ua_staleness()
+
             proxy_ip = None
             proxy_url = _build_proxy_url()
+            _cycle_session = _create_session(proxy_url)
+
             if proxy_url:
                 logger.info("Using residential proxy (Canada) via DataImpulse")
                 try:
-                    test_opener = _build_proxy_opener(proxy_url, cookie_jar=cycle_cookie_jar)
-                    test_req = urllib.request.Request("https://api.ipify.org?format=json")
-                    resp = test_opener.open(test_req, timeout=10)
-                    ip_data = json.loads(resp.read().decode())
-                    proxy_ip = ip_data.get("ip")
+                    resp = _cycle_session.get("https://api.ipify.org?format=json", timeout=10)
+                    ip_data = resp.json()
+                    raw_ip = ip_data.get("ip", "")
+                    # Validate IP format to prevent injection into geo lookup URL
+                    ipaddress.ip_address(raw_ip)
+                    proxy_ip = raw_ip
                     logger.info("Proxy check passed: scraping from IP %s", proxy_ip)
-                    _cycle_proxy_opener = test_opener
                 except Exception as e:
                     logger.warning("Proxy check FAILED — falling back to direct connection: %s", e)
+                    _cycle_session.close()
+                    _cycle_session = _create_session(proxy_url=None)
             else:
                 logger.info("Proxy not configured — using direct connection")
-
-            # Always build a direct opener with cookies (used as fallback and when no proxy)
-            _cycle_direct_opener = _build_direct_opener(cookie_jar=cycle_cookie_jar)
 
             # Geo-locate the proxy IP
             proxy_geo = None
             if proxy_ip:
                 try:
-                    geo_req = urllib.request.Request(f"http://ip-api.com/json/{proxy_ip}?fields=city,regionName,countryCode")
-                    opener = _cycle_proxy_opener or _cycle_direct_opener
-                    geo_resp = opener.open(geo_req, timeout=5)
-                    geo = json.loads(geo_resp.read().decode())
+                    geo_resp = _cycle_session.get(
+                        f"http://ip-api.com/json/{proxy_ip}?fields=city,regionName,countryCode",
+                        timeout=5,
+                    )
+                    geo = geo_resp.json()
                     if geo.get("city"):
                         proxy_geo = f"{geo['city']}, {geo.get('regionName', '')}, {geo.get('countryCode', '')}".strip(", ")
                         logger.info("Proxy geo: %s", proxy_geo)
@@ -712,7 +738,7 @@ def run_scraper(once: bool = True) -> None:
                 import requests as _req
                 resp = _req.post("http://api:8000/api/system/scrape-started", json={
                     "started_at": started_at.isoformat(),
-                    "proxy_enabled": _cycle_proxy_opener is not None,
+                    "proxy_enabled": proxy_url is not None,
                     "proxy_ip": proxy_ip,
                     "proxy_geo": proxy_geo,
                 }, headers=_SYSTEM_API_HEADERS, timeout=5)
@@ -736,22 +762,22 @@ def run_scraper(once: bool = True) -> None:
 
             # Warm up the session with top-level page visits (collects cookies)
             _warmup_session()
-            cookie_count = len(cycle_cookie_jar)
-            if cookie_count:
-                logger.info("Collected %d cookies from warmup", cookie_count)
 
-            # Shuffle destination and city order each cycle to avoid predictable patterns
-            cycle_destinations = list(DESTINATION_SLUGS)
-            random.shuffle(cycle_destinations)
-
-            cycle_gateways = list(GATEWAY_SLUGS.items())
-            random.shuffle(cycle_gateways)
+            # Tiered destination and gateway selection — high-volume routes daily,
+            # low-volume routes probabilistically to reduce footprint
+            cycle_destinations = select_cycle_destinations(DESTINATION_SLUGS)
+            cycle_gateways = select_cycle_gateways(GATEWAY_SLUGS)
+            logger.info(
+                "Cycle coverage: %d/%d destinations, %d/%d gateways",
+                len(cycle_destinations), len(DESTINATION_SLUGS),
+                len(cycle_gateways), len(GATEWAY_SLUGS),
+            )
 
             elapsed = 0
             for slug in cycle_destinations:
                 for gateway_code, city_slug in cycle_gateways:
-                    # Randomly skip ~7% of pages to make crawl pattern unpredictable
-                    if random.random() < 0.07:
+                    # Randomly skip ~5% of remaining pages for additional unpredictability
+                    if random.random() < 0.05:
                         logger.debug("Random skip: %s from %s", slug, city_slug)
                         continue
 
@@ -843,8 +869,13 @@ def run_scraper(once: bool = True) -> None:
                                 cycle_errors.append({"url": url, "error": str(e), "type": "error"})
                                 continue
 
+                    # Human-like delay between pages (skip for 404s)
                     if not _last_fetch_was_404:
-                        _interruptible_sleep(random.uniform(15, 45))
+                        _interruptible_sleep(human_delay())
+
+                    # Rotate proxy IP periodically to avoid single-IP detection
+                    if proxy_url:
+                        _maybe_rotate_ip(proxy_url)
 
                     # Internal timeout: bail if cycle has been running too long
                     elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
@@ -866,13 +897,14 @@ def run_scraper(once: bool = True) -> None:
 
                 # Longer pause between destination categories
                 if not _shutdown_requested:
-                    category_pause = random.uniform(60, 180)
-                    logger.debug("Category pause: %.0fs before next destination", category_pause)
-                    _interruptible_sleep(category_pause)
+                    pause = category_pause()
+                    logger.debug("Category pause: %.0fs before next destination", pause)
+                    _interruptible_sleep(pause)
 
-            # Log final cookie count
-            final_cookies = len(cycle_cookie_jar)
-            logger.info("Cycle used %d cookies across session", final_cookies)
+                    # Occasionally visit a non-deal page between categories (~30% chance)
+                    if random.random() < 0.30:
+                        _visit_nav_page()
+                        _interruptible_sleep(random.uniform(3, 8))
 
             # Graduated staleness: increment missed_cycles, only deactivate after 3+ misses
             DEACTIVATION_THRESHOLD = 3
@@ -956,7 +988,7 @@ def run_scraper(once: bool = True) -> None:
                     "deals_deactivated": deals_deactivated,
                     "deals_expired": deals_expired,
                     "status": "completed",
-                    "proxy_enabled": _cycle_proxy_opener is not None,
+                    "proxy_enabled": proxy_url is not None,
                     "proxy_ip": proxy_ip,
                     "proxy_geo": proxy_geo,
                 }, headers=_SYSTEM_API_HEADERS, timeout=5)
@@ -982,6 +1014,13 @@ def run_scraper(once: bool = True) -> None:
                 }, headers=_SYSTEM_API_HEADERS, timeout=5)
             except Exception:
                 logger.error("Failed to report crash to API")
+        finally:
+            # Always clean up the curl_cffi session to prevent fd/connection leaks
+            if _cycle_session:
+                try:
+                    _cycle_session.close()
+                except Exception:
+                    pass
 
         if once or _shutdown_requested:
             if _shutdown_requested:
