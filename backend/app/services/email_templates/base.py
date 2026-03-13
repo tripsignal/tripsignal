@@ -33,7 +33,7 @@ def wrap(
         nudge_html = (
             '<p style="font-size:12px;color:#999;margin:0 0 16px;text-align:center;line-height:1.6;">'
             'Want fewer emails? '
-            '<a href="https://tripsignal.ca/account/notifications" '
+            '<a href="https://tripsignal.ca/account/settings" '
             'style="color:#999;text-decoration:underline;">Switch to a daily summary</a>.'
             '</p>'
         )
@@ -49,7 +49,7 @@ def wrap(
         )
 
     # Links row: Unsubscribe | Privacy Policy | Terms and Conditions
-    notif_url = unsub_url or "https://tripsignal.ca/account/notifications"
+    notif_url = unsub_url or "https://tripsignal.ca/account/settings"
     links_html = (
         '<p style="font-size:12px;color:#999;margin:0 0 12px;text-align:center;line-height:1.6;">'
         f'<a href="{esc(notif_url)}" style="color:#999;text-decoration:underline;">Unsubscribe</a>'
