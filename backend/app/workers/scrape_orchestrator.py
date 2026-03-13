@@ -453,15 +453,29 @@ def run_orchestrated_cycle() -> dict:
 
 
 def _cleanup_orphaned_runs() -> None:
-    """Mark any 'running' scrape_runs as 'stale' on startup.
+    """Mark orphaned 'running' scrape_runs as 'stale' on startup.
 
-    If the orchestrator crashed or was restarted, previous runs may be stuck
-    with status='running' even though nothing is processing them.
+    Only marks runs as stale if no scraper currently holds the advisory lock
+    (key 8675309). This prevents a competing orchestrator instance from
+    marking an actively-running scrape as stale.
     """
     try:
         from sqlalchemy import text
         from app.db.session import get_db
         with next(get_db()) as db:
+            # Check if a scraper is actively holding the advisory lock
+            lock_held = db.execute(
+                text("SELECT NOT pg_try_advisory_lock(8675309)")
+            ).scalar()
+            if lock_held:
+                logger.info(
+                    "Advisory lock is held — a scraper is actively running. "
+                    "Skipping orphaned run cleanup."
+                )
+                return
+            # Lock was not held (we just acquired it); release it immediately
+            db.execute(text("SELECT pg_advisory_unlock(8675309)"))
+
             result = db.execute(
                 text("UPDATE scrape_runs SET status = 'stale', completed_at = NOW() "
                      "WHERE status = 'running'")
