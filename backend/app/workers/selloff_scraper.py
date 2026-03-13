@@ -455,6 +455,33 @@ def _star_display(rating) -> str:
     return f"★ {rating:.1f}"
 
 
+def _create_deal_match(
+    db: Session,
+    signal: Signal,
+    deal: Deal,
+    duration_days: int,
+    price_delta_cents: int | None,
+    *,
+    stats_cache: dict | None = None,
+) -> DealMatch:
+    """Create a DealMatch, score it, persist, and return it."""
+    ppn = deal.price_cents // duration_days if duration_days > 0 else None
+    try:
+        vlabel = score_deal_for_match(db, deal, stats_cache=stats_cache or {})
+    except Exception:
+        vlabel = None
+    match = DealMatch(
+        signal_id=signal.id,
+        deal_id=deal.id,
+        price_per_night_cents=ppn,
+        value_label=vlabel,
+        price_delta_cents=price_delta_cents,
+    )
+    db.add(match)
+    db.commit()
+    return match
+
+
 def _build_price_delta_map(db: Session) -> dict:
     """Query price history to find the most recent price drop per deal.
 
@@ -578,28 +605,11 @@ def run_matching_only(db: Session) -> None:
             if existing:
                 continue
 
-            ppn = deal.price_cents // duration_days if duration_days > 0 else None
-            try:
-                vlabel = score_deal_for_match(db, deal, stats_cache=value_stats_cache)
-            except Exception:
-                vlabel = None
-            prev_match = db.execute(
-                select(DealMatch).where(
-                    DealMatch.signal_id == signal.id,
-                    DealMatch.deal_id == deal.id,
-                ).order_by(DealMatch.matched_at.desc())
-            ).scalar_one_or_none()
-            prev_price = prev_match.deal.price_cents if prev_match and prev_match.deal else None
-            delta_cents = (deal.price_cents - prev_price) if prev_price is not None else None
-            match = DealMatch(
-                signal_id=signal.id,
-                deal_id=deal.id,
-                price_per_night_cents=ppn,
-                value_label=vlabel,
-                price_delta_cents=delta_cents,
+            match = _create_deal_match(
+                db, signal, deal, duration_days,
+                price_delta_map.get(deal.id),
+                stats_cache=value_stats_cache,
             )
-            db.add(match)
-            db.commit()
             total_matches += 1
 
             delta = price_delta_map.get(deal.id, 0)
@@ -868,28 +878,12 @@ def _run_scraper_inner(once: bool, defer_alerts: bool = False) -> dict | None:
                                         continue
 
                                     duration_days = deal_meta.get("duration_days", 7)
-                                    ppn = deal.price_cents // duration_days if duration_days > 0 else None
-                                    try:
-                                        vlabel = score_deal_for_match(db, deal, stats_cache=scrape_value_stats_cache)
-                                    except Exception:
-                                        vlabel = None
-                                    prev_match = db.execute(
-                                        select(DealMatch).where(
-                                            DealMatch.signal_id == signal.id,
-                                            DealMatch.deal_id == deal.id,
-                                        ).order_by(DealMatch.matched_at.desc())
-                                    ).scalar_one_or_none()
-                                    prev_price = prev_match.deal.price_cents if prev_match and prev_match.deal else None
-                                    delta_cents = (deal.price_cents - prev_price) if prev_price is not None else None
-                                    match = DealMatch(
-                                        signal_id=signal.id,
-                                        deal_id=deal.id,
-                                        price_per_night_cents=ppn,
-                                        value_label=vlabel,
-                                        price_delta_cents=delta_cents,
+                                    delta = getattr(deal, "_price_delta", None)
+                                    match = _create_deal_match(
+                                        db, signal, deal, duration_days,
+                                        delta if delta else None,
+                                        stats_cache=scrape_value_stats_cache,
                                     )
-                                    db.add(match)
-                                    db.commit()
                                     total_matches += 1
                                     logger.info("Match: %s -> %s %s $%d", signal.name, deal.destination, deal.depart_date, deal.price_cents // 100)
 

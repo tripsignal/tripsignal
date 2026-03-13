@@ -35,10 +35,10 @@ from app.services.market_intel import (
 logger = logging.getLogger("signals")
 
 
-def get_price_trend(price_delta_cents: int | None) -> str:
-    """Return 'up', 'down', or 'stable' based on price delta."""
+def get_price_trend(price_delta_cents: int | None) -> str | None:
+    """Return 'up', 'down', 'stable', or None (unknown) based on price delta."""
     if price_delta_cents is None:
-        return "stable"
+        return None
     if price_delta_cents < 0:
         return "down"
     if price_delta_cents > 0:
