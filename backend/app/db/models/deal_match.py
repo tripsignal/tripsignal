@@ -79,7 +79,7 @@ class DealMatch(Base):
         String(30), nullable=True,
     )
 
-    # Price delta vs previous match for same (signal_id, deal_id) pair
+    # Price delta: negative = drop, positive = increase, None = unknown
     price_delta_cents: Mapped[int | None] = mapped_column(
         Integer, nullable=True,
     )

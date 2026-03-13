@@ -464,7 +464,11 @@ def _create_deal_match(
     *,
     stats_cache: dict | None = None,
 ) -> DealMatch:
-    """Create a DealMatch, score it, persist, and return it."""
+    """Create a DealMatch, score it, persist, and return it.
+
+    price_delta_cents uses standard delta convention:
+    negative = price dropped, positive = price increased, None = unknown.
+    """
     ppn = deal.price_cents // duration_days if duration_days > 0 else None
     try:
         vlabel = score_deal_for_match(db, deal, stats_cache=stats_cache or {})
@@ -605,9 +609,12 @@ def run_matching_only(db: Session) -> None:
             if existing:
                 continue
 
+            # price_delta_map stores drop amounts (positive = drop);
+            # negate to standard delta convention (negative = drop)
+            drop = price_delta_map.get(deal.id)
             match = _create_deal_match(
                 db, signal, deal, duration_days,
-                price_delta_map.get(deal.id),
+                -drop if drop is not None else None,
                 stats_cache=value_stats_cache,
             )
             total_matches += 1
@@ -878,10 +885,12 @@ def _run_scraper_inner(once: bool, defer_alerts: bool = False) -> dict | None:
                                         continue
 
                                     duration_days = deal_meta.get("duration_days", 7)
-                                    delta = getattr(deal, "_price_delta", None)
+                                    # _price_delta stores drop amount (positive = drop);
+                                    # negate to standard delta convention (negative = drop)
+                                    drop = getattr(deal, "_price_delta", None)
                                     match = _create_deal_match(
                                         db, signal, deal, duration_days,
-                                        delta if delta else None,
+                                        -drop if drop else None,
                                         stats_cache=scrape_value_stats_cache,
                                     )
                                     total_matches += 1
