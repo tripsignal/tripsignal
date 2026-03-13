@@ -472,7 +472,8 @@ def _create_deal_match(
     ppn = deal.price_cents // duration_days if duration_days > 0 else None
     try:
         vlabel = score_deal_for_match(db, deal, stats_cache=stats_cache or {})
-    except Exception:
+    except Exception as exc:
+        logger.warning("Failed to score deal %s: %s", deal.id, exc)
         vlabel = None
     match = DealMatch(
         signal_id=signal.id,
@@ -487,9 +488,11 @@ def _create_deal_match(
 
 
 def _build_price_delta_map(db: Session) -> dict:
-    """Query price history to find the most recent price drop per deal.
+    """Query price history to find the most recent price change per deal.
 
-    Returns {deal_id_uuid: delta_cents} where delta > 0 means a drop.
+    Returns {deal_id_uuid: delta_cents} where delta > 0 means a drop,
+    delta < 0 means an increase, and delta == 0 means unchanged.
+    Only includes deals with at least two price history entries.
     """
     rows = db.execute(text("""
         WITH recent AS (
@@ -500,7 +503,7 @@ def _build_price_delta_map(db: Session) -> dict:
         )
         SELECT deal_id, (prev_price - price_cents) as delta
         FROM recent
-        WHERE rn = 1 AND prev_price IS NOT NULL AND prev_price > price_cents
+        WHERE rn = 1 AND prev_price IS NOT NULL
     """)).fetchall()
     return {row[0]: row[1] for row in rows}
 
@@ -619,7 +622,7 @@ def run_matching_only(db: Session) -> None:
             )
             total_matches += 1
 
-            delta = price_delta_map.get(deal.id, 0)
+            delta = drop if drop is not None else 0
             sig_key = str(signal.id)
 
             # Accumulate for V2 match alerts
