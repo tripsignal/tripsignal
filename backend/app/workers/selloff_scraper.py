@@ -1001,14 +1001,16 @@ def _run_scraper_inner(once: bool, defer_alerts: bool = False) -> dict | None:
                     logger.error("Match alert sending failed: %s", e)
                     cycle_errors.append({"error": str(e), "type": "alert_send"})
 
-            # Refresh signal + route intelligence caches after each scrape cycle
-            try:
-                from app.services.signal_intel import refresh_all_active_signal_caches, refresh_route_intel_cache
-                with next(get_db()) as intel_db:
-                    refresh_all_active_signal_caches(intel_db)
-                    refresh_route_intel_cache(intel_db)
-            except Exception as e:
-                logger.warning("Intel cache refresh failed: %s", e)
+            # Refresh signal + route intelligence caches after each scrape cycle.
+            # Skip when orchestrator will do it after all scrapers finish (defer_alerts mode).
+            if not defer_alerts:
+                try:
+                    from app.services.signal_intel import refresh_all_active_signal_caches, refresh_route_intel_cache
+                    with next(get_db()) as intel_db:
+                        refresh_all_active_signal_caches(intel_db)
+                        refresh_route_intel_cache(intel_db)
+                except Exception as e:
+                    logger.warning("Intel cache refresh failed: %s", e)
 
             completed_at = datetime.now(timezone.utc)
             logger.info("Scrape complete. Deals: %d, Matches: %d", total_deals, total_matches)

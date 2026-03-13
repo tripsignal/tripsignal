@@ -57,6 +57,13 @@ _signal.signal(_signal.SIGTERM, _handle_signal)
 _signal.signal(_signal.SIGINT, _handle_signal)
 
 
+def _interruptible_sleep(seconds: float) -> None:
+    """Sleep in 1-second increments so SIGTERM is respected promptly."""
+    end = time.monotonic() + seconds
+    while time.monotonic() < end and not _shutdown_requested:
+        time.sleep(min(1.0, end - time.monotonic()))
+
+
 def _window_for_date(dt: datetime) -> tuple[int, int, int, int]:
     """Return (start_h, start_m, end_h, end_m) for the given date's day of week."""
     if dt.weekday() < 5:  # Mon=0 .. Fri=4
@@ -140,6 +147,11 @@ def _run_with_timeout(target, name: str, timeout_seconds: int) -> dict:
                 _redtag_mod._shutdown_requested = True
         except Exception as e:
             logger.warning("Could not set shutdown flag for %s: %s", name, e)
+        # Wait briefly for the timed-out thread to actually stop so it releases
+        # the advisory lock before the next scraper tries to acquire it.
+        thread.join(timeout=30)
+        if thread.is_alive():
+            logger.warning("%s thread still alive after 30s grace period", name)
         result["status"] = "timeout"
         result["error"] = f"Hard timeout after {timeout_seconds}s"
 
@@ -458,6 +470,13 @@ def _cleanup_orphaned_runs() -> None:
     Only marks runs as stale if no scraper currently holds the advisory lock
     (key 8675309). This prevents a competing orchestrator instance from
     marking an actively-running scrape as stale.
+
+    NOTE: There is a small TOCTOU window between the lock check and the UPDATE.
+    If a scraper acquires the lock in that gap, its run could be wrongly marked
+    stale. In practice this is acceptable because: (1) the orchestrator is the
+    only process that starts scrapers, so the lock won't be acquired externally
+    during this window, and (2) the scraper's own collection_complete POST will
+    overwrite the stale status when it finishes.
     """
     try:
         from sqlalchemy import text
@@ -511,7 +530,7 @@ def run_orchestrator(once: bool = False) -> None:
                 }, headers=_SYSTEM_API_HEADERS, timeout=5)
             except Exception:
                 pass
-            time.sleep(sleep_sec)
+            _interruptible_sleep(sleep_sec)
         else:
             logger.info("Currently inside a scrape window — starting immediately")
 

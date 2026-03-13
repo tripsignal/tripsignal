@@ -648,61 +648,76 @@ def list_scrape_runs(
 
     # Check if a scraper is actively holding the advisory lock (key 8675309).
     # Uses pg_try_advisory_lock to test, then immediately releases if acquired.
+    # TOCTOU note: scraper_is_running is a point-in-time snapshot; a scraper could
+    # start or stop between this check and the response. This is acceptable for
+    # dashboard display purposes — the next auto-refresh will correct it.
     _lock_acquired = db.execute(text("SELECT pg_try_advisory_lock(8675309)")).scalar()
     if _lock_acquired:
         db.execute(text("SELECT pg_advisory_unlock(8675309)"))
     scraper_is_running = not _lock_acquired
 
+    # Batch new_deals counts in a single query to avoid N+1 per row.
+    # Build a map of run_id -> (new_deals, deals_seen) using window ranges.
+    run_ids = [r.id for r in runs]
+    new_deals_map: dict[int, int] = {}
+    deals_seen_map: dict[int, int] = {}
+    # Identify the single live run: the most recent with status running/stale
+    # when the advisory lock is held. Only ONE run can be live.
+    live_run_id = None
+    if scraper_is_running:
+        for run in runs:  # runs are ordered desc, so first match is most recent
+            if run.status in ("running", "stale"):
+                live_run_id = run.id
+                break
+
+    # Batch: compute new_deals for all runs in a single query using LATERAL join.
+    # Each run's window: [started_at, completed_at) or [started_at, NOW()) for live.
+    new_deals_rows = db.execute(text("""
+        SELECT sr.id,
+               (SELECT COUNT(*) FROM deals d WHERE d.found_at >= sr.started_at
+                AND d.found_at < COALESCE(
+                    CASE WHEN sr.id = :live_id THEN NULL ELSE sr.completed_at END,
+                    NOW()
+                )) AS new_deals,
+               CASE WHEN sr.id = :live_id THEN
+                   (SELECT COUNT(*) FROM deals d WHERE d.last_seen_at >= sr.started_at)
+               ELSE NULL END AS deals_seen
+        FROM scrape_runs sr
+        WHERE sr.id = ANY(:ids)
+    """), {"ids": run_ids, "live_id": live_run_id or -1}).fetchall()
+    for row in new_deals_rows:
+        new_deals_map[row[0]] = row[1]
+        if row[2] is not None:
+            deals_seen_map[row[0]] = row[2]
+
     results = []
     prev_total = None
     for run in reversed(runs):
-        delta = (run.total_deals - prev_total) if prev_total is not None else None
-        prev_total = run.total_deals
-
-        # Determine effective status: if the record says stale/running but the
-        # advisory lock is held, the scraper is genuinely still in progress.
+        is_live = run.id == live_run_id
         effective_status = run.status
-        is_live = False
-        if run.status in ("running", "stale") and scraper_is_running:
-            # This is (likely) the active run — use live stats
+        if is_live:
             effective_status = "running"
-            is_live = True
 
-        # For live runs, compute duration and new_deals against NOW()
+        # Use live deals_seen for delta computation when live
+        display_total = deals_seen_map.get(run.id, run.total_deals) if is_live else run.total_deals
+        delta = (display_total - prev_total) if prev_total is not None else None
+        prev_total = display_total
+
         if is_live:
             duration_sec = db.execute(
                 text("SELECT EXTRACT(EPOCH FROM NOW() - :started)::int"),
                 {"started": run.started_at},
             ).scalar()
-            window_end = text("NOW()")
         elif run.completed_at and run.started_at:
             duration_sec = int((run.completed_at - run.started_at).total_seconds())
-            window_end = run.completed_at
         else:
             duration_sec = None
-            window_end = text("NOW()")
-
-        new_deals = db.execute(
-            select(func.count()).select_from(Deal).where(
-                Deal.found_at >= run.started_at,
-                Deal.found_at < window_end,
-            )
-        ).scalar()
-
-        # For live runs, count deals updated (upserted) during this cycle
-        deals_seen = None
-        if is_live:
-            deals_seen = db.execute(
-                select(func.count()).select_from(Deal).where(
-                    Deal.last_seen_at >= run.started_at,
-                )
-            ).scalar()
 
         results.append({
             "id": run.id,
             "started_at": run.started_at.isoformat(),
             "completed_at": run.completed_at.isoformat() if run.completed_at else None,
-            "total_deals": deals_seen if is_live else run.total_deals,
+            "total_deals": display_total,
             "total_matches": run.total_matches,
             "error_count": run.error_count,
             "error_log": run.error_log,
@@ -711,7 +726,7 @@ def list_scrape_runs(
             "is_live": is_live,
             "duration_sec": duration_sec,
             "deal_delta": delta,
-            "new_deals": new_deals,
+            "new_deals": new_deals_map.get(run.id, 0),
             "proxy_ip": run.proxy_ip,
             "proxy_geo": run.proxy_geo,
         })
