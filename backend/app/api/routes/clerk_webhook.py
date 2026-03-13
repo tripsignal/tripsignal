@@ -89,13 +89,43 @@ async def clerk_webhook(
                 db.commit()
             return {"ok": True, "action": "updated"}
         else:
+            # Check if email already exists (re-created Clerk account)
+            if email:
+                existing = db.execute(
+                    select(User).where(User.email == email)
+                ).scalar_one_or_none()
+                if existing:
+                    if existing.deleted_at is not None:
+                        # Free the email on the deleted row so the new account can use it
+                        logger.warning(
+                            "SECURITY | webhook_clear_deleted_email | old_clerk=%s new_clerk=%s email=%s",
+                            existing.clerk_id, clerk_id, email,
+                        )
+                        existing.email = f"deleted-{existing.id}@deleted.tripsignal.ca"
+                        db.commit()
+                        # Fall through to create a fresh user below
+                    else:
+                        logger.warning(
+                            "SECURITY | webhook_relink | old_clerk=%s new_clerk=%s email=%s",
+                            existing.clerk_id, clerk_id, email,
+                        )
+                        existing.clerk_id = clerk_id
+                        if first_name and first_name != existing.first_name:
+                            existing.first_name = first_name
+                        db.commit()
+                        return {"ok": True, "action": "relinked"}
+
             # user.created — create the user row if it doesn't exist yet
             if event_type == "user.created":
-                new_user = User(clerk_id=clerk_id, email=email, first_name=first_name)
-                db.add(new_user)
-                db.commit()
-                logger.info("Clerk webhook: created user %s with email %s", clerk_id, email)
-                return {"ok": True, "action": "created"}
+                try:
+                    new_user = User(clerk_id=clerk_id, email=email, first_name=first_name)
+                    db.add(new_user)
+                    db.commit()
+                    logger.info("Clerk webhook: created user %s with email %s", clerk_id, email)
+                    return {"ok": True, "action": "created"}
+                except Exception:
+                    db.rollback()
+                    raise
             return {"ok": True, "skipped": "user not found"}
 
     # Ignore other event types

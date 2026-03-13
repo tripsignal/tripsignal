@@ -119,19 +119,56 @@ def sync_user(
         db.commit()
         return {"id": str(user.id), "synced": True, "created": False}
 
-    # User doesn't exist — create with defaults
-    new_user = User(
-        clerk_id=clerk_user_id,
-        email=email,
-        login_count=1,
-        last_login_ip=client_ip,
-        last_login_user_agent=user_agent,
-        timezone=x_timezone,
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return {"id": str(new_user.id), "synced": True, "created": True}
+    # No row for this clerk_id — check if same email exists
+    # (handles re-created Clerk accounts with the same email)
+    if email:
+        existing = db.execute(
+            select(User).where(User.email == email)
+        ).scalar_one_or_none()
+        if existing:
+            # Deleted account with same email — free the email so a new
+            # account can be created.  The deleted row is audit/tombstone
+            # data; anonymising the email is the right thing to do anyway.
+            if existing.deleted_at is not None:
+                logger.warning(
+                    "SECURITY | sync_clear_deleted_email | old_clerk=%s new_clerk=%s email=%s",
+                    existing.clerk_id, clerk_user_id, email,
+                )
+                existing.email = f"deleted-{existing.id}@deleted.tripsignal.ca"
+                db.commit()
+                # Fall through to create a fresh user below
+            else:
+                logger.warning(
+                    "SECURITY | sync_relink | old_clerk=%s new_clerk=%s email=%s ip=%s",
+                    existing.clerk_id, clerk_user_id, email, client_ip,
+                )
+                existing.clerk_id = clerk_user_id
+                existing.last_login_at = datetime.now(timezone.utc)
+                existing.login_count = (existing.login_count or 0) + 1
+                existing.last_login_ip = client_ip
+                existing.last_login_user_agent = user_agent
+                if x_timezone and not existing.timezone:
+                    existing.timezone = x_timezone
+                db.commit()
+                return {"id": str(existing.id), "synced": True, "created": False}
+
+    # New user — create with defaults
+    try:
+        new_user = User(
+            clerk_id=clerk_user_id,
+            email=email,
+            login_count=1,
+            last_login_ip=client_ip,
+            last_login_user_agent=user_agent,
+            timezone=x_timezone,
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return {"id": str(new_user.id), "synced": True, "created": True}
+    except Exception:
+        db.rollback()
+        raise
 
 
 # ── GET /users/prefs ────────────────────────────────────────────────────────
@@ -265,9 +302,9 @@ def export_my_data(
     """Export all user data as JSON (PIPEDA data portability)."""
     user = _get_user_by_clerk(clerk_user_id, db)
 
-    # Gather signals
+    # Gather signals (cap at 100 for response size safety)
     signals = db.execute(
-        select(Signal).where(Signal.user_id == user.id)
+        select(Signal).where(Signal.user_id == user.id).limit(100)
     ).scalars().all()
 
     signals_data = []
