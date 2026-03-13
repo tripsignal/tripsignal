@@ -1,8 +1,9 @@
 """Scout price-baseline endpoint — price distribution across user's signals."""
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_clerk_user_id
+from app.core.rate_limit import limiter
 from app.db.session import get_db
 from app.services.market_intel import (
     build_market_bucket_from_signal,
@@ -17,7 +18,9 @@ router = APIRouter()
 
 
 @router.get("/price-baseline")
+@limiter.limit("20/minute")
 async def price_baseline(
+    request: Request,
     db: Session = Depends(get_db),
     clerk_user_id: str = Depends(get_clerk_user_id),
 ):

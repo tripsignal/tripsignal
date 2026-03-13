@@ -538,7 +538,8 @@ def get_recent_queue_items(db: Session, limit: int = 50, status: str = "", searc
     if status:
         query = query.where(EmailQueue.status == status)
     if search:
-        query = query.where(EmailQueue.to_email.ilike(f"%{search}%"))
+        escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.where(EmailQueue.to_email.ilike(f"%{escaped}%"))
     query = query.limit(limit)
 
     rows = db.execute(query).all()

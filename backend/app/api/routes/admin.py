@@ -161,7 +161,7 @@ def list_signals(
 
     rows = db.execute(
         select(Signal, User.email, User.plan_type)
-
+        .join(User, Signal.user_id == User.id)
         .order_by(Signal.created_at.desc())
         .limit(limit)
         .offset(offset)
@@ -231,8 +231,9 @@ def list_users(
         query = query.where(User.is_test_user.is_(False))
         count_query = count_query.where(User.is_test_user.is_(False))
     if search:
-        query = query.where(User.email.ilike(f"%{search}%"))
-        count_query = count_query.where(User.email.ilike(f"%{search}%"))
+        escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.where(User.email.ilike(f"%{escaped}%"))
+        count_query = count_query.where(User.email.ilike(f"%{escaped}%"))
 
     users = db.execute(query.order_by(User.created_at.desc()).limit(limit).offset(offset)).scalars().all()
     total = db.execute(count_query).scalar()
@@ -291,6 +292,10 @@ def admin_set_display_name(
         raise HTTPException(status_code=404, detail="User not found")
 
     name = display_name.strip()[:100]
+    if name:
+        from app.services.email_templates.base import _name_is_clean
+        if not _name_is_clean(name):
+            raise HTTPException(status_code=400, detail="Display name contains disallowed content")
     user.display_name = name if name else None
     db.commit()
 
@@ -410,7 +415,9 @@ def admin_undelete_user(
 
 # ── DELETE /admin/users/{user_id}/hard-delete ─────────────────────────
 @router.delete("/users/{user_id}/hard-delete")
+@limiter.limit("10/minute")
 def admin_hard_delete_user(
+    request: Request,
     user_id: str,
     db: Session = Depends(get_db),
 ):
@@ -437,7 +444,7 @@ def admin_hard_delete_user(
     except Exception as e:
         db.rollback()
         logger.error("Hard delete failed for %s: %s", user_id, e)
-        raise HTTPException(status_code=500, detail=f"Hard delete failed: {e}")
+        raise HTTPException(status_code=500, detail="Hard delete failed")
 
     return {"ok": True, "hard_deleted": True, "user_id": user_id}
 
@@ -592,8 +599,9 @@ def list_notifications(
         query = query.where(EmailLog.status == status)
         count_query = count_query.where(EmailLog.status == status)
     if email:
-        query = query.where(EmailLog.to_email.ilike(f"%{email}%"))
-        count_query = count_query.where(EmailLog.to_email.ilike(f"%{email}%"))
+        escaped_email = email.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.where(EmailLog.to_email.ilike(f"%{escaped_email}%"))
+        count_query = count_query.where(EmailLog.to_email.ilike(f"%{escaped_email}%"))
 
     rows = db.execute(
         query.order_by(EmailLog.created_at.desc()).limit(limit).offset(offset)
@@ -805,8 +813,9 @@ def users_unified(
         query = query.where(User.is_test_user.is_(False), User.deleted_at.is_(None))
         count_query = count_query.where(User.is_test_user.is_(False), User.deleted_at.is_(None))
     if search:
-        query = query.where(User.email.ilike(f"%{search}%"))
-        count_query = count_query.where(User.email.ilike(f"%{search}%"))
+        escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.where(User.email.ilike(f"%{escaped}%"))
+        count_query = count_query.where(User.email.ilike(f"%{escaped}%"))
 
     users = db.execute(query.order_by(User.created_at.desc()).limit(limit).offset(offset)).scalars().all()
     total = db.execute(count_query).scalar()
@@ -1152,7 +1161,9 @@ def list_email_types(
 
 
 @router.post("/send-test-email")
+@limiter.limit("10/minute")
 def send_test_email(
+    request: Request,
     payload: SendTestEmailIn,
     db: Session = Depends(get_db),
 ):
@@ -1197,7 +1208,8 @@ def send_test_email(
     try:
         subject, html = render_template(email_type, user=fake_user, context=context, db=db)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Template render failed: {e}")
+        logger.error("Template render failed for type %s: %s", payload.email_type, e)
+        raise HTTPException(status_code=500, detail="Template render failed")
 
     subject = f"[TEST] {subject}"
 
@@ -1269,7 +1281,8 @@ def preview_email(
     try:
         subject, html = render_template(email_type, user=preview_user, context=context, db=db)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Template render failed: {e}")
+        logger.error("Template render failed for preview type %s: %s", payload.email_type, e)
+        raise HTTPException(status_code=500, detail="Template render failed")
 
     return {"subject": f"[TEST] {subject}", "html": html}
 
@@ -1543,16 +1556,19 @@ def email_queue_retry_dead(
     return {"ok": True, "retried": count}
 
 
+class RetrySelectedIn(BaseModel):
+    ids: list[str]
+
+
 @router.post("/email-queue/retry-selected")
 def email_queue_retry_selected(
-    request_body: dict,
+    request_body: RetrySelectedIn,
     db: Session = Depends(get_db),
 ):
-    ids = request_body.get("ids", [])
-    if not ids or not isinstance(ids, list):
+    if not request_body.ids:
         return {"ok": False, "error": "No IDs provided", "retried": 0}
     from app.services.email_queue import retry_by_ids
-    count = retry_by_ids(db, ids[:100])  # cap at 100
+    count = retry_by_ids(db, request_body.ids[:100])  # cap at 100
     return {"ok": True, "retried": count}
 
 
@@ -1575,7 +1591,9 @@ def email_queue_resume(
 
 
 @router.post("/email-queue/flush")
+@limiter.limit("5/minute")
 def email_queue_flush(
+    request: Request,
     db: Session = Depends(get_db),
 ):
     from app.services.email_queue import flush_queue
@@ -1584,7 +1602,9 @@ def email_queue_flush(
 
 
 @router.post("/email-queue/drain")
+@limiter.limit("5/minute")
 def email_queue_drain_now(
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Manually trigger a queue drain cycle from admin."""

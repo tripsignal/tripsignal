@@ -4,11 +4,12 @@ from uuid import UUID
 from typing import List
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import get_clerk_user_id
+from app.core.rate_limit import limiter
 from app.db.session import get_db
 from app.db.models.signal import Signal
 from app.db.models.signal_run import SignalRun
@@ -98,7 +99,9 @@ def _batch_price_trends(db: Session, deal_ids: list[UUID]) -> dict[UUID, tuple]:
 
 
 @router.get("/{signal_id}/matches", response_model=List[DealMatchOut])
+@limiter.limit("30/minute")
 def list_signal_matches(
+    request: Request,
     signal_id: UUID,
     db: Session = Depends(get_db),
     clerk_user_id: str = Depends(get_clerk_user_id),
@@ -173,7 +176,9 @@ def list_signal_matches(
 
 
 @router.patch("/{signal_id}/matches/{match_id}/favourite", response_model=DealMatchOut)
+@limiter.limit("30/minute")
 def toggle_favourite(
+    request: Request,
     signal_id: UUID,
     match_id: UUID,
     db: Session = Depends(get_db),
@@ -246,7 +251,9 @@ def toggle_favourite(
 
 
 @router.post("/{signal_id}/matches", response_model=DealMatchOut, status_code=201)
+@limiter.limit("10/minute")
 def create_signal_match(
+    request: Request,
     signal_id: UUID,
     payload: DealMatchCreate,
     db: Session = Depends(get_db),

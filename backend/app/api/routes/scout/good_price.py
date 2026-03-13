@@ -1,8 +1,9 @@
 """Scout what-is-a-good-price endpoint — educational price ranges."""
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_clerk_user_id
+from app.core.rate_limit import limiter
 from app.db.session import get_db
 from app.services.market_intel import (
     build_market_bucket_from_signal,
@@ -15,7 +16,9 @@ router = APIRouter()
 
 
 @router.get("/what-is-a-good-price")
+@limiter.limit("20/minute")
 async def what_is_a_good_price(
+    request: Request,
     db: Session = Depends(get_db),
     clerk_user_id: str = Depends(get_clerk_user_id),
 ):

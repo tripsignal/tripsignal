@@ -111,7 +111,7 @@ def sync_user(
         user.last_login_ip = client_ip
         user.last_login_user_agent = user_agent
         # Auto-set timezone from browser if user hasn't manually chosen one
-        if x_timezone and not user.timezone:
+        if x_timezone and not user.timezone and "/" in x_timezone and len(x_timezone) <= 50:
             user.timezone = x_timezone
         # Fill in email if it was missing (e.g. sync beat the webhook)
         if email and not user.email:
@@ -240,7 +240,10 @@ def update_prefs(
             raise HTTPException(status_code=400, detail="Weekly summary is only available for Pro users")
         user.notification_weekly_summary = body.notification_weekly_summary
     if body.timezone is not None:
-        user.timezone = body.timezone
+        tz = body.timezone.strip()[:50]
+        if not tz or "/" not in tz:
+            raise HTTPException(status_code=400, detail="Invalid timezone format (expected e.g. America/Toronto)")
+        user.timezone = tz
 
     if body.complete_activation and user.plan_type == "pro" and user.pro_activation_completed_at is None:
         user.pro_activation_completed_at = datetime.now(timezone.utc)
@@ -374,7 +377,9 @@ class DeleteMeRequest(BaseModel):
 
 
 @router.delete("/me")
+@limiter.limit("3/hour")
 def delete_user(
+    request: Request,
     body: DeleteMeRequest | None = None,
     db: Session = Depends(get_db),
     clerk_user_id: str = Depends(get_clerk_user_id),
@@ -388,7 +393,8 @@ def delete_user(
         reason_other=body.reason_other if body else None,
     )
     if not result.ok:
-        raise HTTPException(status_code=500, detail=result.error or "Delete failed")
+        logger.error("Account delete failed for clerk_id=%s: %s", clerk_user_id, result.error)
+        raise HTTPException(status_code=500, detail="Delete failed")
 
     logger.info(
         "SECURITY | account_deleted | clerk_id=%s | email=%s | reason=%s",

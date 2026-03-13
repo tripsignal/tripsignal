@@ -11,6 +11,7 @@ Usage (locally via SSH):
 """
 
 import argparse
+import os
 import re
 import subprocess
 import time
@@ -96,13 +97,32 @@ def get_hotels_via_ssh():
     return hotels
 
 
+_SAFE_URL_RE = re.compile(r'^https?://(?:www\.)?tripadvisor\.(?:com|ca)/Hotel_Review-[\w\-\.]+$')
+_SAFE_ID_RE = re.compile(r'^[\w\-]+$')
+
+
 def update_hotel_via_ssh(hotel_id: str, url: str) -> bool:
-    """Update hotel URL in DB via SSH."""
-    safe_url = url.replace("'", "''")
-    safe_id = hotel_id.replace("'", "''")
-    sql = f"UPDATE hotel_links SET tripadvisor_url = '{safe_url}', updated_at = NOW() WHERE hotel_id = '{safe_id}'"
-    cmd = f'ssh -i ~/.ssh/id_ed25519 -p 41922 trent@77.42.26.197 "sudo docker exec tripsignal-postgres psql -U postgres -d tripsignal -c \\"{sql}\\""'
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
+    """Update hotel URL in DB via SSH using parameterized psql query."""
+    # Validate inputs to prevent injection through shell + psql layers
+    if not _SAFE_URL_RE.match(url):
+        print(f"  Rejected URL (failed validation): {url}")
+        return False
+    if not _SAFE_ID_RE.match(hotel_id):
+        print(f"  Rejected hotel_id (failed validation): {hotel_id}")
+        return False
+
+    # Use psql -v to pass parameters safely, avoiding shell interpolation
+    sql = "UPDATE hotel_links SET tripadvisor_url = :'ta_url', updated_at = NOW() WHERE hotel_id = :'h_id'"
+    cmd = [
+        "ssh", "-i", os.path.expanduser("~/.ssh/id_ed25519"),
+        "-p", "41922", "trent@77.42.26.197",
+        "sudo", "docker", "exec", "tripsignal-postgres",
+        "psql", "-U", "postgres", "-d", "tripsignal",
+        "-v", f"ta_url={url}",
+        "-v", f"h_id={hotel_id}",
+        "-c", sql,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
     return "UPDATE 1" in result.stdout
 
 

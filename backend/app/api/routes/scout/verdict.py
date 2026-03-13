@@ -1,9 +1,10 @@
 """Scout verdict endpoint — overall 'should I book now?' assessment."""
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_clerk_user_id
+from app.core.rate_limit import limiter
 from app.db.models.deal import Deal
 from app.db.models.deal_match import DealMatch
 from app.db.models.signal_intel_cache import SignalIntelCache
@@ -15,7 +16,9 @@ router = APIRouter()
 
 
 @router.get("/verdict")
+@limiter.limit("20/minute")
 async def verdict(
+    request: Request,
     db: Session = Depends(get_db),
     clerk_user_id: str = Depends(get_clerk_user_id),
 ):

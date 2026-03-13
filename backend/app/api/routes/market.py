@@ -1,12 +1,15 @@
 """Market intelligence endpoints."""
 import logging
+from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_clerk_user_id
+from app.core.rate_limit import limiter
 from app.db.models.deal_match import DealMatch
 from app.db.models.signal import Signal
 from app.db.models.user import User
@@ -24,13 +27,42 @@ from app.services.market_intel import (
     compute_trigger_likelihood,
 )
 
+
+class _DraftDeparture(BaseModel):
+    airports: list[str] = Field(default_factory=list, max_length=10)
+
+class _DraftDestination(BaseModel):
+    regions: list[str] = Field(default_factory=list, max_length=20)
+
+class _DraftTravelWindow(BaseModel):
+    start_month: Optional[str] = None
+    end_month: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    min_nights: Optional[int] = Field(default=None, ge=1, le=30)
+    max_nights: Optional[int] = Field(default=None, ge=1, le=30)
+
+class _DraftPreferences(BaseModel):
+    min_star_rating: Optional[float] = Field(default=None, ge=0, le=5)
+
+class _DraftBudget(BaseModel):
+    target_pp: Optional[int] = Field(default=None, ge=0, le=100000)
+
+class DraftSignalRequest(BaseModel):
+    departure: Optional[_DraftDeparture] = None
+    destination: Optional[_DraftDestination] = None
+    travel_window: Optional[_DraftTravelWindow] = None
+    preferences: Optional[_DraftPreferences] = None
+    budget: Optional[_DraftBudget] = None
+
 logger = logging.getLogger("market")
 
 router = APIRouter(prefix="/api/market", tags=["market"])
 
 
 @router.get("/overview")
-async def market_overview(db: Session = Depends(get_db)):
+@limiter.limit("30/minute")
+async def market_overview(request: Request, db: Session = Depends(get_db)):
     """Public market overview metrics for the signals page header."""
     coverage = compute_market_coverage(db)
     activity = compute_market_activity(db)
@@ -45,13 +77,16 @@ async def market_overview(db: Session = Depends(get_db)):
 
 
 @router.get("/events")
-async def market_events(db: Session = Depends(get_db)):
+@limiter.limit("30/minute")
+async def market_events(request: Request, db: Session = Depends(get_db)):
     """Today's signals and market movers. Public endpoint."""
     return compute_market_events(db)
 
 
 @router.get("/top-destinations/{origin}")
+@limiter.limit("30/minute")
 async def top_destinations(
+    request: Request,
     origin: str,
     db: Session = Depends(get_db),
 ):
@@ -61,7 +96,9 @@ async def top_destinations(
 
 
 @router.get("/signal/{signal_id}/intelligence")
+@limiter.limit("20/minute")
 async def signal_market_intelligence(
+    request: Request,
     signal_id: UUID,
     db: Session = Depends(get_db),
     clerk_user_id: str = Depends(get_clerk_user_id),
@@ -111,8 +148,10 @@ async def signal_market_intelligence(
 
 
 @router.post("/draft/insights")
+@limiter.limit("20/minute")
 async def draft_signal_insights(
-    draft: dict,
+    request: Request,
+    draft: DraftSignalRequest,
     db: Session = Depends(get_db),
     clerk_user_id: str = Depends(get_clerk_user_id),
 ):
@@ -125,7 +164,7 @@ async def draft_signal_insights(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    insights = compute_draft_signal_insights(db, draft)
+    insights = compute_draft_signal_insights(db, draft.model_dump(exclude_none=True))
     if not insights:
         return {"insights": None}
 

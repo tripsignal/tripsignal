@@ -1,11 +1,12 @@
 """Scout market-context endpoint — platform-wide market context."""
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_clerk_user_id
+from app.core.rate_limit import limiter
 from app.db.models.deal import Deal
 from app.db.models.route_intel_cache import RouteIntelCache
 from app.db.session import get_db
@@ -16,7 +17,9 @@ router = APIRouter()
 
 
 @router.get("/market-context")
+@limiter.limit("20/minute")
 async def market_context(
+    request: Request,
     db: Session = Depends(get_db),
     clerk_user_id: str = Depends(get_clerk_user_id),
 ):

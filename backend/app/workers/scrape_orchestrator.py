@@ -118,10 +118,22 @@ def _run_with_timeout(target, name: str, timeout_seconds: int) -> dict:
 
     if thread.is_alive():
         logger.error(
-            "%s HARD TIMEOUT after %d seconds. Thread is still running but will be "
-            "abandoned (daemon thread dies on process exit).",
+            "%s HARD TIMEOUT after %d seconds. Requesting graceful shutdown of "
+            "timed-out scraper thread.",
             name, timeout_seconds,
         )
+        # Signal the timed-out scraper to stop at its next checkpoint
+        # so it doesn't continue running concurrently with the next scraper
+        try:
+            if "selloff" in name.lower():
+                from app.workers.selloff_scraper import _shutdown_requested as _flag  # noqa: F811
+                import app.workers.selloff_scraper as _selloff_mod
+                _selloff_mod._shutdown_requested = True
+            elif "redtag" in name.lower():
+                import app.workers.redtag_scraper as _redtag_mod
+                _redtag_mod._shutdown_requested = True
+        except Exception as e:
+            logger.warning("Could not set shutdown flag for %s: %s", name, e)
         result["status"] = "timeout"
         result["error"] = f"Hard timeout after {timeout_seconds}s"
 

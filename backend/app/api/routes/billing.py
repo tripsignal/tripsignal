@@ -62,7 +62,8 @@ async def create_checkout_session(
 
 
 @router.post("/portal")
-async def create_portal_session(user: User = Depends(get_current_user)):
+@limiter.limit("5/minute")
+async def create_portal_session(request: Request, user: User = Depends(get_current_user)):
     if not user.stripe_customer_id:
         raise HTTPException(status_code=400, detail="No billing account found")
 

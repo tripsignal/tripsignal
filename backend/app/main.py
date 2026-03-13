@@ -244,9 +244,12 @@ _PIXEL_PNG = (
 
 
 @app.get("/api/notifications/{notification_id}/pixel.png")
-def tracking_pixel(notification_id: str, db: Session = Depends(get_db)):
+@limiter.limit("30/minute")
+def tracking_pixel(request: Request, notification_id: str, db: Session = Depends(get_db)):
     """Return a 1x1 transparent PNG and track opens."""
     try:
+        import uuid as _uuid
+        _uuid.UUID(notification_id)  # validate format before querying DB
         notif = db.execute(
             select(NotificationOutbox).where(NotificationOutbox.id == notification_id)
         ).scalar_one_or_none()

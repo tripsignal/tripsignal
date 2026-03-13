@@ -2,10 +2,11 @@
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.rate_limit import limiter
 from app.db.models.deal import Deal
 from app.db.session import get_db
 from app.services.market_intel import (
@@ -41,7 +42,8 @@ def _get_price_delta(db: Session, deal_id: UUID) -> int | None:
 
 
 @router.get("/{deal_id}/public")
-async def get_public_deal(deal_id: UUID, db: Session = Depends(get_db)):
+@limiter.limit("30/minute")
+async def get_public_deal(request: Request, deal_id: UUID, db: Session = Depends(get_db)):
     """Public deal page data. No auth required."""
     deal = db.query(Deal).filter(Deal.id == deal_id, Deal.is_active == True).first()  # noqa: E712
     if not deal:

@@ -53,6 +53,7 @@ logging.basicConfig(
 BASE_URL = "https://www.redtag.ca"
 _TIMEOUT = 30
 _SYSTEM_API_HEADERS = {"X-Admin-Token": os.getenv("ADMIN_TOKEN", "")}
+_SCRAPE_ADVISORY_LOCK_KEY = 8675310  # Different from SellOff (8675309)
 
 # City slugs with /deals/{slug}/ listing pages on redtag.ca
 # Verified against RedTag sitemap — only cities with real deal inventory included.
@@ -343,6 +344,21 @@ def _parse_single_deal(deal: dict, city: str) -> Optional[dict]:
 # Core scrape cycle
 # ---------------------------------------------------------------------------
 
+def _acquire_scrape_lock(db: Session) -> bool:
+    """Try to acquire a Postgres advisory lock (non-blocking).
+
+    Returns True if the lock was acquired, False if another RedTag scraper holds it.
+    Uses a different key (8675310) from SellOff (8675309) so they don't conflict,
+    but prevents multiple RedTag instances from running concurrently.
+    """
+    from sqlalchemy import text
+    result = db.execute(
+        text("SELECT pg_try_advisory_lock(:key)"),
+        {"key": _SCRAPE_ADVISORY_LOCK_KEY},
+    ).scalar()
+    return bool(result)
+
+
 def run_once(dry_run: bool = False) -> dict:
     """Run a single RedTag scrape cycle.
 
@@ -351,6 +367,23 @@ def run_once(dry_run: bool = False) -> dict:
     """
     mode_label = "DRY-RUN" if dry_run else "LIVE"
     logger.info("RedTag scraper cycle starting [%s]", mode_label)
+
+    # Acquire advisory lock to prevent concurrent RedTag scraper instances
+    if not dry_run:
+        lock_db = next(get_db())
+        if not _acquire_scrape_lock(lock_db):
+            logger.warning("Another RedTag scraper is already running (advisory lock held). Exiting.")
+            return {
+                "started_at": datetime.now(timezone.utc),
+                "completed_at": datetime.now(timezone.utc),
+                "total_deals": 0,
+                "total_matches": 0,
+                "deals_deactivated": 0,
+                "error_count": 1,
+                "errors": [{"type": "lock", "error": "Advisory lock held by another instance"}],
+                "blocked": False,
+                "v2_signal_deals": {},
+            }
 
     cycle_errors: list = []
     total_deals = 0

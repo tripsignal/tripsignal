@@ -246,7 +246,9 @@ async def create_signal(
 
 
 @router.get("", response_model=List[SignalOut])
+@limiter.limit("30/minute")
 async def list_signals(
+    request: Request,
     db: Session = Depends(get_db),
     clerk_user_id: str = Depends(get_clerk_user_id),
 ) -> List[SignalOut]:
@@ -382,7 +384,9 @@ async def list_signals(
 
 
 @router.get("/{signal_id}", response_model=SignalOut)
+@limiter.limit("30/minute")
 async def get_signal(
+    request: Request,
     signal_id: UUID,
     db: Session = Depends(get_db),
     clerk_user_id: str = Depends(get_clerk_user_id),
@@ -399,7 +403,9 @@ async def get_signal(
 
 
 @router.delete("/{signal_id}", status_code=204)
+@limiter.limit("10/minute")
 async def delete_signal(
+    request: Request,
     signal_id: UUID,
     db: Session = Depends(get_db),
     clerk_user_id: str = Depends(get_clerk_user_id),
@@ -418,7 +424,9 @@ async def delete_signal(
 
 
 @router.patch("/{signal_id}", response_model=SignalOut)
+@limiter.limit("10/minute")
 async def update_signal(
+    request: Request,
     signal_id: UUID,
     signal_update: SignalUpdate,
     db: Session = Depends(get_db),
