@@ -44,6 +44,8 @@ def verify_clerk_token(token: str) -> str:
     # Newer Clerk SDK versions may omit the azp claim entirely; when absent
     # the token is still valid (signature + expiration are verified above).
     azp = payload.get("azp")
+    if azp is None:
+        logger.info("jwt_azp_absent | sub=%s", payload.get("sub"))
     authorized_parties = settings.CLERK_AUTHORIZED_PARTIES
     if authorized_parties and azp is not None:
         allowed = {p.strip() for p in authorized_parties.split(",") if p.strip()}

@@ -138,19 +138,14 @@ def sync_user(
                 db.commit()
                 # Fall through to create a fresh user below
             else:
+                # Active account with this email exists under a different clerk_id.
+                # Do NOT relink — this could be an account takeover attempt.
+                # Create a fresh user below without the email to avoid conflicts.
                 logger.warning(
-                    "SECURITY | sync_relink | old_clerk=%s new_clerk=%s email=%s ip=%s",
+                    "SECURITY | sync_relink_blocked | old_clerk=%s new_clerk=%s email=%s ip=%s",
                     existing.clerk_id, clerk_user_id, email, client_ip,
                 )
-                existing.clerk_id = clerk_user_id
-                existing.last_login_at = datetime.now(timezone.utc)
-                existing.login_count = (existing.login_count or 0) + 1
-                existing.last_login_ip = client_ip
-                existing.last_login_user_agent = user_agent
-                if x_timezone and not existing.timezone:
-                    existing.timezone = x_timezone
-                db.commit()
-                return {"id": str(existing.id), "synced": True, "created": False}
+                email = ""  # clear so new user creation doesn't hit unique constraint
 
     # New user — create with defaults
     try:
