@@ -15,6 +15,7 @@ Job execution order matters:
   7. Payment failed reminders
   8. User mode refresh
   9. Weekly digest (passive users, Sundays only)
+ 10. Hard-delete cleanup (soft-deleted users >30 days)
 """
 from __future__ import annotations
 
@@ -88,6 +89,7 @@ def run_cycle(db: Session, now: datetime | None = None) -> None:
     _run_payment_failed_reminders(db, now)
     _run_user_mode_refresh(db, now)
     _run_weekly_digests(db, now)
+    _run_hard_delete_cleanup(db, now)
 
 
 # ── Job 0a: Drain email queue ─────────────────────────────────────────────────
@@ -709,6 +711,47 @@ def _run_weekly_digests(db: Session, now: datetime) -> int:
     if passive_users:
         logger.info("weekly_digest: checked %d passive users, sent %d", len(passive_users), sent)
     return sent
+
+
+# ── Job 10: Hard-delete cleanup (soft-deleted users >30 days) ────────────────
+
+HARD_DELETE_GRACE_DAYS = 30
+
+
+def _run_hard_delete_cleanup(db: Session, now: datetime) -> int:
+    """Permanently remove users soft-deleted more than 30 days ago.
+
+    Only targets users whose PII has already been scrubbed (sentinel email).
+    CASCADE FKs handle: signals → deal_matches, signal_runs.
+    SET NULL FKs handle: email_log.user_id, notifications_outbox.signal_id.
+
+    Returns the number of users hard-deleted.
+    """
+    cutoff = now - timedelta(days=HARD_DELETE_GRACE_DAYS)
+
+    users = db.execute(
+        select(User).where(
+            User.deleted_at.isnot(None),
+            User.deleted_at <= cutoff,
+            User.email.like("%@deleted.tripsignal.ca"),
+        )
+    ).scalars().all()
+
+    deleted = 0
+    for user in users:
+        user_id = str(user.id)
+        try:
+            db.delete(user)
+            db.commit()
+            deleted += 1
+            logger.info("hard_delete_cleanup: permanently removed user %s", user_id)
+        except Exception:
+            db.rollback()
+            logger.exception("hard_delete_cleanup: failed for user %s", user_id)
+
+    if deleted:
+        logger.info("hard_delete_cleanup: removed %d users", deleted)
+    return deleted
 
 
 if __name__ == "__main__":

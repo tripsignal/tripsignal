@@ -145,6 +145,8 @@ def get_default_body(email_type: EmailType) -> tuple[str, str]:
         plan_type = "pro"
         plan_status = "active"
         clerk_id = "preview"
+        display_name = "Traveller"
+        first_name = "Traveller"
 
     # Get sample context
     sample_ctx = _sample_context_for_type(email_type)
@@ -204,9 +206,12 @@ def _interpolate(template_str: str, user: "User", context: dict) -> str:
     # Build variable map from user + context
     var_map = defaultdict(lambda: "")
     # User fields
-    for attr in ("email", "plan_type", "plan_status"):
+    for attr in ("email", "plan_type", "plan_status", "display_name", "first_name"):
         if hasattr(user, attr):
             var_map[attr] = getattr(user, attr, "") or ""
+    # Computed greeting name for admin overrides: {greeting_name}
+    greeting_name = getattr(user, "display_name", None) or getattr(user, "first_name", None)
+    var_map["greeting_name"] = greeting_name or ""
     # Context variables
     for k, v in context.items():
         var_map[k] = str(v) if v is not None else ""

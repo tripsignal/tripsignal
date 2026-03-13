@@ -9,7 +9,7 @@ from html import escape as esc
 from typing import TYPE_CHECKING
 
 from app.services.email_templates.base import (
-    wrap, button, para, heading, info_box,
+    wrap, button, para, heading, info_box, greeting,
     stars_html, format_price, pricing_disclaimer, new_low_banner, price_drop_banner,
     destination_index_html, departure_heatmap_html, arbitrage_line,
     date_shift_line, budget_nudge_line,
@@ -41,7 +41,8 @@ def _is_instant(context: dict) -> bool:
 def welcome(*, user: "User", context: dict) -> tuple[str, str]:
     subject = "Welcome to Trip Signal"
     body = (
-        heading("Welcome to Trip Signal")
+        greeting(user)
+        + heading("Welcome to Trip Signal")
         + para(
             "Thanks for signing up. Trip Signal monitors all-inclusive vacation prices "
             "across Canadian travel sites so you don't have to."
@@ -61,7 +62,8 @@ def first_signal(*, user: "User", context: dict) -> tuple[str, str]:
     subject = f'Your signal "{signal_name}" is now active'
     safe_name = esc(signal_name)
     body = (
-        heading("Your signal is live")
+        greeting(user)
+        + heading("Your signal is live")
         + para(
             f"We've started monitoring deals for <strong>{safe_name}</strong>. "
             "Prices are checked multiple times a day across our travel provider network."
@@ -82,7 +84,8 @@ def first_signal(*, user: "User", context: dict) -> tuple[str, str]:
 def no_signal_reminder(*, user: "User", context: dict) -> tuple[str, str]:
     subject = "Don't forget to create your first signal"
     body = (
-        heading("Your account is set up — one step to go")
+        greeting(user)
+        + heading("Your account is set up — one step to go")
         + para(
             "You signed up for Trip Signal but haven't created a signal yet. "
             "A signal tells us what kind of vacation you're looking for so we can "
@@ -130,7 +133,7 @@ def match_alert(*, user: "User", context: dict) -> tuple[str, str]:
     subject = build_match_subject(context)
     preview = build_match_preview(context)
 
-    parts: list[str] = []
+    parts: list[str] = [greeting(user)]
 
     # ── Monitoring summary header ──
     active_count = context.get("active_signal_count", 1)
@@ -478,7 +481,8 @@ def major_drop_alert(*, user: "User", context: dict) -> tuple[str, str]:
         drop_info += f" ({drop_pct}%)"
 
     body = (
-        (price_drop_banner(drop_pct) if drop_pct and drop_pct >= 10 else "")
+        greeting(user)
+        + (price_drop_banner(drop_pct) if drop_pct and drop_pct >= 10 else "")
         + heading("Significant price drop")
         + para(
             f"<strong>{safe_hotel}</strong> on your {safe_signal} signal "
@@ -510,7 +514,8 @@ def trial_expiring_soon(*, user: "User", context: dict) -> tuple[str, str]:
     days_left = context.get("days_left", 3)
     subject = f"Your Trip Signal trial ends in {days_left} day{'s' if days_left != 1 else ''}"
     body = (
-        heading(f"Your trial ends in {days_left} day{'s' if days_left != 1 else ''}")
+        greeting(user)
+        + heading(f"Your trial ends in {days_left} day{'s' if days_left != 1 else ''}")
         + para(
             "When your trial ends, your signals will pause and you'll stop receiving "
             "deal alerts. Your settings and history will be saved."
@@ -540,7 +545,8 @@ def trial_expiring_soon(*, user: "User", context: dict) -> tuple[str, str]:
 def trial_expired_upsell(*, user: "User", context: dict) -> tuple[str, str]:
     subject = "Your Trip Signal trial has ended — keep your signals running"
     body = (
-        heading("Your free trial has ended")
+        greeting(user)
+        + heading("Your free trial has ended")
         + para(
             "Your signals have been paused, but your saved settings are still here. "
             "Upgrade to Pro to keep monitoring — for less than a cup of coffee a month."
@@ -571,7 +577,8 @@ def trial_expired_upsell(*, user: "User", context: dict) -> tuple[str, str]:
 def pro_activated(*, user: "User", context: dict) -> tuple[str, str]:
     subject = "Welcome to Trip Signal Pro"
     body = (
-        heading("You're on Pro")
+        greeting(user)
+        + heading("You're on Pro")
         + para(
             "Thanks for upgrading. Your signals are now running with full Pro features:"
         )
@@ -595,7 +602,8 @@ def pro_activated(*, user: "User", context: dict) -> tuple[str, str]:
 def payment_failed(*, user: "User", context: dict) -> tuple[str, str]:
     subject = "Action needed: your Trip Signal payment failed"
     body = (
-        heading("Payment failed")
+        greeting(user)
+        + heading("Payment failed")
         + para(
             "We weren't able to process your latest payment. Your Pro access will "
             "continue for now, but please update your payment method to avoid interruption."
@@ -610,7 +618,8 @@ def payment_failed_reminder(*, user: "User", context: dict) -> tuple[str, str]:
     reminder_num = context.get("reminder_num", 1)
     subject = "Reminder: your Trip Signal payment still needs attention"
     body = (
-        heading("Payment still outstanding")
+        greeting(user)
+        + heading("Payment still outstanding")
         + para(
             "We still haven't been able to process your payment. If your payment method "
             "isn't updated soon, your Pro access may be suspended and your signals will pause."
@@ -630,7 +639,8 @@ def subscription_canceled(*, user: "User", context: dict) -> tuple[str, str]:
         if period_end else ""
     )
     body = (
-        heading("Subscription canceled")
+        greeting(user)
+        + heading("Subscription canceled")
         + para(
             f"Your Pro subscription has been canceled.{period_note} "
             "After that, your signals will pause and your plan will revert to Free."
@@ -655,7 +665,8 @@ def subscription_canceled(*, user: "User", context: dict) -> tuple[str, str]:
 def account_deleted_free(*, user: "User", context: dict) -> tuple[str, str]:
     subject = "Your Trip Signal account has been deleted"
     body = (
-        heading("Your account has been deleted")
+        greeting(user)
+        + heading("Your account has been deleted")
         + para(
             "Thank you for trying Trip Signal. Your account and all associated data "
             "have been removed. You will no longer receive deal alerts or notifications from us."
@@ -671,7 +682,8 @@ def account_deleted_free(*, user: "User", context: dict) -> tuple[str, str]:
 def account_deleted_pro(*, user: "User", context: dict) -> tuple[str, str]:
     subject = "Account deleted — subscription canceled"
     body = (
-        heading("Your account has been deleted")
+        greeting(user)
+        + heading("Your account has been deleted")
         + para(
             "Thank you for trying Trip Signal. Your account and all associated data "
             "have been removed. You will no longer receive deal alerts or notifications from us."
@@ -697,7 +709,8 @@ def no_match_update(*, user: "User", context: dict) -> tuple[str, str]:
     safe_name = esc(signal_name)
     subject = f"Update on {signal_name} — no matches yet"
     body = (
-        heading(f"No matches yet for {safe_name}")
+        greeting(user)
+        + heading(f"No matches yet for {safe_name}")
         + para(
             f"Your signal has been active for {days_active} days but hasn't matched "
             "any deals yet. This can happen with narrow criteria or destinations that "
@@ -745,7 +758,7 @@ def inactive_reengagement(*, user: "User", context: dict) -> tuple[str, str]:
     current_best = context.get("current_best_deal", {})
     days_inactive = context.get("days_inactive", 21)
 
-    parts: list[str] = []
+    parts: list[str] = [greeting(user)]
 
     # ── Zone 1: Proof header ──
     if total_deals and total_deals > 0:
@@ -864,7 +877,7 @@ def weekly_digest(*, user: "User", context: dict) -> tuple[str, str]:
     signal_name = context.get("signal_name", "your signal")
     safe_name = esc(signal_name)
 
-    parts: list[str] = []
+    parts: list[str] = [greeting(user)]
 
     # ── Zone 1: Week summary ──
     parts.append(heading(f"This week on {safe_name}"))
@@ -1079,7 +1092,8 @@ def _multi_deal_list(deals: list[dict]) -> str:
 def trial_extended(*, user: "User", context: dict) -> tuple[str, str]:
     subject = "We've extended your trial"
     body = (
-        heading("We\u2019ve extended your trial")
+        greeting(user)
+        + heading("We\u2019ve extended your trial")
         + para(
             "Your signal hasn\u2019t found many matches yet, so we\u2019ve added "
             "7 more days to your trial."

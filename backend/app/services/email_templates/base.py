@@ -2,6 +2,10 @@
 from __future__ import annotations
 
 import html as _html
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.db.models.user import User
 
 
 def esc(value: str | None) -> str:
@@ -9,6 +13,45 @@ def esc(value: str | None) -> str:
     if value is None:
         return ""
     return _html.escape(str(value))
+
+
+_PROFANITY_WORDS: frozenset[str] = frozenset({
+    "ass", "asshole", "bastard", "bitch", "bollocks", "cock", "crap", "cunt",
+    "damn", "dick", "douche", "fag", "fuck", "fucker", "fucking", "goddamn",
+    "hell", "jackass", "motherfucker", "nigga", "nigger", "piss", "prick",
+    "pussy", "shit", "slut", "twat", "whore", "wanker",
+})
+
+# Real names that collide with profanity words — exempt from filtering.
+_NAME_WHITELIST: frozenset[str] = frozenset({
+    "dick", "fanny", "hell", "randy", "willy",
+})
+
+
+def _name_is_clean(name: str) -> bool:
+    """Return False if the name contains profanity. Case-insensitive word check.
+
+    Single-word names that match a known real name (e.g. Dick, Fanny) are allowed.
+    Multi-word names are checked word-by-word with the whitelist applied.
+    """
+    import re
+    words = set(re.findall(r"[a-zA-Z]+", name.lower()))
+    profane_words = words & _PROFANITY_WORDS
+    if not profane_words:
+        return True
+    # Allow if every flagged word is a whitelisted real name
+    return profane_words <= _NAME_WHITELIST
+
+
+def greeting(user: "User") -> str:
+    """Render a personalized greeting line: 'Hey Trent,' or 'Hey there,'.
+
+    Falls back to generic greeting if the name is missing or contains profanity.
+    """
+    name = getattr(user, "display_name", None) or getattr(user, "first_name", None)
+    safe = esc(name) if name and _name_is_clean(name) else None
+    text = f"Hey {safe}," if safe else "Hey there,"
+    return f'<p style="margin:0 0 8px;font-size:16px;color:#111;font-weight:500;">{text}</p>'
 
 
 def wrap(
