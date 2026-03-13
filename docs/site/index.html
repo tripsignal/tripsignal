@@ -1,0 +1,4937 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Technical documentation for the TripSignal platform">
+      
+      
+      
+        <link rel="canonical" href="https://tripsignal.ca/admin/docs-static/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.4">
+    
+    
+      
+        <title>TripSignal — Internal Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CFira+Code:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"Fira Code"}</style>
+      
+    
+    
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#tripsignal-technical-documentation" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="." title="TripSignal — Internal Docs" class="md-header__button md-logo" aria-label="TripSignal — Internal Docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            TripSignal — Internal Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Home
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="." title="TripSignal — Internal Docs" class="md-nav__button md-logo" aria-label="TripSignal — Internal Docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    TripSignal — Internal Docs
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="." class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table of Contents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-architecture-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Architecture Overview
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Architecture Overview">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#system-diagram" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System Diagram
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tech-stack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tech Stack
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#request-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Request Flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-database-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Database Schema
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Database Schema">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#table-users" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table: users
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-signals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table: signals
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-deals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table: deals
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-deal_matches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table: deal_matches
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-deal_price_history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table: deal_price_history
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-signal_runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table: signal_runs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-scrape_runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table: scrape_runs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-notifications_outbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table: notifications_outbox
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-email_log" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table: email_log
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-email_queue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table: email_queue
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-email_template_overrides" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table: email_template_overrides
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-hotel_links" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table: hotel_links
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-market_snapshots" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table: market_snapshots
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-route_intel_cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table: route_intel_cache
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-signal_intel_cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table: signal_intel_cache
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-stripe_events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table: stripe_events
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#table-system_config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Table: system_config
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#database-infrastructure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database Infrastructure
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-backend-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Backend API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Backend API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-authentication-user-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 Authentication &amp; User Management
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-signals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Signals
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-deal-matches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 Deal Matches
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#34-billing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4 Billing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#35-admin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.5 Admin
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#36-scout-travel-intelligence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.6 Scout (Travel Intelligence)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#37-market-intelligence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.7 Market Intelligence
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#38-public-deal-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.8 Public Deal Page
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#39-unsubscribe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.9 Unsubscribe
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#310-clerk-webhook" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.10 Clerk Webhook
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#311-scraper-lab-admin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.11 Scraper Lab (Admin)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#312-resend-webhooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.12 Resend Webhooks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#312-system-endpoints-in-mainpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.12 System Endpoints (in main.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-backend-services" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Backend Services
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Backend Services">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-scraper-system" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1 Scraper System
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4.1 Scraper System">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scrape-orchestrator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scrape Orchestrator
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#selloff-scraper" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SellOff Scraper
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#redtag-scraper" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RedTag Scraper
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#shared-matching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shared Matching
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-email-system" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2 Email System
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4.2 Email System">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#email-orchestrator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Email Orchestrator
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#email-queue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Email Queue
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#email-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Email Templates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#email-service" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Email Service
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notifications-log-worker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notifications Log Worker
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lifecycle-email-worker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lifecycle Email Worker
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-market-intelligence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3 Market Intelligence
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-book-window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.4 Book Window
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#45-account-service" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.5 Account Service
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#46-user-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.6 User Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-frontend-pages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Frontend Pages
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Frontend Pages">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-public-pages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1 Public Pages
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5.1 Public Pages">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#landing-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Landing Page (/)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pricing-pricing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pricing (/pricing)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#contact-contact" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Contact (/contact)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#legal-pages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Legal Pages
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#beta-gate-beta" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Beta Gate (/beta)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deal-page-dealid" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deal Page (/deal/[id])
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#unsubscribe-unsubscribe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unsubscribe (/unsubscribe)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#404-not-found" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        404 Not Found
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-auth-pages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2 Auth Pages
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5.2 Auth Pages">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sign-in-sign-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sign In (/sign-in)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sign-up-sign-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sign Up (/sign-up)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-onboarding-pages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3 Onboarding Pages
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5.3 Onboarding Pages">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#accept-terms-accept-terms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accept Terms (/accept-terms)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pro-activate-proactivate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pro Activate (/pro/activate)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54-app-pages-auth-required" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.4 App Pages (auth required)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5.4 App Pages (auth required)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#signals-list-signals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Signals List (/signals)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-signal-signalsnew" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create Signal (/signals/new)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#edit-signal-signalsidedit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Edit Signal (/signals/[id]/edit)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scout-scout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scout (/scout)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#feedback-feedback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feedback (/feedback)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#55-account-pages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.5 Account Pages
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5.5 Account Pages">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#account-settings-accountsettings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Account Settings (/account/settings)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cancel-account-accountcancel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cancel Account (/account/cancel)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notification-settings-accountnotifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notification Settings (/account/notifications)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#56-admin-pages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.6 Admin Pages
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5.6 Admin Pages">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#admin-dashboard-admin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin Dashboard (/admin)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-frontend-components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Frontend Components
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Frontend Components">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#shared-components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shared Components
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#signal-page-components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Signal Page Components
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#signal-wizard-components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Signal Wizard Components
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#shadcnui-components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        shadcn/ui Components
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-nextjs-proxy-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Next.js Proxy Routes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Next.js Proxy Routes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#user-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User Routes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#signal-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Signal Routes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#billing-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Billing Routes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#admin-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin Routes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#other-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other Routes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#seo-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SEO Routes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-data-utilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Data &amp; Utilities
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. Data &amp; Utilities">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#libdataairportsts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        lib/data/airports.ts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#libutilsts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        lib/utils.ts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#libutilsformat-signal-namets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        lib/utils/format-signal-name.ts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#libanalyticsts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        lib/analytics.ts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#libadminauthts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        lib/admin/auth.ts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-infrastructure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Infrastructure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. Infrastructure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#91-containers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.1 Containers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#92-caddy-routing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.2 Caddy Routing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#93-docker-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.3 Docker Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#94-environment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.4 Environment Variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#95-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.5 Deployment
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-auth-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Auth Flow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. Auth Flow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#end-to-end-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        End-to-End Authentication
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#beta-password-gate-currently-disabled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Beta Password Gate (currently disabled)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#admin-auth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin Auth
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-billing-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Billing Flow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="11. Billing Flow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#upgrade-to-pro" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrade to Pro
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#payment-failure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Payment Failure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#subscription-cancellation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subscription Cancellation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plan-types-and-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plan Types and Limits
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-scraper-alert-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Scraper -&gt; Alert Pipeline
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="12. Scraper -&gt; Alert Pipeline">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#full-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#email-deduplication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Email Deduplication
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deal-staleness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deal Staleness
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-known-gotchas-tribal-knowledge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. Known Gotchas &amp; Tribal Knowledge
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="tripsignal-technical-documentation">TripSignal -- Technical Documentation<a class="headerlink" href="#tripsignal-technical-documentation" title="Permanent link">&para;</a></h1>
+<p>Generated: 2026-03-07
+Codebase: Backend (<code>tripsignal/backend/</code>) + Frontend (<code>tripsignal-ui/</code>)</p>
+<hr />
+<h2 id="table-of-contents">Table of Contents<a class="headerlink" href="#table-of-contents" title="Permanent link">&para;</a></h2>
+<ol>
+<li><a href="#1-architecture-overview">Architecture Overview</a></li>
+<li><a href="#2-database-schema">Database Schema</a></li>
+<li><a href="#3-backend-api">Backend API</a></li>
+<li><a href="#4-backend-services">Backend Services</a></li>
+<li><a href="#5-frontend-pages">Frontend Pages</a></li>
+<li><a href="#6-frontend-components">Frontend Components</a></li>
+<li><a href="#7-nextjs-proxy-routes">Next.js Proxy Routes</a></li>
+<li><a href="#8-data--utilities">Data &amp; Utilities</a></li>
+<li><a href="#9-infrastructure">Infrastructure</a></li>
+<li><a href="#10-auth-flow">Auth Flow</a></li>
+<li><a href="#11-billing-flow">Billing Flow</a></li>
+<li><a href="#12-scraper---alert-pipeline">Scraper -&gt; Alert Pipeline</a></li>
+<li><a href="#13-known-gotchas--tribal-knowledge">Known Gotchas &amp; Tribal Knowledge</a></li>
+</ol>
+<hr />
+<h2 id="1-architecture-overview">1. Architecture Overview<a class="headerlink" href="#1-architecture-overview" title="Permanent link">&para;</a></h2>
+<h3 id="system-diagram">System Diagram<a class="headerlink" href="#system-diagram" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Browser
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  |
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  v
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>Caddy (tripsignal-caddy) -- reverse proxy, TLS
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  |
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  +--  /api/*  --&gt;  FastAPI (tripsignal-api:8000)
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>  |
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  +--  /*      --&gt;  Next.js (tripsignal-frontend:3000)
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>                    PostgreSQL (tripsignal-postgres:5432)
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>                       ^
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>                       |
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>                    FastAPI / Workers
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>Workers (all share same Docker image):
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>  - tripsignal-api           -- uvicorn, serves HTTP
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>  - scrape_orchestrator      -- runs SellOff + RedTag scrapers in staggered sequence
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>  - notifications_worker     -- polls notifications_outbox, sends via Resend
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>  - lifecycle_worker         -- trial expiry emails, welcome emails, engagement
+</code></pre></div>
+<h3 id="tech-stack">Tech Stack<a class="headerlink" href="#tech-stack" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Technology</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Frontend</td>
+<td>Next.js 16.1.6, React 19.2.3, Tailwind CSS 4, shadcn/ui</td>
+</tr>
+<tr>
+<td>Backend</td>
+<td>FastAPI 0.125.0, SQLAlchemy 2.0.36, Python 3.12</td>
+</tr>
+<tr>
+<td>Database</td>
+<td>PostgreSQL 16 (Alpine)</td>
+</tr>
+<tr>
+<td>Auth</td>
+<td>Clerk (<code>@clerk/nextjs</code> 6.37.2)</td>
+</tr>
+<tr>
+<td>Billing</td>
+<td>Stripe (checkout sessions, customer portal, webhooks)</td>
+</tr>
+<tr>
+<td>Email</td>
+<td>Resend API (from <code>hello@tripsignal.ca</code>)</td>
+</tr>
+<tr>
+<td>Reverse Proxy</td>
+<td>Caddy 2 (auto TLS, gzip/zstd)</td>
+</tr>
+<tr>
+<td>Hosting</td>
+<td>Single VPS, all Docker containers</td>
+</tr>
+<tr>
+<td>Migrations</td>
+<td>Alembic</td>
+</tr>
+<tr>
+<td>Rate Limiting</td>
+<td>slowapi</td>
+</tr>
+<tr>
+<td>Rich Text (Admin)</td>
+<td>TipTap</td>
+</tr>
+<tr>
+<td>Analytics</td>
+<td>Google Analytics (G-2DNWZ6VJ6X)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="request-flow">Request Flow<a class="headerlink" href="#request-flow" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Browser hits <code>tripsignal.ca</code></li>
+<li>Caddy terminates TLS, compresses response</li>
+<li>If path starts with <code>/api/</code> -&gt; reverse proxy to <code>api:8000</code> (FastAPI)</li>
+<li>Everything else -&gt; reverse proxy to <code>tripsignal-frontend:3000</code> (Next.js)</li>
+<li>Next.js proxy routes (e.g., <code>/user/sync</code>) make internal HTTP calls to <code>http://api:8000</code> (Docker network)</li>
+<li>FastAPI authenticates via Clerk JWT (Bearer token) or legacy <code>x-clerk-user-id</code> header</li>
+</ol>
+<hr />
+<h2 id="2-database-schema">2. Database Schema<a class="headerlink" href="#2-database-schema" title="Permanent link">&para;</a></h2>
+<h3 id="table-users">Table: <code>users</code><a class="headerlink" href="#table-users" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/db/models/user.py</code></p>
+<p>Primary user table. ~40 columns. Keyed by UUID, linked to Clerk via <code>clerk_id</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>id</td>
+<td>UUID (PK)</td>
+<td>Internal user ID</td>
+</tr>
+<tr>
+<td>clerk_id</td>
+<td>Text (unique, indexed)</td>
+<td>Clerk external ID</td>
+</tr>
+<tr>
+<td>email</td>
+<td>Text</td>
+<td>Email address (synced via Clerk webhook)</td>
+</tr>
+<tr>
+<td>role</td>
+<td>Text</td>
+<td><code>'user'</code> or <code>'admin'</code></td>
+</tr>
+<tr>
+<td>plan_type</td>
+<td>Text</td>
+<td><code>'free'</code> or <code>'pro'</code></td>
+</tr>
+<tr>
+<td>plan_status</td>
+<td>Text</td>
+<td><code>'active'</code>, <code>'cancelled'</code></td>
+</tr>
+<tr>
+<td>trial_ends_at</td>
+<td>Timestamptz</td>
+<td>End of 14-day free trial</td>
+</tr>
+<tr>
+<td>stripe_customer_id</td>
+<td>Text</td>
+<td>Stripe customer ID</td>
+</tr>
+<tr>
+<td>stripe_subscription_id</td>
+<td>Text</td>
+<td>Stripe subscription ID</td>
+</tr>
+<tr>
+<td>stripe_subscription_status</td>
+<td>Text</td>
+<td>Stripe status string</td>
+</tr>
+<tr>
+<td>subscription_current_period_end</td>
+<td>Timestamptz</td>
+<td>Current billing period end</td>
+</tr>
+<tr>
+<td>terms_accepted_at</td>
+<td>Timestamptz</td>
+<td>When user accepted terms</td>
+</tr>
+<tr>
+<td>terms_version</td>
+<td>Text</td>
+<td>Version of terms accepted</td>
+</tr>
+<tr>
+<td>privacy_accepted_at</td>
+<td>Timestamptz</td>
+<td>When user accepted privacy policy</td>
+</tr>
+<tr>
+<td>privacy_version</td>
+<td>Text</td>
+<td>Version of privacy policy accepted</td>
+</tr>
+<tr>
+<td>email_enabled</td>
+<td>Boolean</td>
+<td>Email notifications enabled (default true)</td>
+</tr>
+<tr>
+<td>sms_enabled</td>
+<td>Boolean</td>
+<td>SMS notifications enabled (default false)</td>
+</tr>
+<tr>
+<td>email_opt_out</td>
+<td>Boolean</td>
+<td>User opted out of all emails</td>
+</tr>
+<tr>
+<td>pro_activation_completed_at</td>
+<td>Timestamptz</td>
+<td>When pro onboarding was completed</td>
+</tr>
+<tr>
+<td>last_login_at</td>
+<td>Timestamptz</td>
+<td>Last login timestamp</td>
+</tr>
+<tr>
+<td>login_count</td>
+<td>Integer</td>
+<td>Total login count</td>
+</tr>
+<tr>
+<td>last_login_ip</td>
+<td>Text</td>
+<td>IP from X-Forwarded-For</td>
+</tr>
+<tr>
+<td>last_login_user_agent</td>
+<td>Text</td>
+<td>Browser user agent</td>
+</tr>
+<tr>
+<td>is_test_user</td>
+<td>Boolean (indexed)</td>
+<td>Admin-flagged test user</td>
+</tr>
+<tr>
+<td>deleted_at</td>
+<td>Timestamptz (indexed)</td>
+<td>Soft-delete timestamp</td>
+</tr>
+<tr>
+<td>deleted_by</td>
+<td>Text</td>
+<td><code>'admin'</code> or <code>'user'</code></td>
+</tr>
+<tr>
+<td>deleted_reason</td>
+<td>Text</td>
+<td>Reason code</td>
+</tr>
+<tr>
+<td>deleted_reason_other</td>
+<td>Text</td>
+<td>Free-text reason</td>
+</tr>
+<tr>
+<td>stripe_canceled_at</td>
+<td>Timestamptz</td>
+<td>When Stripe sub was canceled</td>
+</tr>
+<tr>
+<td>trial_auto_extended_at</td>
+<td>Timestamptz</td>
+<td>If trial was auto-extended</td>
+</tr>
+<tr>
+<td>trial_expired_email_sent_at</td>
+<td>Timestamptz</td>
+<td>Idempotency guard for trial expiry email</td>
+</tr>
+<tr>
+<td>welcome_email_sent_at</td>
+<td>Timestamptz</td>
+<td>Idempotency guard for welcome email</td>
+</tr>
+<tr>
+<td>trial_expiring_email_sent_at</td>
+<td>Timestamptz</td>
+<td>Idempotency guard</td>
+</tr>
+<tr>
+<td>no_signal_email_sent_at</td>
+<td>Timestamptz</td>
+<td>Idempotency guard</td>
+</tr>
+<tr>
+<td>email_mode</td>
+<td>Text</td>
+<td><code>'active'</code>, etc. (engagement tracking)</td>
+</tr>
+<tr>
+<td>last_email_opened_at</td>
+<td>Timestamptz</td>
+<td>Email open tracking</td>
+</tr>
+<tr>
+<td>last_email_clicked_at</td>
+<td>Timestamptz</td>
+<td>Email click tracking</td>
+</tr>
+<tr>
+<td>notification_delivery_frequency</td>
+<td>Text</td>
+<td><code>'all'</code>, <code>'morning'</code>, <code>'noon'</code>, <code>'evening'</code> (comma-separated)</td>
+</tr>
+<tr>
+<td>timezone</td>
+<td>Text</td>
+<td>User timezone (default <code>'America/Toronto'</code>)</td>
+</tr>
+<tr>
+<td>notification_weekly_summary</td>
+<td>Boolean</td>
+<td>Weekly summary enabled (Pro only)</td>
+</tr>
+<tr>
+<td>quiet_hours_enabled</td>
+<td>Boolean</td>
+<td>Quiet hours toggle</td>
+</tr>
+<tr>
+<td>quiet_hours_start</td>
+<td>Text</td>
+<td>Default <code>'21:00'</code></td>
+</tr>
+<tr>
+<td>quiet_hours_end</td>
+<td>Text</td>
+<td>Default <code>'08:00'</code></td>
+</tr>
+<tr>
+<td>created_at</td>
+<td>Timestamptz</td>
+<td>Row creation time</td>
+</tr>
+<tr>
+<td>updated_at</td>
+<td>Timestamptz</td>
+<td>Last update time</td>
+</tr>
+</tbody>
+</table>
+<p>Properties: <code>frequency_windows</code> (list from comma-separated string), <code>is_instant_delivery</code> (checks for <code>'all'</code>).</p>
+<h3 id="table-signals">Table: <code>signals</code><a class="headerlink" href="#table-signals" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/db/models/signal.py</code></p>
+<p>User-created travel monitoring signals. Each signal defines departure airports, destination regions, travel window, budget, etc.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>id</td>
+<td>UUID (PK)</td>
+<td>Signal ID</td>
+</tr>
+<tr>
+<td>name</td>
+<td>Text</td>
+<td>User-given name (e.g., "Mexico spring break")</td>
+</tr>
+<tr>
+<td>status</td>
+<td>Text</td>
+<td><code>'active'</code>, <code>'paused'</code>, <code>'payment_paused'</code>, <code>'deleted'</code></td>
+</tr>
+<tr>
+<td>departure_airports</td>
+<td>Text[]</td>
+<td>IATA codes (e.g., <code>{YYZ,YOW}</code>) -- mirrored from config for fast matching</td>
+</tr>
+<tr>
+<td>destination_regions</td>
+<td>Text[]</td>
+<td>Region slugs (e.g., <code>{riviera_maya,cancun}</code>) -- mirrored from config</td>
+</tr>
+<tr>
+<td>user_id</td>
+<td>UUID (FK -&gt; users, CASCADE)</td>
+<td>Owner</td>
+</tr>
+<tr>
+<td>config</td>
+<td>JSONB</td>
+<td>Full signal configuration (departure, destination, travel_window, travellers, budget, notifications, preferences)</td>
+</tr>
+<tr>
+<td>last_check_min_price</td>
+<td>Integer</td>
+<td>Min price found in last scrape cycle</td>
+</tr>
+<tr>
+<td>last_check_at</td>
+<td>Timestamptz</td>
+<td>When signal was last checked</td>
+</tr>
+<tr>
+<td>all_time_low_price</td>
+<td>Integer</td>
+<td>Lowest price ever seen (cents)</td>
+</tr>
+<tr>
+<td>all_time_low_at</td>
+<td>Timestamptz</td>
+<td>When ATL was recorded</td>
+</tr>
+<tr>
+<td>no_match_email_sent_at</td>
+<td>Timestamptz</td>
+<td>Idempotency for no-match notification</td>
+</tr>
+<tr>
+<td>created_at / updated_at</td>
+<td>Timestamptz</td>
+<td>Timestamps</td>
+</tr>
+</tbody>
+</table>
+<p>Relationships: <code>deal_matches</code> (one-to-many), <code>runs</code> (one-to-many SignalRun).</p>
+<h3 id="table-deals">Table: <code>deals</code><a class="headerlink" href="#table-deals" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/db/models/deal.py</code></p>
+<p>All-inclusive travel deals scraped from providers (SellOff, RedTag).</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>id</td>
+<td>UUID (PK)</td>
+<td>Deal ID</td>
+</tr>
+<tr>
+<td>provider</td>
+<td>Text (indexed)</td>
+<td><code>'selloff'</code> or <code>'redtag'</code></td>
+</tr>
+<tr>
+<td>origin</td>
+<td>Text (indexed)</td>
+<td>IATA code (e.g., <code>'YYZ'</code>)</td>
+</tr>
+<tr>
+<td>destination</td>
+<td>Text (indexed)</td>
+<td>Region slug (e.g., <code>'riviera_maya'</code>)</td>
+</tr>
+<tr>
+<td>depart_date</td>
+<td>Date (indexed)</td>
+<td>Departure date</td>
+</tr>
+<tr>
+<td>return_date</td>
+<td>Date (indexed)</td>
+<td>Return date</td>
+</tr>
+<tr>
+<td>price_cents</td>
+<td>Integer (indexed)</td>
+<td>Per-person price in cents CAD</td>
+</tr>
+<tr>
+<td>currency</td>
+<td>Text</td>
+<td>Default <code>'CAD'</code></td>
+</tr>
+<tr>
+<td>deeplink_url</td>
+<td>Text</td>
+<td>URL to provider's booking page</td>
+</tr>
+<tr>
+<td>airline</td>
+<td>Text</td>
+<td>Airline name</td>
+</tr>
+<tr>
+<td>cabin</td>
+<td>Text</td>
+<td>Cabin class</td>
+</tr>
+<tr>
+<td>stops</td>
+<td>Integer</td>
+<td>Number of stops</td>
+</tr>
+<tr>
+<td>found_at</td>
+<td>Timestamptz (indexed)</td>
+<td>When first scraped</td>
+</tr>
+<tr>
+<td>dedupe_key</td>
+<td>Text (unique, indexed)</td>
+<td>Composite key for deduplication</td>
+</tr>
+<tr>
+<td>is_active</td>
+<td>Boolean (indexed)</td>
+<td>Whether deal is still live</td>
+</tr>
+<tr>
+<td>deactivated_at</td>
+<td>Timestamptz</td>
+<td>When deal was deactivated</td>
+</tr>
+<tr>
+<td>last_seen_at</td>
+<td>Timestamptz</td>
+<td>Last scrape cycle that saw this deal</td>
+</tr>
+<tr>
+<td>missed_cycles</td>
+<td>Integer</td>
+<td>Consecutive scrape cycles where deal wasn't found</td>
+</tr>
+<tr>
+<td>hotel_name</td>
+<td>Text</td>
+<td>Hotel/resort name</td>
+</tr>
+<tr>
+<td>hotel_id</td>
+<td>Text</td>
+<td>Provider hotel ID (used for hotel_links lookup)</td>
+</tr>
+<tr>
+<td>discount_pct</td>
+<td>Integer</td>
+<td>Provider-reported discount</td>
+</tr>
+<tr>
+<td>destination_str</td>
+<td>Text</td>
+<td>Human-readable destination string</td>
+</tr>
+<tr>
+<td>star_rating</td>
+<td>Float</td>
+<td>Hotel star rating</td>
+</tr>
+</tbody>
+</table>
+<p>Relationships: <code>price_history</code> (DealPriceHistory), <code>deal_matches</code> (DealMatch).</p>
+<h3 id="table-deal_matches">Table: <code>deal_matches</code><a class="headerlink" href="#table-deal_matches" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/db/models/deal_match.py</code></p>
+<p>Junction table linking deals to signals. Created during scraper matching or on signal creation.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>id</td>
+<td>UUID (PK)</td>
+<td>Match ID</td>
+</tr>
+<tr>
+<td>signal_id</td>
+<td>UUID (FK -&gt; signals, CASCADE)</td>
+<td>Which signal</td>
+</tr>
+<tr>
+<td>deal_id</td>
+<td>UUID (FK -&gt; deals, CASCADE)</td>
+<td>Which deal</td>
+</tr>
+<tr>
+<td>run_id</td>
+<td>UUID (FK -&gt; signal_runs, SET NULL)</td>
+<td>Which run created this match</td>
+</tr>
+<tr>
+<td>matched_at</td>
+<td>Timestamptz</td>
+<td>When matched</td>
+</tr>
+<tr>
+<td>is_favourite</td>
+<td>Boolean</td>
+<td>User-favourited flag</td>
+</tr>
+<tr>
+<td>notified_at</td>
+<td>Timestamptz</td>
+<td>When user was notified about this match</td>
+</tr>
+<tr>
+<td>major_drop_alert_sent_at</td>
+<td>Timestamptz</td>
+<td>Major price drop alert tracking</td>
+</tr>
+<tr>
+<td>price_per_night_cents</td>
+<td>Integer</td>
+<td>Calculated price per night</td>
+</tr>
+<tr>
+<td>deal_seen_at</td>
+<td>Timestamptz</td>
+<td>First seen</td>
+</tr>
+<tr>
+<td>deal_last_seen_at</td>
+<td>Timestamptz</td>
+<td>Last confirmed active</td>
+</tr>
+<tr>
+<td>value_label</td>
+<td>String(30)</td>
+<td>Market-based value label (scored at match time)</td>
+</tr>
+</tbody>
+</table>
+<p>Unique constraint: <code>(signal_id, deal_id)</code> -- prevents duplicate matches.</p>
+<h3 id="table-deal_price_history">Table: <code>deal_price_history</code><a class="headerlink" href="#table-deal_price_history" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/db/models/deal_price_history.py</code></p>
+<p>Price snapshots recorded each scrape cycle. Used for trend analysis and price drop detection.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>id</td>
+<td>UUID (PK)</td>
+<td></td>
+</tr>
+<tr>
+<td>deal_id</td>
+<td>UUID (FK -&gt; deals, CASCADE)</td>
+<td></td>
+</tr>
+<tr>
+<td>price_cents</td>
+<td>Integer</td>
+<td>Price at this point in time</td>
+</tr>
+<tr>
+<td>recorded_at</td>
+<td>Timestamptz (indexed)</td>
+<td>When recorded</td>
+</tr>
+</tbody>
+</table>
+<h3 id="table-signal_runs">Table: <code>signal_runs</code><a class="headerlink" href="#table-signal_runs" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/db/models/signal_run.py</code></p>
+<p>Tracks each matching execution per signal (scheduled, manual, or test).</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>id</td>
+<td>UUID (PK)</td>
+<td>Run ID</td>
+</tr>
+<tr>
+<td>signal_id</td>
+<td>UUID (FK -&gt; signals, CASCADE)</td>
+<td></td>
+</tr>
+<tr>
+<td>run_type</td>
+<td>Enum</td>
+<td><code>morning</code>, <code>afternoon</code>, <code>manual</code>, <code>test</code></td>
+</tr>
+<tr>
+<td>status</td>
+<td>Enum</td>
+<td><code>running</code>, <code>success</code>, <code>failed</code></td>
+</tr>
+<tr>
+<td>started_at</td>
+<td>Timestamptz</td>
+<td></td>
+</tr>
+<tr>
+<td>completed_at</td>
+<td>Timestamptz</td>
+<td></td>
+</tr>
+<tr>
+<td>matches_created_count</td>
+<td>Integer</td>
+<td></td>
+</tr>
+<tr>
+<td>error_message</td>
+<td>Text</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="table-scrape_runs">Table: <code>scrape_runs</code><a class="headerlink" href="#table-scrape_runs" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/db/models/scrape_run.py</code></p>
+<p>Tracks each scraper execution cycle (aggregated across all signals).</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>id</td>
+<td>Integer (PK, auto)</td>
+<td></td>
+</tr>
+<tr>
+<td>started_at</td>
+<td>Timestamptz</td>
+<td></td>
+</tr>
+<tr>
+<td>completed_at</td>
+<td>Timestamptz</td>
+<td></td>
+</tr>
+<tr>
+<td>total_deals</td>
+<td>Integer</td>
+<td>Deals found this cycle</td>
+</tr>
+<tr>
+<td>total_matches</td>
+<td>Integer</td>
+<td>Matches created</td>
+</tr>
+<tr>
+<td>error_count</td>
+<td>Integer</td>
+<td></td>
+</tr>
+<tr>
+<td>status</td>
+<td>Text</td>
+<td><code>'running'</code>, <code>'completed'</code>, <code>'error'</code></td>
+</tr>
+<tr>
+<td>error_log</td>
+<td>JSONB</td>
+<td>Array of error details</td>
+</tr>
+<tr>
+<td>deals_deactivated</td>
+<td>Integer</td>
+<td>Deals marked inactive</td>
+</tr>
+<tr>
+<td>deals_expired</td>
+<td>Integer</td>
+<td>Deals expired</td>
+</tr>
+<tr>
+<td>proxy_ip</td>
+<td>Text</td>
+<td>IP used for scraping</td>
+</tr>
+<tr>
+<td>proxy_geo</td>
+<td>Text</td>
+<td>Geo of proxy</td>
+</tr>
+<tr>
+<td>provider</td>
+<td>Text</td>
+<td><code>'selloff'</code>, <code>'redtag'</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="table-notifications_outbox">Table: <code>notifications_outbox</code><a class="headerlink" href="#table-notifications_outbox" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/db/models/notification_outbox.py</code></p>
+<p>Outbox pattern for reliable notification delivery. The <code>notifications_log_worker</code> polls this table.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>id</td>
+<td>UUID (PK)</td>
+<td></td>
+</tr>
+<tr>
+<td>created_at / updated_at</td>
+<td>Timestamptz</td>
+<td></td>
+</tr>
+<tr>
+<td>sent_at</td>
+<td>Timestamptz</td>
+<td>When actually sent</td>
+</tr>
+<tr>
+<td>status</td>
+<td>String(20)</td>
+<td><code>'pending'</code>, <code>'sent'</code>, <code>'failed'</code></td>
+</tr>
+<tr>
+<td>attempts</td>
+<td>Integer</td>
+<td>Retry count</td>
+</tr>
+<tr>
+<td>next_attempt_at</td>
+<td>Timestamptz</td>
+<td></td>
+</tr>
+<tr>
+<td>last_error</td>
+<td>Text</td>
+<td></td>
+</tr>
+<tr>
+<td>signal_id</td>
+<td>UUID (FK -&gt; signals, SET NULL)</td>
+<td></td>
+</tr>
+<tr>
+<td>match_id</td>
+<td>UUID</td>
+<td></td>
+</tr>
+<tr>
+<td>channel</td>
+<td>String(20)</td>
+<td><code>'log'</code>, <code>'email'</code></td>
+</tr>
+<tr>
+<td>to_email</td>
+<td>Text</td>
+<td></td>
+</tr>
+<tr>
+<td>subject</td>
+<td>Text</td>
+<td></td>
+</tr>
+<tr>
+<td>body_text</td>
+<td>Text</td>
+<td>HTML body</td>
+</tr>
+<tr>
+<td>opened_at</td>
+<td>Timestamptz</td>
+<td>Tracking pixel open time</td>
+</tr>
+<tr>
+<td>open_count</td>
+<td>Integer</td>
+<td>Number of opens</td>
+</tr>
+</tbody>
+</table>
+<h3 id="table-email_log">Table: <code>email_log</code><a class="headerlink" href="#table-email_log" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/db/models/email_log.py</code></p>
+<p>Audit log for all emails sent. Provides idempotency via <code>idempotency_key</code> (unique).</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>id</td>
+<td>UUID (PK)</td>
+<td></td>
+</tr>
+<tr>
+<td>user_id</td>
+<td>UUID (FK -&gt; users, SET NULL)</td>
+<td></td>
+</tr>
+<tr>
+<td>email_type</td>
+<td>Text (indexed)</td>
+<td>e.g., <code>'WELCOME_EMAIL'</code>, <code>'DEAL_ALERT'</code></td>
+</tr>
+<tr>
+<td>category</td>
+<td>Text</td>
+<td><code>'transactional'</code>, <code>'marketing'</code></td>
+</tr>
+<tr>
+<td>idempotency_key</td>
+<td>Text (unique)</td>
+<td>Prevents duplicate sends</td>
+</tr>
+<tr>
+<td>to_email</td>
+<td>Text</td>
+<td></td>
+</tr>
+<tr>
+<td>subject</td>
+<td>Text</td>
+<td></td>
+</tr>
+<tr>
+<td>provider_message_id</td>
+<td>Text</td>
+<td>Resend message ID</td>
+</tr>
+<tr>
+<td>status</td>
+<td>Text</td>
+<td><code>'sent'</code>, <code>'suppressed'</code></td>
+</tr>
+<tr>
+<td>suppressed_reason</td>
+<td>Text</td>
+<td>Why email was suppressed</td>
+</tr>
+<tr>
+<td>metadata_json</td>
+<td>JSONB</td>
+<td></td>
+</tr>
+<tr>
+<td>sent_at</td>
+<td>Timestamptz</td>
+<td></td>
+</tr>
+<tr>
+<td>created_at</td>
+<td>Timestamptz</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="table-email_queue">Table: <code>email_queue</code><a class="headerlink" href="#table-email_queue" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/db/models/email_queue.py</code></p>
+<p>Rate-limited, prioritized email delivery queue.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>id</td>
+<td>UUID (PK)</td>
+<td></td>
+</tr>
+<tr>
+<td>priority</td>
+<td>SmallInt</td>
+<td>1=critical, 2=high, 3=low</td>
+</tr>
+<tr>
+<td>to_email, subject, html_body</td>
+<td>Text</td>
+<td>Email content</td>
+</tr>
+<tr>
+<td>email_log_id</td>
+<td>UUID</td>
+<td>Link back to email_log</td>
+</tr>
+<tr>
+<td>attempts / max_attempts</td>
+<td>Integer</td>
+<td>Retry tracking (max 3)</td>
+</tr>
+<tr>
+<td>last_attempt_at, next_retry_at</td>
+<td>Timestamptz</td>
+<td></td>
+</tr>
+<tr>
+<td>status</td>
+<td>Text</td>
+<td><code>'queued'</code>, <code>'sending'</code>, <code>'sent'</code>, <code>'failed'</code>, <code>'dead'</code></td>
+</tr>
+<tr>
+<td>error_message</td>
+<td>Text</td>
+<td></td>
+</tr>
+<tr>
+<td>provider_message_id</td>
+<td>Text</td>
+<td></td>
+</tr>
+<tr>
+<td>email_type</td>
+<td>Text</td>
+<td></td>
+</tr>
+<tr>
+<td>user_id</td>
+<td>UUID</td>
+<td></td>
+</tr>
+<tr>
+<td>metadata_json</td>
+<td>JSONB</td>
+<td></td>
+</tr>
+<tr>
+<td>created_at, sent_at</td>
+<td>Timestamptz</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="table-email_template_overrides">Table: <code>email_template_overrides</code><a class="headerlink" href="#table-email_template_overrides" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/db/models/email_template_override.py</code></p>
+<p>Admin-editable email template overrides. When set, override Python-default templates.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>email_type</td>
+<td>Text (PK)</td>
+<td>e.g., <code>'WELCOME_EMAIL'</code></td>
+</tr>
+<tr>
+<td>subject</td>
+<td>Text</td>
+<td>Override subject (null = use default)</td>
+</tr>
+<tr>
+<td>body_html</td>
+<td>Text</td>
+<td>Override HTML body (null = use default)</td>
+</tr>
+<tr>
+<td>updated_at</td>
+<td>Timestamptz</td>
+<td></td>
+</tr>
+<tr>
+<td>updated_by</td>
+<td>Text</td>
+<td>Admin identifier</td>
+</tr>
+</tbody>
+</table>
+<h3 id="table-hotel_links">Table: <code>hotel_links</code><a class="headerlink" href="#table-hotel_links" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/db/models/hotel_link.py</code></p>
+<p>External URLs (TripAdvisor, etc.) keyed by SellOff hotel_id.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>hotel_id</td>
+<td>Text (PK)</td>
+<td>Provider hotel ID</td>
+</tr>
+<tr>
+<td>hotel_name</td>
+<td>Text</td>
+<td></td>
+</tr>
+<tr>
+<td>destination</td>
+<td>Text</td>
+<td></td>
+</tr>
+<tr>
+<td>star_rating</td>
+<td>Numeric(2,1)</td>
+<td></td>
+</tr>
+<tr>
+<td>tripadvisor_url</td>
+<td>Text</td>
+<td></td>
+</tr>
+<tr>
+<td>created_at / updated_at</td>
+<td>Timestamptz</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="table-market_snapshots">Table: <code>market_snapshots</code><a class="headerlink" href="#table-market_snapshots" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/db/models/market_snapshot.py</code></p>
+<p>Daily compressed market summaries. Not yet exposed to UI -- future analytics foundation.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>id</td>
+<td>Integer (PK, auto)</td>
+<td></td>
+</tr>
+<tr>
+<td>snapshot_date</td>
+<td>Date (indexed)</td>
+<td></td>
+</tr>
+<tr>
+<td>departure_airport</td>
+<td>Text (indexed)</td>
+<td></td>
+</tr>
+<tr>
+<td>destination_region</td>
+<td>Text (indexed)</td>
+<td></td>
+</tr>
+<tr>
+<td>duration_bucket</td>
+<td>Text</td>
+<td>e.g., <code>'7'</code>, <code>'10-14'</code></td>
+</tr>
+<tr>
+<td>star_bucket</td>
+<td>Text</td>
+<td>e.g., <code>'3'</code>, <code>'4+'</code></td>
+</tr>
+<tr>
+<td>package_count</td>
+<td>Integer</td>
+<td></td>
+</tr>
+<tr>
+<td>unique_resort_count</td>
+<td>Integer</td>
+<td></td>
+</tr>
+<tr>
+<td>min_price / median_price / p75_price / max_price</td>
+<td>Integer</td>
+<td></td>
+</tr>
+<tr>
+<td>price_stddev</td>
+<td>Float</td>
+<td></td>
+</tr>
+<tr>
+<td>created_at</td>
+<td>Timestamptz</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="table-route_intel_cache">Table: <code>route_intel_cache</code><a class="headerlink" href="#table-route_intel_cache" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/db/models/route_intel_cache.py</code></p>
+<p>Computed intelligence per (origin, destination_region) pair. Refreshed after each scrape cycle.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>origin</td>
+<td>Text (PK)</td>
+<td>IATA code</td>
+</tr>
+<tr>
+<td>destination_region</td>
+<td>Text (PK)</td>
+<td>Region slug</td>
+</tr>
+<tr>
+<td>cheapest_depart_week / cheapest_week_avg_cents</td>
+<td>Date / Integer</td>
+<td>Best departure window</td>
+</tr>
+<tr>
+<td>priciest_depart_week / priciest_week_avg_cents</td>
+<td>Date / Integer</td>
+<td>Worst departure window</td>
+</tr>
+<tr>
+<td>current_week_avg_cents / prev_week_avg_cents</td>
+<td>Integer</td>
+<td>Week-over-week comparison</td>
+</tr>
+<tr>
+<td>week_over_week_pct</td>
+<td>Float</td>
+<td>Percentage change</td>
+</tr>
+<tr>
+<td>avg_price_4plus_weeks_cents</td>
+<td>Integer</td>
+<td>Booking countdown pressure</td>
+</tr>
+<tr>
+<td>avg_price_2to4_weeks_cents</td>
+<td>Integer</td>
+<td></td>
+</tr>
+<tr>
+<td>avg_price_under_2_weeks_cents</td>
+<td>Integer</td>
+<td></td>
+</tr>
+<tr>
+<td>late_booking_premium_pct</td>
+<td>Float</td>
+<td></td>
+</tr>
+<tr>
+<td>total_deals_analyzed</td>
+<td>Integer</td>
+<td></td>
+</tr>
+<tr>
+<td>cache_refreshed_at</td>
+<td>Timestamptz</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="table-signal_intel_cache">Table: <code>signal_intel_cache</code><a class="headerlink" href="#table-signal_intel_cache" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/db/models/signal_intel_cache.py</code></p>
+<p>Computed intelligence per signal. Refreshed after each scrape cycle.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>signal_id</td>
+<td>UUID (PK, FK -&gt; signals)</td>
+<td></td>
+</tr>
+<tr>
+<td>min_price_ever_cents</td>
+<td>Integer</td>
+<td>All-time low</td>
+</tr>
+<tr>
+<td>current_deal_percentile</td>
+<td>Float</td>
+<td>Where current price sits in distribution</td>
+</tr>
+<tr>
+<td>trend_direction</td>
+<td>Text</td>
+<td><code>'stable'</code>, <code>'falling'</code>, <code>'rising'</code></td>
+</tr>
+<tr>
+<td>trend_consecutive_weeks</td>
+<td>Integer</td>
+<td></td>
+</tr>
+<tr>
+<td>trend_velocity</td>
+<td>Text</td>
+<td><code>'accelerating'</code>, <code>'decelerating'</code>, <code>'steady'</code></td>
+</tr>
+<tr>
+<td>trend_last_week_delta_cents / trend_prev_week_delta_cents</td>
+<td>Integer</td>
+<td></td>
+</tr>
+<tr>
+<td>trend_inflection</td>
+<td>Boolean</td>
+<td>Prices reversing direction</td>
+</tr>
+<tr>
+<td>inflection_pct_change</td>
+<td>Float</td>
+<td></td>
+</tr>
+<tr>
+<td>best_value_nights</td>
+<td>Integer</td>
+<td>Optimal night count for value</td>
+</tr>
+<tr>
+<td>best_value_pct_saving</td>
+<td>Float</td>
+<td></td>
+</tr>
+<tr>
+<td>star_price_anomaly_pct</td>
+<td>Float</td>
+<td>Price-per-star anomaly detection</td>
+</tr>
+<tr>
+<td>hero_star_rating</td>
+<td>Float</td>
+<td></td>
+</tr>
+<tr>
+<td>floor_proximity_pct</td>
+<td>Float</td>
+<td>How close to all-time low</td>
+</tr>
+<tr>
+<td>value_score</td>
+<td>Integer</td>
+<td>0-100 price-to-quality score</td>
+</tr>
+<tr>
+<td>total_matches</td>
+<td>Integer</td>
+<td></td>
+</tr>
+<tr>
+<td>cache_refreshed_at</td>
+<td>Timestamptz</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="table-stripe_events">Table: <code>stripe_events</code><a class="headerlink" href="#table-stripe_events" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/db/models/stripe_event.py</code></p>
+<p>Stores Stripe webhook events for deduplication and audit.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>id</td>
+<td>UUID (PK)</td>
+<td></td>
+</tr>
+<tr>
+<td>stripe_event_id</td>
+<td>Text (unique, indexed)</td>
+<td>Stripe event ID</td>
+</tr>
+<tr>
+<td>event_type</td>
+<td>Text (indexed)</td>
+<td>e.g., <code>'checkout.session.completed'</code></td>
+</tr>
+<tr>
+<td>payload</td>
+<td>JSONB</td>
+<td>Full event data object</td>
+</tr>
+<tr>
+<td>received_at</td>
+<td>Timestamptz</td>
+<td></td>
+</tr>
+<tr>
+<td>processed_at</td>
+<td>Timestamptz</td>
+<td></td>
+</tr>
+<tr>
+<td>processing_error</td>
+<td>Text</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="table-system_config">Table: <code>system_config</code><a class="headerlink" href="#table-system_config" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/db/models/system_config.py</code></p>
+<p>Key-value store for system configuration.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>key</td>
+<td>String (PK)</td>
+<td>e.g., <code>'next_scan_at'</code></td>
+</tr>
+<tr>
+<td>value</td>
+<td>Text</td>
+<td></td>
+</tr>
+<tr>
+<td>updated_at</td>
+<td>Timestamptz</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="database-infrastructure">Database Infrastructure<a class="headerlink" href="#database-infrastructure" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/db/session.py</code> -- SQLAlchemy session factory, provides <code>get_db()</code> generator for FastAPI dependency injection.</p>
+<p><strong>File:</strong> <code>backend/app/db/base.py</code> -- Declares <code>Base = declarative_base()</code> for all models.</p>
+<hr />
+<h2 id="3-backend-api">3. Backend API<a class="headerlink" href="#3-backend-api" title="Permanent link">&para;</a></h2>
+<h3 id="31-authentication-user-management">3.1 Authentication &amp; User Management<a class="headerlink" href="#31-authentication-user-management" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/api/routes/users.py</code> (prefix: <code>/users</code>)</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/users/by-clerk-id/{clerk_id}</code></td>
+<td>JWT</td>
+<td>Returns user profile (plan, trial, notification prefs). Verifies caller is the same user.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/users/sync</code></td>
+<td>JWT</td>
+<td>Called on every sign-in. Creates user if new, updates login tracking (IP, UA, timezone, count). Rate limited: 30/min.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/users/terms-status?clerk_id=xxx</code></td>
+<td>None</td>
+<td>Returns whether user has accepted terms. Used by middleware. Returns <code>true</code> for unknown users (don't block).</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/users/accept-terms</code></td>
+<td>None</td>
+<td>Records terms/privacy acceptance. Starts 14-day free trial if user is on free plan. Triggers welcome email.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/users/prefs</code></td>
+<td>JWT</td>
+<td>Returns notification preferences and plan details.</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/users/prefs</code></td>
+<td>JWT</td>
+<td>Updates notification preferences (frequency, email enabled, SMS, timezone, pro activation). Validates frequency windows.</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/users/me</code></td>
+<td>JWT</td>
+<td>Soft-deletes user account. Cancels Stripe subscription, sends goodbye email.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/users/cancel-subscription</code></td>
+<td>JWT</td>
+<td>Marks plan_status as 'cancelled' locally.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="32-signals">3.2 Signals<a class="headerlink" href="#32-signals" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/api/signals.py</code> (prefix: <code>/api/signals</code>)</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/api/signals</code></td>
+<td>JWT</td>
+<td>Create signal. Enforces per-user limits (Free: 1, Pro: 10). Immediately matches against all active deals. Triggers first-signal email if it's the user's first. Rate limited: 10/min.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/signals</code></td>
+<td>JWT</td>
+<td>List all user's signals with match counts, intel cache data, market stats, spectrum data, and empty-state diagnostics.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/signals/{signal_id}</code></td>
+<td>JWT</td>
+<td>Get single signal by ID (must be owned by caller).</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/signals/{signal_id}</code></td>
+<td>JWT</td>
+<td>Update signal. Deep-merges config. Re-matches deals if search criteria changed. Updates mirrored columns.</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/signals/{signal_id}</code></td>
+<td>JWT</td>
+<td>Hard-delete signal (cascades to deal_matches).</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Matching logic</strong> (<code>_match_signal_against_deals</code>): Iterates all active deals, checks: airport match -&gt; region match -&gt; travel window (exact dates or month range) -&gt; duration (min/max nights) -&gt; star rating -&gt; budget. Creates DealMatch rows with value labels.</p>
+<h3 id="33-deal-matches">3.3 Deal Matches<a class="headerlink" href="#33-deal-matches" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/api/routes/deal_matches.py</code> (prefix: <code>/api/signals</code>)</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/api/signals/{signal_id}/matches</code></td>
+<td>JWT</td>
+<td>Returns active matched deals for a signal. Includes price trends (batch N+1 fix), TripAdvisor URLs from hotel_links. Sorted: favourites first, then by matched_at desc.</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/signals/{signal_id}/matches/{match_id}/favourite</code></td>
+<td>JWT</td>
+<td>Toggle favourite status on a deal match.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/signals/{signal_id}/matches</code></td>
+<td>Internal</td>
+<td>Create a match between a signal and a deal (idempotent). Creates a SignalRun, creates NotificationOutbox entry.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="34-billing">3.4 Billing<a class="headerlink" href="#34-billing" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/api/routes/billing.py</code> (prefix: <code>/api/billing</code>)</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/api/billing/checkout</code></td>
+<td>JWT</td>
+<td>Creates Stripe checkout session for Pro upgrade. Rate limited: 5/min. Returns checkout URL.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/billing/portal</code></td>
+<td>JWT</td>
+<td>Creates Stripe billing portal session. Returns portal URL.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/billing/webhook</code></td>
+<td>Stripe signature</td>
+<td>Handles Stripe webhook events. Deduplicates via <code>stripe_events</code> table.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Webhook event handlers:</strong>
+- <code>checkout.session.completed</code>: Upgrades user to Pro, reactivates payment-paused signals, triggers pro_activated email.
+- <code>customer.subscription.updated</code> / <code>deleted</code>: Updates subscription status. On deletion, downgrades to free and triggers canceled email.
+- <code>invoice.payment_failed</code>: Pauses all active signals (status = <code>'payment_paused'</code>), triggers payment_failed email.</p>
+<h3 id="35-admin">3.5 Admin<a class="headerlink" href="#35-admin" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/api/routes/admin.py</code> (prefix: <code>/admin</code>)</p>
+<p>All endpoints require <code>X-Admin-Token</code> header (HMAC comparison).</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/admin/test-email</code></td>
+<td>Enqueue test notification email</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/admin/debug/outbox</code></td>
+<td>Debug notification outbox</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/admin/health</code></td>
+<td>System health (DB, Stripe, users, deals, signals counts)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/admin/signals</code></td>
+<td>List all signals with details</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/admin/users/by-clerk-id/{clerk_id}</code></td>
+<td>Look up user by Clerk ID</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/admin/users</code></td>
+<td>List all users with signals and match counts</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/admin/users-unified</code></td>
+<td>Full user list with deal match details, email stats</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/admin/users/{user_id}/toggle-test</code></td>
+<td>Toggle test user flag</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/admin/users/{user_id}/set-plan</code></td>
+<td>Change user plan (free/pro)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/admin/users/{user_id}/set-status</code></td>
+<td>Change plan status</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/admin/users/{user_id}</code></td>
+<td>Soft-delete user</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/admin/users/{user_id}/undelete</code></td>
+<td>Restore soft-deleted user</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/admin/users/{user_id}/hard-delete</code></td>
+<td>Permanent delete (admin only)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/admin/users/{user_id}/extend-trial</code></td>
+<td>Extend trial by N days</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/admin/users/{user_id}/reset-trial</code></td>
+<td>Reset trial to 14 days from now</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/admin/users/{user_id}/feedback</code></td>
+<td>Get user's delete feedback</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/admin/run-trial-expiry</code></td>
+<td>Manually trigger trial expiry check</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/admin/notifications</code></td>
+<td>List recent notifications with filters</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/admin/scrape-runs</code></td>
+<td>List scrape runs with stats</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/admin/deals</code></td>
+<td>List deals with filters (destination, active, date)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/admin/hotels</code></td>
+<td>List all hotels with links</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/admin/hotels/{hotel_id}</code></td>
+<td>Update hotel links (TripAdvisor URL, star rating)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/admin/email-types</code></td>
+<td>List all email template types</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/admin/send-test-email</code></td>
+<td>Send a test email (with template rendering)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/admin/preview-email</code></td>
+<td>Preview rendered email template</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/admin/email-templates</code></td>
+<td>List all template overrides</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/admin/email-templates/{email_type}</code></td>
+<td>Get specific template override</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/admin/email-templates/{email_type}</code></td>
+<td>Create/update template override</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/admin/email-templates/{email_type}</code></td>
+<td>Delete template override (revert to Python default)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/admin/email-queue/stats</code></td>
+<td>Email queue statistics</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/admin/email-queue/items</code></td>
+<td>List queue items</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/admin/email-queue/retry-dead</code></td>
+<td>Retry dead-lettered emails</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/admin/email-queue/pause</code></td>
+<td>Pause email queue</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/admin/email-queue/resume</code></td>
+<td>Resume email queue</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/admin/email-queue/flush</code></td>
+<td>Flush queued emails</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/admin/email-queue/drain</code></td>
+<td>Drain (send all) queued emails</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/admin/backfill-value-labels</code></td>
+<td>Backfill value labels on existing deal matches</td>
+</tr>
+</tbody>
+</table>
+<h3 id="36-scout-travel-intelligence">3.6 Scout (Travel Intelligence)<a class="headerlink" href="#36-scout-travel-intelligence" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/api/routes/scout.py</code> (prefix: <code>/api/scout</code>)</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/api/scout/verdict</code></td>
+<td>JWT</td>
+<td>Overall "should I book now?" assessment. Mood: positive/caution/neutral.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/scout/destinations</code></td>
+<td>JWT</td>
+<td>Per-destination price intelligence with 14-day sparkline data.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/scout/signal-health</code></td>
+<td>JWT</td>
+<td>Per-signal health: matches, trend, freshness.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/scout/price-baseline</code></td>
+<td>JWT</td>
+<td>Price distribution spectrum per signal.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/scout/action-queue</code></td>
+<td>JWT</td>
+<td>Prioritized action items (price drops, near-floor, review deals).</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/scout/market-context</code></td>
+<td>JWT</td>
+<td>Platform-wide market context (total deals, top destinations, route trends).</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/scout/what-is-a-good-price</code></td>
+<td>JWT</td>
+<td>Educational price ranges for user's routes.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/scout/insights</code></td>
+<td>JWT</td>
+<td><strong>Unified endpoint</strong> for Scout page. Returns briefing, action items, best deals, price context, book windows, next scan. Single request replaces multiple API calls.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="37-market-intelligence">3.7 Market Intelligence<a class="headerlink" href="#37-market-intelligence" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/api/routes/market.py</code> (prefix: <code>/api/market</code>)</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/api/market/overview</code></td>
+<td>None</td>
+<td>Public market overview (total packages, resorts, departures, destinations, price drops).</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/market/events</code></td>
+<td>None</td>
+<td>Today's market events and movers.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/market/top-destinations/{origin}</code></td>
+<td>None</td>
+<td>Top 3 destinations by deal count for a departure airport.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/market/signal/{signal_id}/intelligence</code></td>
+<td>JWT</td>
+<td>Per-signal market stats, spectrum, trigger likelihood, empty-state insights.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/market/draft/insights</code></td>
+<td>JWT</td>
+<td>Market intelligence for a draft signal during Create Signal flow.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="38-public-deal-page">3.8 Public Deal Page<a class="headerlink" href="#38-public-deal-page" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/api/routes/deal_public.py</code> (prefix: <code>/api/deals</code>)</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/api/deals/{deal_id}/public</code></td>
+<td>None</td>
+<td>Public deal page data. Returns deal details, market value score, price delta. No auth required.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="39-unsubscribe">3.9 Unsubscribe<a class="headerlink" href="#39-unsubscribe" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/api/routes/unsubscribe.py</code> (prefix: <code>/api/unsubscribe</code>)</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/api/unsubscribe?token=xxx</code></td>
+<td>Token (HMAC)</td>
+<td>Returns masked email, opt-out status, preferences. No Clerk auth.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/unsubscribe</code></td>
+<td>Token (HMAC)</td>
+<td>Update preferences: opt_out, resubscribe, change_frequency, update_prefs.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="310-clerk-webhook">3.10 Clerk Webhook<a class="headerlink" href="#310-clerk-webhook" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/api/routes/clerk_webhook.py</code></p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/api/clerk/webhook</code></td>
+<td>Svix signature</td>
+<td>Handles <code>user.created</code> and <code>user.updated</code> events. Syncs email from Clerk to DB. Creates user row on <code>user.created</code> if needed.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="311-scraper-lab-admin">3.11 Scraper Lab (Admin)<a class="headerlink" href="#311-scraper-lab-admin" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/api/routes/scraper_lab.py</code> (prefix: <code>/admin/scraper-lab</code>)</p>
+<p>All endpoints require <code>X-Admin-Token</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/admin/scraper-lab/health-check</code></td>
+<td>Test URL fetchability and regex patterns</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/admin/scraper-lab/test-scrape</code></td>
+<td>Parse HTML and extract deals (no DB insert)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/admin/scraper-lab/dry-run</code></td>
+<td>Full scrape simulation with DB action simulation and signal match simulation</td>
+</tr>
+</tbody>
+</table>
+<h3 id="312-resend-webhooks">3.12 Resend Webhooks<a class="headerlink" href="#312-resend-webhooks" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/api/routes/resend_webhooks.py</code></p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/api/resend/webhook</code></td>
+<td>Svix signature</td>
+<td>Handles Resend email delivery events (delivered, bounced, complained, opened, clicked). Updates email_log and user engagement tracking.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="312-system-endpoints-in-mainpy">3.12 System Endpoints (in main.py)<a class="headerlink" href="#312-system-endpoints-in-mainpy" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Auth</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/api/system/next-scan</code></td>
+<td>Admin token</td>
+<td>Scraper registers next scan time. Upserts to system_config.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/system/next-scan</code></td>
+<td>None</td>
+<td>Returns next scheduled scrape time.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/system/scrape-started</code></td>
+<td>Admin token</td>
+<td>Scraper registers cycle start. Creates ScrapeRun row.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/system/collection-complete</code></td>
+<td>Admin token</td>
+<td>Scraper registers cycle end. Updates ScrapeRun with stats.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/notifications/{id}/pixel.png</code></td>
+<td>None</td>
+<td>Tracking pixel. Returns 1x1 transparent PNG and records open.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/health</code></td>
+<td>None</td>
+<td>Health check with DB ping.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/</code></td>
+<td>None</td>
+<td>Root endpoint, returns API version.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="4-backend-services">4. Backend Services<a class="headerlink" href="#4-backend-services" title="Permanent link">&para;</a></h2>
+<h3 id="41-scraper-system">4.1 Scraper System<a class="headerlink" href="#41-scraper-system" title="Permanent link">&para;</a></h3>
+<h4 id="scrape-orchestrator">Scrape Orchestrator<a class="headerlink" href="#scrape-orchestrator" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>backend/app/workers/scrape_orchestrator.py</code></p>
+<p>Runs as a standalone Docker container. Coordinates SellOff and RedTag scrapers in staggered sequence. Configurable via <code>SCRAPE_DELAY_SECONDS</code> env var. Schedule: 3 daily windows in Eastern Time (7-9am, 12-2pm, 6-8pm) with random offset within each window.</p>
+<h4 id="selloff-scraper">SellOff Scraper<a class="headerlink" href="#selloff-scraper" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>backend/app/workers/selloff_scraper.py</code></p>
+<p>Key scraper. Scrapes SellOff Vacations website for all-inclusive deals.</p>
+<p>Key functions:
+- <code>match_deal_to_signals()</code>: The canonical deal matching function. Must stay in sync with <code>_match_signal_against_deals()</code> in <code>signals.py</code>.
+- <code>send_user_digest_email()</code>: Consolidated email per user (not per signal).
+- <code>validate_user_for_email()</code>: Checks user exists, not opted out, has active plan (pro or active trial).
+- <code>_build_price_delta_map()</code>: Uses SQL <code>LAG()</code> window function for price change detection.
+- <code>AIRPORT_CITY_MAP</code>: Maps IATA codes to readable Canadian city names.</p>
+<p>Safety: Uses residential proxy (DataImpulse), configurable via env vars (<code>PROXY_HOST</code>, <code>PROXY_PORT</code>, <code>PROXY_USER</code>, <code>PROXY_PASS</code>, <code>PROXY_COUNTRY</code>).</p>
+<h4 id="redtag-scraper">RedTag Scraper<a class="headerlink" href="#redtag-scraper" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>backend/app/workers/redtag_scraper.py</code></p>
+<p>Scrapes RedTag Vacations. Similar pattern to SellOff scraper.</p>
+<h4 id="shared-matching">Shared Matching<a class="headerlink" href="#shared-matching" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>backend/app/workers/shared/matching.py</code> -- Shared matching logic.
+<strong>File:</strong> <code>backend/app/workers/shared/regions.py</code> -- <code>deal_matches_signal_region()</code> function for region matching.
+<strong>File:</strong> <code>backend/app/workers/shared/upsert.py</code> -- Deal upsert logic (insert or update, handle dedup).</p>
+<h3 id="42-email-system">4.2 Email System<a class="headerlink" href="#42-email-system" title="Permanent link">&para;</a></h3>
+<h4 id="email-orchestrator">Email Orchestrator<a class="headerlink" href="#email-orchestrator" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>backend/app/services/email_orchestrator.py</code></p>
+<p>Central entry point for all email sends. Defines <code>EmailType</code> enum:
+- <code>WELCOME</code>, <code>FIRST_SIGNAL</code>, <code>DEAL_ALERT</code>, <code>TRIAL_EXPIRING</code>, <code>TRIAL_EXPIRED</code>
+- <code>PRO_ACTIVATED</code>, <code>PAYMENT_FAILED</code>, <code>SUBSCRIPTION_CANCELED</code>
+- <code>NO_SIGNAL_REMINDER</code>, <code>ACCOUNT_DELETED</code></p>
+<p>Function <code>trigger(db, email_type, user_id, context)</code>:
+1. Validates user for email (exists, not opted out, plan active)
+2. Checks idempotency via <code>email_log</code> table
+3. Renders template
+4. Enqueues to <code>email_queue</code> (or sends directly for critical emails)
+5. Logs to <code>email_log</code></p>
+<h4 id="email-queue">Email Queue<a class="headerlink" href="#email-queue" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>backend/app/services/email_queue.py</code></p>
+<p>Rate-limited email delivery. Supports priorities (1=critical, 2=high, 3=low), retry logic with exponential backoff, dead-letter after max attempts.</p>
+<h4 id="email-templates">Email Templates<a class="headerlink" href="#email-templates" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>backend/app/services/email_templates/templates.py</code></p>
+<p>Python-defined email templates for each EmailType. Generates HTML emails with:
+- Brand colors and styling
+- Tracking pixel insertion
+- Unsubscribe link (HMAC token-based)
+- "Manage signals" and "Unsubscribe" footer links</p>
+<p><strong>File:</strong> <code>backend/app/services/email_templates/base.py</code> -- Base template wrapper with header, footer, styles.
+<strong>File:</strong> <code>backend/app/services/email_templates/subject_preview.py</code> -- Subject line and preview text generation.</p>
+<h4 id="email-service">Email Service<a class="headerlink" href="#email-service" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>backend/app/services/email.py</code></p>
+<p>Low-level email sending via Resend API. Handles actual HTTP calls.</p>
+<h4 id="notifications-log-worker">Notifications Log Worker<a class="headerlink" href="#notifications-log-worker" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>backend/app/workers/notifications_log_worker.py</code></p>
+<p>Polls <code>notifications_outbox</code> table, sends pending notifications via Resend.</p>
+<h4 id="lifecycle-email-worker">Lifecycle Email Worker<a class="headerlink" href="#lifecycle-email-worker" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>backend/app/workers/lifecycle_email_worker.py</code></p>
+<p>Runs every 5 minutes (configurable via <code>LIFECYCLE_POLL_SECONDS</code>). Handles:
+- Welcome emails for new users
+- Trial expiring soon notifications
+- Trial expired notifications
+- No-signal reminder emails</p>
+<h3 id="43-market-intelligence">4.3 Market Intelligence<a class="headerlink" href="#43-market-intelligence" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/services/market_intel.py</code></p>
+<p>Computes market statistics for deal scoring:
+- <code>MarketBucket</code>: Defines a market segment (origin, destination, duration bucket, star bucket)
+- <code>MarketStats</code>: Min, median, P25, P75, max, sample size
+- <code>compute_market_stats()</code>: Queries active deals matching a bucket
+- <code>score_deal()</code>: Scores a deal price against market stats, returns value label
+- <code>build_spectrum_data()</code>: Data for price spectrum visualization
+- <code>compute_empty_state_insights()</code>: Explains why a signal has no matches
+- <code>compute_trigger_likelihood()</code>: Estimates when a signal is likely to get matches
+- <code>compute_draft_signal_insights()</code>: Market data for the signal creation wizard</p>
+<p><strong>File:</strong> <code>backend/app/services/signal_intel.py</code></p>
+<p>Computes per-signal intelligence: trend direction, velocity, inflection, floor proximity, value score.</p>
+<h3 id="44-book-window">4.4 Book Window<a class="headerlink" href="#44-book-window" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/services/book_window.py</code></p>
+<p>Heuristic-based "should I book now?" recommendation. Analyzes:
+- Price trend direction and velocity
+- Floor proximity
+- Days until departure
+- Market competition</p>
+<p>Returns recommendation: <code>'book_now'</code>, <code>'wait'</code>, <code>'watch'</code>.</p>
+<h3 id="45-account-service">4.5 Account Service<a class="headerlink" href="#45-account-service" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/services/account.py</code></p>
+<p><code>delete_account()</code>: Two-phase soft delete:
+1. Phase 1: Soft-delete user (set deleted_at, reason), cancel Stripe subscription
+2. Send goodbye email (between phases)
+3. Phase 2: Delete signals, clean up related data</p>
+<p><code>restore_account()</code>: Reverses soft delete (admin only).</p>
+<h3 id="46-user-mode">4.6 User Mode<a class="headerlink" href="#46-user-mode" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>backend/app/services/user_mode.py</code></p>
+<p>Email engagement tracking. Classifies users as <code>'active'</code>, <code>'cooling'</code>, <code>'dormant'</code> based on email opens/clicks.</p>
+<hr />
+<h2 id="5-frontend-pages">5. Frontend Pages<a class="headerlink" href="#5-frontend-pages" title="Permanent link">&para;</a></h2>
+<h3 id="51-public-pages">5.1 Public Pages<a class="headerlink" href="#51-public-pages" title="Permanent link">&para;</a></h3>
+<h4 id="landing-page">Landing Page (<code>/</code>)<a class="headerlink" href="#landing-page" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>tripsignal-ui/app/page.tsx</code></p>
+<p>Marketing landing page. Shows hero section, feature highlights, pricing preview, testimonials. Accessible to all users.</p>
+<h4 id="pricing-pricing">Pricing (<code>/pricing</code>)<a class="headerlink" href="#pricing-pricing" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>tripsignal-ui/app/pricing/page.tsx</code></p>
+<p>Pricing comparison page. Shows Free vs Pro tiers with feature lists.</p>
+<h4 id="contact-contact">Contact (<code>/contact</code>)<a class="headerlink" href="#contact-contact" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>tripsignal-ui/app/contact/page.tsx</code></p>
+<p>Contact form. Submits via <code>/contact-submit</code> route handler which sends email via Resend.</p>
+<h4 id="legal-pages">Legal Pages<a class="headerlink" href="#legal-pages" title="Permanent link">&para;</a></h4>
+<p><strong>Files:</strong> <code>tripsignal-ui/app/(legal)/privacy-policy/page.tsx</code>, <code>tripsignal-ui/app/(legal)/terms-and-conditions/page.tsx</code></p>
+<p>Static legal pages with print button component. Route group <code>(legal)</code> has its own layout.</p>
+<h4 id="beta-gate-beta">Beta Gate (<code>/beta</code>)<a class="headerlink" href="#beta-gate-beta" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>tripsignal-ui/app/beta/page.tsx</code></p>
+<p>Password gate page. Currently <strong>disabled</strong> in middleware (commented out). The beta-login route sets a cookie.</p>
+<h4 id="deal-page-dealid">Deal Page (<code>/deal/[id]</code>)<a class="headerlink" href="#deal-page-dealid" title="Permanent link">&para;</a></h4>
+<p><strong>Files:</strong> <code>tripsignal-ui/app/deal/[id]/page.tsx</code>, <code>tripsignal-ui/app/deal/[id]/DealPageClient.tsx</code></p>
+<p>Public deal detail page. No auth required. Fetches deal data from <code>/api/deals/{id}/public</code>. Shows hotel, dates, price, value score, market context.</p>
+<h4 id="unsubscribe-unsubscribe">Unsubscribe (<code>/unsubscribe</code>)<a class="headerlink" href="#unsubscribe-unsubscribe" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>tripsignal-ui/app/unsubscribe/page.tsx</code></p>
+<p>Token-based unsubscribe page. Reads <code>?token=xxx</code> from URL, calls backend <code>/api/unsubscribe</code> endpoints. Shows current preferences and allows opt-out or frequency change.</p>
+<h4 id="404-not-found">404 Not Found<a class="headerlink" href="#404-not-found" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>tripsignal-ui/app/not-found.tsx</code></p>
+<p>Custom 404 page with radar animation and airplane blip. Themed messaging ("Lost signal"). CTAs to return home or view signals.</p>
+<h3 id="52-auth-pages">5.2 Auth Pages<a class="headerlink" href="#52-auth-pages" title="Permanent link">&para;</a></h3>
+<h4 id="sign-in-sign-in">Sign In (<code>/sign-in</code>)<a class="headerlink" href="#sign-in-sign-in" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>tripsignal-ui/app/sign-in/[[...sign-in]]/page.tsx</code></p>
+<p>Clerk <code>&lt;SignIn&gt;</code> component. Catch-all route for Clerk's auth flow.</p>
+<h4 id="sign-up-sign-up">Sign Up (<code>/sign-up</code>)<a class="headerlink" href="#sign-up-sign-up" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>tripsignal-ui/app/sign-up/[[...sign-up]]/page.tsx</code></p>
+<p>Clerk <code>&lt;SignUp&gt;</code> component. Catch-all route for Clerk's auth flow.</p>
+<h3 id="53-onboarding-pages">5.3 Onboarding Pages<a class="headerlink" href="#53-onboarding-pages" title="Permanent link">&para;</a></h3>
+<h4 id="accept-terms-accept-terms">Accept Terms (<code>/accept-terms</code>)<a class="headerlink" href="#accept-terms-accept-terms" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>tripsignal-ui/app/accept-terms/page.tsx</code></p>
+<p>Terms and privacy acceptance page. Redirected to by middleware if user hasn't accepted terms. Submits via <code>/accept-terms-submit</code> route handler.</p>
+<h4 id="pro-activate-proactivate">Pro Activate (<code>/pro/activate</code>)<a class="headerlink" href="#pro-activate-proactivate" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>tripsignal-ui/app/pro/activate/page.tsx</code></p>
+<p>Pro onboarding wizard. Shown after checkout.session.completed if <code>pro_activation_completed_at</code> is null. User configures notification preferences. Sets cookie on completion to prevent redirect loop.</p>
+<h3 id="54-app-pages-auth-required">5.4 App Pages (auth required)<a class="headerlink" href="#54-app-pages-auth-required" title="Permanent link">&para;</a></h3>
+<h4 id="signals-list-signals">Signals List (<code>/signals</code>)<a class="headerlink" href="#signals-list-signals" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>tripsignal-ui/app/signals/page.tsx</code></p>
+<p>Main app page. Lists all user's signals with match counts, market intel, deals panel. Uses components: <code>SignalListRow</code>, <code>DealsPanel</code>, <code>MarketHeader</code>, <code>MarketInsights</code>, <code>PlanCard</code>, <code>EmptySignalState</code>.</p>
+<h4 id="create-signal-signalsnew">Create Signal (<code>/signals/new</code>)<a class="headerlink" href="#create-signal-signalsnew" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>tripsignal-ui/app/signals/new/page.tsx</code></p>
+<p>Multi-step wizard for creating a signal. Steps:
+1. Airport selection (AirportSelectionPanel)
+2. Destination selection (DestinationSelectionPanel)
+3. Travel window, duration, budget, star rating, notifications</p>
+<p>Uses <code>WizardStepper</code> for step navigation, <code>WizardFooter</code> for actions.</p>
+<h4 id="edit-signal-signalsidedit">Edit Signal (<code>/signals/[id]/edit</code>)<a class="headerlink" href="#edit-signal-signalsidedit" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>tripsignal-ui/app/signals/[id]/edit/page.tsx</code></p>
+<p>Signal editing page. Loads existing signal config and presents edit form.</p>
+<h4 id="scout-scout">Scout (<code>/scout</code>)<a class="headerlink" href="#scout-scout" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>tripsignal-ui/app/scout/page.tsx</code></p>
+<p>Personal travel intelligence briefing. Calls <code>/api/scout/insights</code> for unified data. Fetched via <code>/scout-data</code> proxy route. Shows: verdict, action items, best deals, price context, book windows.</p>
+<h4 id="feedback-feedback">Feedback (<code>/feedback</code>)<a class="headerlink" href="#feedback-feedback" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>tripsignal-ui/app/feedback/page.tsx</code></p>
+<p>User feedback form.</p>
+<h3 id="55-account-pages">5.5 Account Pages<a class="headerlink" href="#55-account-pages" title="Permanent link">&para;</a></h3>
+<h4 id="account-settings-accountsettings">Account Settings (<code>/account/settings</code>)<a class="headerlink" href="#account-settings-accountsettings" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>tripsignal-ui/app/account/settings/page.tsx</code></p>
+<p>User settings: email preferences, plan management, account deletion.</p>
+<h4 id="cancel-account-accountcancel">Cancel Account (<code>/account/cancel</code>)<a class="headerlink" href="#cancel-account-accountcancel" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>tripsignal-ui/app/account/cancel/page.tsx</code></p>
+<p>Account deletion flow with reason selection.</p>
+<h4 id="notification-settings-accountnotifications">Notification Settings (<code>/account/notifications</code>)<a class="headerlink" href="#notification-settings-accountnotifications" title="Permanent link">&para;</a></h4>
+<p><strong>File:</strong> <code>tripsignal-ui/app/account/notifications/page.tsx</code></p>
+<p>Notification preference management (delivery frequency, quiet hours, weekly summary).</p>
+<h3 id="56-admin-pages">5.6 Admin Pages<a class="headerlink" href="#56-admin-pages" title="Permanent link">&para;</a></h3>
+<h4 id="admin-dashboard-admin">Admin Dashboard (<code>/admin</code>)<a class="headerlink" href="#admin-dashboard-admin" title="Permanent link">&para;</a></h4>
+<p><strong>Files:</strong> <code>tripsignal-ui/app/admin/page.tsx</code>, <code>tripsignal-ui/app/admin/layout.tsx</code></p>
+<p>Admin-only dashboard. Auth via <code>ADMIN_CLERK_USER_ID</code> env var check. Tabs:
+- <strong>Health</strong> (HealthTab): System health, scrape run stats, DB stats
+- <strong>Users</strong> (UsersTab): Full user list with actions (toggle test, set plan, delete, extend trial)
+- <strong>Signals</strong> (SignalsTab): All signals across users
+- <strong>Deals</strong> (DealsTab): Deal browsing with filters
+- <strong>Collection</strong> (CollectionTab): Scrape run history and stats
+- <strong>Hotels</strong> (HotelsTab): Hotel link management (TripAdvisor URLs)
+- <strong>Notifications</strong> (NotificationsTab): Notification outbox browsing
+- <strong>Email Testing</strong> (EmailTestingTab): Send test emails, preview templates
+- <strong>Email Queue</strong> (EmailQueueTab): Queue management (stats, retry, pause, drain)
+- <strong>Scrape Data</strong> (ScrapeDataTab): Detailed scrape run data
+- <strong>Accessibility</strong> (AccessibilityTab): Accessibility audit</p>
+<p>Additional admin components:
+- <code>NextScrapeIndicator</code>: Shows countdown to next scrape
+- <code>TipTapEditor</code>: Rich text editor for email template editing
+- <code>StatCard</code>: Metric card component
+- <code>Badge</code>: Status badge
+- <code>DeleteModal</code>, <code>FeedbackModal</code>: Confirmation dialogs
+- <code>UserActionMenu</code>: Dropdown actions per user</p>
+<hr />
+<h2 id="6-frontend-components">6. Frontend Components<a class="headerlink" href="#6-frontend-components" title="Permanent link">&para;</a></h2>
+<h3 id="shared-components">Shared Components<a class="headerlink" href="#shared-components" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>File</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AppHeader</td>
+<td><code>components/AppHeader.tsx</code></td>
+<td>Top navigation. Shows logo, nav links, auth state (SignedIn/SignedOut). Mobile hamburger menu. Links differ based on auth state.</td>
+</tr>
+<tr>
+<td>AppFooter</td>
+<td><code>components/AppFooter.tsx</code></td>
+<td>Footer with links to legal pages, contact, social.</td>
+</tr>
+<tr>
+<td>BottomNav</td>
+<td><code>components/BottomNav.tsx</code></td>
+<td>Mobile bottom navigation bar (signals, scout, settings). Only shown when authenticated.</td>
+</tr>
+<tr>
+<td>TopNav</td>
+<td><code>components/top-nav.tsx</code></td>
+<td>Alternative top navigation component.</td>
+</tr>
+<tr>
+<td>SearchInput</td>
+<td><code>components/search-input.tsx</code></td>
+<td>Searchable input with combobox (cmdk). Used for airport/destination search.</td>
+</tr>
+<tr>
+<td>WizardFooter</td>
+<td><code>components/signal/WizardFooter.tsx</code></td>
+<td>Footer for signal creation wizard (back/next/create buttons).</td>
+</tr>
+<tr>
+<td>TripadvisorIcon</td>
+<td><code>components/icons/TripadvisorIcon.tsx</code></td>
+<td>TripAdvisor SVG icon component.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="signal-page-components">Signal Page Components<a class="headerlink" href="#signal-page-components" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>File</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SignalListRow</td>
+<td><code>signals/components/SignalListRow.tsx</code></td>
+<td>Individual signal row in the signals list. Shows name, status, match count, intel badges. Expandable to show deals.</td>
+</tr>
+<tr>
+<td>DealsPanel</td>
+<td><code>signals/components/DealsPanel.tsx</code></td>
+<td>Expanded panel showing matched deals for a signal. Shows deal cards with price, hotel, dates, price trend, favourite toggle.</td>
+</tr>
+<tr>
+<td>MarketHeader</td>
+<td><code>signals/components/MarketHeader.tsx</code></td>
+<td>Market overview header on signals page (total packages, price drops).</td>
+</tr>
+<tr>
+<td>MarketInsights</td>
+<td><code>signals/components/MarketInsights.tsx</code></td>
+<td>Market intelligence display per signal (value score, trend, spectrum).</td>
+</tr>
+<tr>
+<td>PlanCard</td>
+<td><code>signals/components/PlanCard.tsx</code></td>
+<td>Free vs Pro plan comparison card. Shown when user hits signal limit.</td>
+</tr>
+<tr>
+<td>EmptySignalState</td>
+<td><code>signals/components/EmptySignalState.tsx</code></td>
+<td>Empty state when user has no signals.</td>
+</tr>
+<tr>
+<td>CapacityModal</td>
+<td><code>signals/components/CapacityModal.tsx</code></td>
+<td>Modal shown when signal limit is reached.</td>
+</tr>
+<tr>
+<td>SignalIcon</td>
+<td><code>signals/components/SignalIcon.tsx</code></td>
+<td>Icon component for signal status.</td>
+</tr>
+<tr>
+<td>SignalStatusBadge</td>
+<td><code>signals/components/SignalStatusBadge.tsx</code></td>
+<td>Status badge (active, paused, etc.)</td>
+</tr>
+<tr>
+<td>signal-types.ts</td>
+<td><code>signals/components/signal-types.ts</code></td>
+<td>TypeScript type definitions for signal data structures.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="signal-wizard-components">Signal Wizard Components<a class="headerlink" href="#signal-wizard-components" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>File</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AirportSelectionPanel</td>
+<td><code>signals/new/components/AirportSelectionPanel.tsx</code></td>
+<td>Departure airport selection with search. Shows Canadian airports.</td>
+</tr>
+<tr>
+<td>DestinationSelectionPanel</td>
+<td><code>signals/new/components/DestinationSelectionPanel.tsx</code></td>
+<td>Destination region selection. Grouped by country/region.</td>
+</tr>
+<tr>
+<td>WizardStepper</td>
+<td><code>signals/new/components/WizardStepper.tsx</code></td>
+<td>Step indicator for signal creation wizard.</td>
+</tr>
+<tr>
+<td>useRecents</td>
+<td><code>signals/new/hooks/useRecents.ts</code></td>
+<td>Hook for tracking recently selected airports/destinations (localStorage).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="shadcnui-components">shadcn/ui Components<a class="headerlink" href="#shadcnui-components" title="Permanent link">&para;</a></h3>
+<p>Installed in <code>components/ui/</code>: accordion, alert-dialog, alert, badge, button, calendar, card, checkbox, command, dialog, dropdown-menu, input, label, popover, radio-group, select, separator, sheet, skeleton, sonner, switch, table, textarea.</p>
+<hr />
+<h2 id="7-nextjs-proxy-routes">7. Next.js Proxy Routes<a class="headerlink" href="#7-nextjs-proxy-routes" title="Permanent link">&para;</a></h2>
+<p>These route handlers in the frontend proxy requests to the backend API, adding Clerk auth headers.</p>
+<h3 id="user-routes">User Routes<a class="headerlink" href="#user-routes" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Frontend Path</th>
+<th>Method</th>
+<th>Backend Endpoint</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/user/me</code></td>
+<td>GET</td>
+<td><code>/users/by-clerk-id/{clerkId}</code></td>
+<td>Get current user profile</td>
+</tr>
+<tr>
+<td><code>/user/sync</code></td>
+<td>POST</td>
+<td><code>/users/sync</code></td>
+<td>Sync user on sign-in (forwards IP, UA, timezone)</td>
+</tr>
+<tr>
+<td><code>/user/delete</code></td>
+<td>DELETE</td>
+<td><code>/users/me</code></td>
+<td>Delete user account</td>
+</tr>
+<tr>
+<td><code>/user/cancel-subscription</code></td>
+<td>POST</td>
+<td><code>/users/cancel-subscription</code></td>
+<td>Cancel subscription</td>
+</tr>
+<tr>
+<td><code>/user/prefs</code></td>
+<td>GET/PUT</td>
+<td><code>/users/prefs</code></td>
+<td>Get/update notification preferences</td>
+</tr>
+</tbody>
+</table>
+<h3 id="signal-routes">Signal Routes<a class="headerlink" href="#signal-routes" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Frontend Path</th>
+<th>Method</th>
+<th>Backend Endpoint</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/api/signals</code></td>
+<td>GET/POST</td>
+<td><code>/api/signals</code></td>
+<td>List/create signals</td>
+</tr>
+<tr>
+<td><code>/api/signals/[id]</code></td>
+<td>PATCH/DELETE</td>
+<td><code>/api/signals/{id}</code></td>
+<td>Update/delete signal</td>
+</tr>
+</tbody>
+</table>
+<h3 id="billing-routes">Billing Routes<a class="headerlink" href="#billing-routes" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Frontend Path</th>
+<th>Method</th>
+<th>Backend Endpoint</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/api/billing/checkout</code></td>
+<td>POST</td>
+<td><code>/api/billing/checkout</code></td>
+<td>Create Stripe checkout session</td>
+</tr>
+<tr>
+<td><code>/api/billing/portal</code></td>
+<td>POST</td>
+<td><code>/api/billing/portal</code></td>
+<td>Create Stripe portal session</td>
+</tr>
+<tr>
+<td><code>/api/billing/webhook</code></td>
+<td>POST</td>
+<td><code>/api/billing/webhook</code></td>
+<td>Stripe webhook (no auth added, uses Stripe signature)</td>
+</tr>
+<tr>
+<td><code>/billing/checkout</code></td>
+<td>POST</td>
+<td><code>/api/billing/checkout</code></td>
+<td>Alternate billing checkout path</td>
+</tr>
+<tr>
+<td><code>/billing/portal</code></td>
+<td>POST</td>
+<td><code>/api/billing/portal</code></td>
+<td>Alternate billing portal path</td>
+</tr>
+</tbody>
+</table>
+<h3 id="admin-routes">Admin Routes<a class="headerlink" href="#admin-routes" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Frontend Path</th>
+<th>Method</th>
+<th>Backend Endpoint</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/api/admin</code></td>
+<td>GET</td>
+<td><code>/admin/health</code></td>
+<td>Admin health check</td>
+</tr>
+<tr>
+<td><code>/api/admin/users/[id]/toggle-test</code></td>
+<td>PATCH</td>
+<td><code>/admin/users/{id}/toggle-test</code></td>
+<td>Toggle test user</td>
+</tr>
+<tr>
+<td><code>/api/admin-toggle</code></td>
+<td>PATCH</td>
+<td>Various admin endpoints</td>
+<td>Admin toggle actions</td>
+</tr>
+<tr>
+<td><code>/admin-proxy</code></td>
+<td>Various</td>
+<td>Various admin endpoints</td>
+<td>General admin proxy</td>
+</tr>
+<tr>
+<td><code>/admin-action</code></td>
+<td>POST</td>
+<td>Various admin actions</td>
+<td>Admin action proxy</td>
+</tr>
+<tr>
+<td><code>/admin-audit</code></td>
+<td>GET</td>
+<td>Admin audit endpoints</td>
+<td>Admin audit data</td>
+</tr>
+<tr>
+<td><code>/admin-plan</code></td>
+<td>PATCH</td>
+<td><code>/admin/users/{id}/set-plan</code></td>
+<td>Change user plan</td>
+</tr>
+<tr>
+<td><code>/admin-status</code></td>
+<td>GET</td>
+<td><code>/admin/health</code></td>
+<td>Admin status check</td>
+</tr>
+</tbody>
+</table>
+<h3 id="other-routes">Other Routes<a class="headerlink" href="#other-routes" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Frontend Path</th>
+<th>Method</th>
+<th>Backend/Service</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/contact-submit</code></td>
+<td>POST</td>
+<td>Resend API</td>
+<td>Send contact form email directly via Resend</td>
+</tr>
+<tr>
+<td><code>/beta-login</code></td>
+<td>POST</td>
+<td>N/A</td>
+<td>Set beta access cookie</td>
+</tr>
+<tr>
+<td><code>/scout-data</code></td>
+<td>GET</td>
+<td><code>/api/scout/insights</code></td>
+<td>Proxy for Scout page data</td>
+</tr>
+<tr>
+<td><code>/accept-terms-submit</code></td>
+<td>POST</td>
+<td><code>/users/accept-terms</code></td>
+<td>Accept terms and privacy policy</td>
+</tr>
+<tr>
+<td><code>/api/user/me</code></td>
+<td>GET</td>
+<td><code>/users/by-clerk-id/{clerkId}</code></td>
+<td>Duplicate of <code>/user/me</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="seo-routes">SEO Routes<a class="headerlink" href="#seo-routes" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>app/robots.ts</code></td>
+<td>Generates robots.txt</td>
+</tr>
+<tr>
+<td><code>app/sitemap.ts</code></td>
+<td>Generates sitemap.xml</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="8-data-utilities">8. Data &amp; Utilities<a class="headerlink" href="#8-data-utilities" title="Permanent link">&para;</a></h2>
+<h3 id="libdataairportsts"><code>lib/data/airports.ts</code><a class="headerlink" href="#libdataairportsts" title="Permanent link">&para;</a></h3>
+<p>Canadian airport data with IATA codes, city names, provinces. 34 departure airports across all provinces (BC, AB, SK, MB, ON, QC, Atlantic). Exports <code>FROM_AIRPORTS</code>, <code>TO_AIRPORTS</code>, <code>DESTINATION_REGIONS</code>, and <code>SPECIFIC_REGIONS</code>. Used by the signal creation wizard for airport selection.</p>
+<h3 id="libutilsts"><code>lib/utils.ts</code><a class="headerlink" href="#libutilsts" title="Permanent link">&para;</a></h3>
+<p>Utility functions, primarily <code>cn()</code> (className merger using <code>clsx</code> + <code>tailwind-merge</code>).</p>
+<h3 id="libutilsformat-signal-namets"><code>lib/utils/format-signal-name.ts</code><a class="headerlink" href="#libutilsformat-signal-namets" title="Permanent link">&para;</a></h3>
+<p>Formats a signal name from its config (airports + destinations).</p>
+<h3 id="libanalyticsts"><code>lib/analytics.ts</code><a class="headerlink" href="#libanalyticsts" title="Permanent link">&para;</a></h3>
+<p>Google Analytics 4 event tracking (GA ID: <code>G-2DNWZ6VJ6X</code>). Exports <code>trackEvent(name, params?)</code> and <code>setUserId(userId)</code>. No-ops gracefully if gtag is blocked by ad blockers.</p>
+<h3 id="libadminauthts"><code>lib/admin/auth.ts</code><a class="headerlink" href="#libadminauthts" title="Permanent link">&para;</a></h3>
+<p>Admin authentication helper. Exports <code>db_admin(clerkUserId, token)</code> which calls <code>GET /api/users/by-clerk-id/{clerkUserId}</code> and returns boolean indicating admin role.</p>
+<hr />
+<h2 id="9-infrastructure">9. Infrastructure<a class="headerlink" href="#9-infrastructure" title="Permanent link">&para;</a></h2>
+<h3 id="91-containers">9.1 Containers<a class="headerlink" href="#91-containers" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Container</th>
+<th>Image</th>
+<th>Purpose</th>
+<th>Port</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>tripsignal-api</td>
+<td>Custom (Python 3.12)</td>
+<td>FastAPI backend</td>
+<td>8000 (internal)</td>
+</tr>
+<tr>
+<td>tripsignal-frontend</td>
+<td>Custom (Node 20 Alpine)</td>
+<td>Next.js frontend</td>
+<td>3000 (internal)</td>
+</tr>
+<tr>
+<td>tripsignal-postgres</td>
+<td>postgres:16-alpine</td>
+<td>Database</td>
+<td>5432 (internal)</td>
+</tr>
+<tr>
+<td>tripsignal-caddy</td>
+<td>caddy:2</td>
+<td>Reverse proxy + TLS</td>
+<td>80, 443 (external)</td>
+</tr>
+<tr>
+<td>tripsignal-scrape-orchestrator</td>
+<td>Custom (same as api)</td>
+<td>Scraper coordinator</td>
+<td>None</td>
+</tr>
+<tr>
+<td>notifications_worker</td>
+<td>Custom (same as api)</td>
+<td>Email notification sender</td>
+<td>None</td>
+</tr>
+<tr>
+<td>lifecycle_worker</td>
+<td>Custom (same as api)</td>
+<td>Lifecycle email scheduler</td>
+<td>None</td>
+</tr>
+</tbody>
+</table>
+<p>All containers on <code>tripsignal-network</code> (bridge driver).</p>
+<h3 id="92-caddy-routing">9.2 Caddy Routing<a class="headerlink" href="#92-caddy-routing" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>deploy/Caddyfile</code></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>tripsignal.ca:
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  - /api/* -&gt; api:8000 (max body 10MB)
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  - /* -&gt; tripsignal-frontend:3000
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>www.tripsignal.ca:
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>  - 301 redirect to tripsignal.ca
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>staging.tripsignal.ca:
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>  - Same as production but frontend -&gt; tripsignal-frontend-staging:3000
+</code></pre></div>
+<p>Security headers: HSTS, X-Content-Type-Options: nosniff, X-Frame-Options: DENY, Referrer-Policy: no-referrer.</p>
+<h3 id="93-docker-configuration">9.3 Docker Configuration<a class="headerlink" href="#93-docker-configuration" title="Permanent link">&para;</a></h3>
+<p><strong>Backend Dockerfile</strong> (<code>Dockerfile</code>):
+- Python 3.12-slim base
+- Installs gcc and postgresql-client
+- Copies <code>requirements.txt</code> and <code>backend/</code> directory
+- Runs uvicorn with <code>--app-dir /app/backend</code>
+- Health check: HTTP GET <code>/health</code></p>
+<p><strong>Frontend Dockerfile</strong> (<code>Dockerfile.prod</code>):
+- Multi-stage build (deps -&gt; builder -&gt; runner)
+- Node 20 Alpine base
+- <code>output: 'standalone'</code> in next.config
+- Runs as non-root <code>nextjs</code> user
+- <code>node server.js</code> (Next.js standalone server)</p>
+<h3 id="94-environment-variables">9.4 Environment Variables<a class="headerlink" href="#94-environment-variables" title="Permanent link">&para;</a></h3>
+<p><strong>Backend (.env)</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB</td>
+<td>Database credentials</td>
+</tr>
+<tr>
+<td>POSTGRES_HOST, POSTGRES_PORT</td>
+<td>Database connection (set by docker-compose)</td>
+</tr>
+<tr>
+<td>CLERK_SECRET_KEY</td>
+<td>Clerk backend secret</td>
+</tr>
+<tr>
+<td>CLERK_JWKS_URL</td>
+<td>Clerk JWKS endpoint for JWT verification</td>
+</tr>
+<tr>
+<td>CLERK_WEBHOOK_SECRET</td>
+<td>Svix secret for Clerk webhooks</td>
+</tr>
+<tr>
+<td>STRIPE_SECRET_KEY</td>
+<td>Stripe API key</td>
+</tr>
+<tr>
+<td>STRIPE_WEBHOOK_SECRET</td>
+<td>Stripe webhook signing secret</td>
+</tr>
+<tr>
+<td>STRIPE_PRO_PRICE_ID</td>
+<td>Stripe price ID for Pro plan</td>
+</tr>
+<tr>
+<td>ADMIN_TOKEN</td>
+<td>HMAC token for admin endpoints</td>
+</tr>
+<tr>
+<td>UNSUB_SECRET</td>
+<td>HMAC secret for unsubscribe tokens</td>
+</tr>
+<tr>
+<td>RESEND_WEBHOOK_SECRET</td>
+<td>Svix secret for Resend webhooks</td>
+</tr>
+<tr>
+<td>ENABLE_EMAIL_NOTIFICATIONS</td>
+<td>Enable email sending (true/false)</td>
+</tr>
+<tr>
+<td>EMAIL_DRY_RUN</td>
+<td>Log emails instead of sending</td>
+</tr>
+<tr>
+<td>EMAIL_SUSPEND_NONCRITICAL</td>
+<td>Pause non-critical emails</td>
+</tr>
+<tr>
+<td>DEBUG, ENV</td>
+<td>Debug mode and environment</td>
+</tr>
+<tr>
+<td>PROXY_USER, PROXY_PASS</td>
+<td>Residential proxy credentials</td>
+</tr>
+<tr>
+<td>PROXY_HOST, PROXY_PORT, PROXY_COUNTRY</td>
+<td>Proxy configuration</td>
+</tr>
+<tr>
+<td>SCRAPE_DELAY_SECONDS</td>
+<td>Delay between scraper runs</td>
+</tr>
+<tr>
+<td>LIFECYCLE_POLL_SECONDS</td>
+<td>Lifecycle worker poll interval</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Frontend (.env.production)</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY</td>
+<td>Clerk frontend key</td>
+</tr>
+<tr>
+<td>CLERK_SECRET_KEY</td>
+<td>Clerk backend secret (for server components)</td>
+</tr>
+<tr>
+<td>API_URL</td>
+<td>Backend API URL (default <code>http://api:8000</code>)</td>
+</tr>
+<tr>
+<td>ADMIN_CLERK_USER_ID</td>
+<td>Clerk user ID for admin access</td>
+</tr>
+<tr>
+<td>ADMIN_TOKEN</td>
+<td>Admin API token</td>
+</tr>
+<tr>
+<td>RESEND_API_KEY</td>
+<td>Resend API key (for contact form)</td>
+</tr>
+<tr>
+<td>BETA_PASSWORD</td>
+<td>Beta gate password (currently disabled)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="95-deployment">9.5 Deployment<a class="headerlink" href="#95-deployment" title="Permanent link">&para;</a></h3>
+<p><strong>Backend deployment:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">cd</span><span class="w"> </span>/opt/tripsignal
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>build<span class="w"> </span>api<span class="w"> </span>scrape_orchestrator<span class="w"> </span>notifications_worker<span class="w"> </span>lifecycle_worker
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d<span class="w"> </span>api<span class="w"> </span>scrape_orchestrator<span class="w"> </span>notifications_worker<span class="w"> </span>lifecycle_worker
+</code></pre></div>
+All four services share the same Dockerfile. Must rebuild ALL when code changes.</p>
+<p><strong>Frontend deployment:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">cd</span><span class="w"> </span>/opt/tripsignal/frontend
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>docker<span class="w"> </span>build<span class="w"> </span>-f<span class="w"> </span>Dockerfile.prod<span class="w"> </span>-t<span class="w"> </span>tripsignal-frontend:latest<span class="w"> </span>.
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>docker<span class="w"> </span>stop<span class="w"> </span>tripsignal-frontend<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>docker<span class="w"> </span>rm<span class="w"> </span>tripsignal-frontend
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--name<span class="w"> </span>tripsignal-frontend<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span>--network<span class="w"> </span>tripsignal_tripsignal-network<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span>-p<span class="w"> </span><span class="m">3000</span>:3000<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">  </span>--env-file<span class="w"> </span>/opt/tripsignal/frontend/.env.production<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">  </span>tripsignal-frontend:latest
+</code></pre></div>
+Frontend is NOT in docker-compose. Managed as standalone container.</p>
+<p><strong>Database migrations:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>tripsignal-api<span class="w"> </span>alembic<span class="w"> </span>upgrade<span class="w"> </span>head
+</code></pre></div></p>
+<hr />
+<h2 id="10-auth-flow">10. Auth Flow<a class="headerlink" href="#10-auth-flow" title="Permanent link">&para;</a></h2>
+<h3 id="end-to-end-authentication">End-to-End Authentication<a class="headerlink" href="#end-to-end-authentication" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Browser</strong>: User signs in via Clerk's <code>&lt;SignIn&gt;</code> component</li>
+<li><strong>Clerk</strong>: Issues JWT with <code>sub</code> claim = Clerk user ID</li>
+<li><strong>Next.js middleware</strong>: On protected routes, calls <code>auth.protect()</code>. Gets <code>userId</code> and <code>getToken()</code></li>
+<li><strong>Middleware checks</strong>:</li>
+<li>Terms acceptance: Calls <code>GET /users/terms-status?clerk_id=xxx</code> (server-to-server). Redirects to <code>/accept-terms</code> if not accepted.</li>
+<li>Pro activation: Calls <code>GET /users/by-clerk-id/{clerkId}</code> to check if pro user needs onboarding. Redirects to <code>/pro/activate</code>.</li>
+<li><strong>Frontend proxy routes</strong>: When client calls <code>/user/me</code>, the route handler:</li>
+<li>Gets Clerk auth via <code>await auth()</code></li>
+<li>Gets JWT token via <code>await getToken()</code></li>
+<li>Forwards <code>Authorization: Bearer &lt;token&gt;</code> to backend</li>
+<li><strong>FastAPI <code>get_clerk_user_id</code> dependency</strong>:</li>
+<li>Priority 1: Verify JWT via JWKS, extract <code>sub</code> claim</li>
+<li>Priority 2 (legacy fallback): <code>x-clerk-user-id</code> header</li>
+<li>Priority 3 (legacy fallback): <code>x-user-id</code> header</li>
+<li><strong>FastAPI routes</strong>: Look up <code>User</code> by <code>clerk_id</code>, verify ownership, return data</li>
+</ol>
+<h3 id="beta-password-gate-currently-disabled">Beta Password Gate (currently disabled)<a class="headerlink" href="#beta-password-gate-currently-disabled" title="Permanent link">&para;</a></h3>
+<p>When enabled: middleware checks <code>beta_access</code> cookie against <code>BETA_PASSWORD</code> env var. Unauthenticated users without the cookie are redirected to <code>/beta</code>.</p>
+<h3 id="admin-auth">Admin Auth<a class="headerlink" href="#admin-auth" title="Permanent link">&para;</a></h3>
+<p>Frontend: <code>lib/admin/auth.ts</code> checks <code>ADMIN_CLERK_USER_ID</code> env var.
+Backend: <code>X-Admin-Token</code> header verified via HMAC comparison against <code>ADMIN_TOKEN</code> env var.</p>
+<hr />
+<h2 id="11-billing-flow">11. Billing Flow<a class="headerlink" href="#11-billing-flow" title="Permanent link">&para;</a></h2>
+<h3 id="upgrade-to-pro">Upgrade to Pro<a class="headerlink" href="#upgrade-to-pro" title="Permanent link">&para;</a></h3>
+<ol>
+<li>User clicks "Upgrade" button on the app</li>
+<li>Frontend calls <code>POST /api/billing/checkout</code> (proxied)</li>
+<li>Backend creates Stripe customer (if needed), creates Checkout Session</li>
+<li>Returns <code>{url: "https://checkout.stripe.com/..."}</code></li>
+<li>Frontend redirects user to Stripe Checkout</li>
+<li>User completes payment</li>
+<li>Stripe sends <code>checkout.session.completed</code> webhook to <code>POST /api/billing/webhook</code></li>
+<li>Backend:</li>
+<li>Stores event in <code>stripe_events</code> (dedup)</li>
+<li>Sets <code>plan_type = 'pro'</code>, <code>plan_status = 'active'</code></li>
+<li>Reactivates any payment-paused signals</li>
+<li>Triggers <code>PRO_ACTIVATED</code> email via orchestrator</li>
+<li>Stripe redirects user to <code>https://tripsignal.ca/signals?upgraded=true</code></li>
+<li>Middleware detects pro user without <code>pro_activation_completed_at</code> -&gt; redirects to <code>/pro/activate</code></li>
+<li>User completes pro onboarding wizard, sets notification preferences</li>
+</ol>
+<h3 id="payment-failure">Payment Failure<a class="headerlink" href="#payment-failure" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Stripe sends <code>invoice.payment_failed</code> webhook</li>
+<li>Backend pauses all active signals (status = <code>'payment_paused'</code>)</li>
+<li>Triggers <code>PAYMENT_FAILED</code> email</li>
+</ol>
+<h3 id="recovery">Recovery<a class="headerlink" href="#recovery" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Stripe sends <code>customer.subscription.updated</code> with status = <code>'active'</code></li>
+<li>Backend reactivates payment-paused signals</li>
+<li>User-initiated paused signals remain paused</li>
+</ol>
+<h3 id="subscription-cancellation">Subscription Cancellation<a class="headerlink" href="#subscription-cancellation" title="Permanent link">&para;</a></h3>
+<ol>
+<li>User cancels via Stripe portal (accessed via <code>POST /api/billing/portal</code>)</li>
+<li>Stripe sends <code>customer.subscription.deleted</code> webhook</li>
+<li>Backend: Sets <code>plan_type = 'free'</code>, triggers <code>SUBSCRIPTION_CANCELED</code> email</li>
+</ol>
+<h3 id="plan-types-and-limits">Plan Types and Limits<a class="headerlink" href="#plan-types-and-limits" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Free</th>
+<th>Pro</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Signal limit</td>
+<td>1</td>
+<td>10</td>
+</tr>
+<tr>
+<td>Deal matching</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Email alerts</td>
+<td>Yes (trial)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Weekly summary</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Market intelligence</td>
+<td>Basic</td>
+<td>Full</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="12-scraper-alert-pipeline">12. Scraper -&gt; Alert Pipeline<a class="headerlink" href="#12-scraper-alert-pipeline" title="Permanent link">&para;</a></h2>
+<h3 id="full-pipeline">Full Pipeline<a class="headerlink" href="#full-pipeline" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>1. scrape_orchestrator starts (docker container, runs continuously)
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>   |
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>2. Runs SellOff scraper, waits SCRAPE_DELAY_SECONDS, runs RedTag scraper
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>   |
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>3. Each scraper:
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>   a. Calls POST /api/system/scrape-started (creates ScrapeRun)
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>   b. Fetches deals from provider website (via residential proxy)
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>   c. Upserts deals into deals table (via shared/upsert.py)
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>   d. Records price history in deal_price_history
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>   e. Marks deals not seen in this cycle as inactive (missed_cycles)
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>   f. Matches deals to active signals (via shared/matching.py)
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>   g. Creates DealMatch rows for new matches
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>   h. Computes signal intel (updates signal_intel_cache)
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>   i. Computes route intel (updates route_intel_cache)
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>   j. Sends digest emails per user (via match_alert.py / email_orchestrator)
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>   k. Calls POST /api/system/collection-complete (updates ScrapeRun)
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>   l. Calls POST /api/system/next-scan (stores next scan time)
+<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>   |
+<a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>4. notifications_log_worker polls notifications_outbox
+<a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>   - Sends pending notifications via Resend
+<a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a>   |
+<a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>5. lifecycle_email_worker runs every 5 minutes
+<a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a>   - Sends welcome, trial-expiring, trial-expired, no-signal emails
+</code></pre></div>
+<h3 id="email-deduplication">Email Deduplication<a class="headerlink" href="#email-deduplication" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>email_log.idempotency_key</code> prevents duplicate sends</li>
+<li>User <code>*_email_sent_at</code> columns guard lifecycle emails</li>
+<li><code>stripe_events.stripe_event_id</code> deduplicates webhook processing</li>
+</ul>
+<h3 id="deal-staleness">Deal Staleness<a class="headerlink" href="#deal-staleness" title="Permanent link">&para;</a></h3>
+<p>Deals have <code>missed_cycles</code> counter. After N consecutive missed cycles, deal is deactivated (<code>is_active = false</code>, <code>deactivated_at</code> set). This ensures expired deals don't persist.</p>
+<hr />
+<h2 id="13-known-gotchas-tribal-knowledge">13. Known Gotchas &amp; Tribal Knowledge<a class="headerlink" href="#13-known-gotchas-tribal-knowledge" title="Permanent link">&para;</a></h2>
+<ol>
+<li>
+<p><strong>Caddy <code>/api/*</code> interception</strong>: All paths starting with <code>/api/</code> go to FastAPI, NOT Next.js. This means Next.js API routes under <code>/app/api/</code> are only accessible via internal Docker networking, not from the browser. Frontend proxy routes that need browser access use paths like <code>/user/sync</code>, <code>/billing/checkout</code>, NOT <code>/api/*</code>.</p>
+</li>
+<li>
+<p><strong>Two matching functions must stay in sync</strong>: <code>selloff_scraper.py</code> -&gt; <code>match_deal_to_signals()</code> and <code>signals.py</code> -&gt; <code>_match_signal_against_deals()</code>. Both implement the same matching logic. If one changes, the other must too.</p>
+</li>
+<li>
+<p><strong>Signal caps</strong>: Free = 1 signal, Pro = 10 signals. Enforced in <code>create_signal()</code>.</p>
+</li>
+<li>
+<p><strong>Date semantics</strong>: <code>start_date</code> = earliest departure date, <code>end_date</code> = latest return date (not latest departure). Both <code>depart_date &gt;= start_date</code> AND <code>return_date &lt;= end_date</code> must be true.</p>
+</li>
+<li>
+<p><strong>Signal status vs Deal is_active</strong>: Signals use <code>status == "active"</code> (string field). Deals use <code>is_active == True</code> (boolean field). Don't confuse them.</p>
+</li>
+<li>
+<p><strong>SQLAlchemy <code>None</code> vs <code>null()</code></strong>: When inserting rows with <code>server_default</code>, Python <code>None</code> lets the default kick in. Use <code>from sqlalchemy import null</code> for explicit NULL.</p>
+</li>
+<li>
+<p><strong>Always <code>db.rollback()</code> in exception handlers</strong>: After a failed <code>db.commit()</code>, the session stays dirty.</p>
+</li>
+<li>
+<p><strong>Rebuild ALL backend containers</strong>: API, scraper, notifications worker, lifecycle worker all share the same Docker image. Change one file -&gt; rebuild all four.</p>
+</li>
+<li>
+<p><strong>Frontend env vars in Docker</strong>: The frontend container MUST be started with <code>--env-file</code>. Without it, Clerk auth fails and the site shows internal errors.</p>
+</li>
+<li>
+<p><strong>Public routes in middleware</strong>: Must be added to BOTH <code>isPublicRoute</code> (Clerk matcher) and <code>isBetaExempt</code>. Missing from either causes auth issues.</p>
+</li>
+<li>
+<p><strong><code>useSearchParams()</code> needs Suspense</strong>: Without a <code>&lt;Suspense&gt;</code> boundary, Next.js static build fails.</p>
+</li>
+<li>
+<p><strong>AIRPORT_CITY_MAP</strong>: Defined in <code>selloff_scraper.py</code>. Maps IATA codes to human-readable Canadian city names for emails. Must be updated when adding new airports.</p>
+</li>
+<li>
+<p><strong><code>validate_user_for_email()</code></strong>: Three checks must pass: user exists, not opted out (<code>email_opt_out = false</code>), and has active plan (pro or active trial). All three required before sending.</p>
+</li>
+<li>
+<p><strong>Frontend container not in docker-compose</strong>: The Next.js frontend runs as a standalone Docker container, not managed by docker-compose. Requires manual stop/rm/run cycle for updates.</p>
+</li>
+<li>
+<p><strong>Price is always in cents CAD</strong>: <code>price_cents</code> everywhere. Divide by 100 for display. Currency is always CAD.</p>
+</li>
+<li>
+<p><strong>Soft delete pattern</strong>: Users are soft-deleted (deleted_at set), not removed. Signals cascade-delete. Admin can restore via <code>undelete</code> endpoint or permanently remove via <code>hard-delete</code>.</p>
+</li>
+<li>
+<p><strong>Staging environment</strong>: <code>staging.tripsignal.ca</code> exists in Caddyfile, routes to <code>tripsignal-frontend-staging:3000</code>.</p>
+</li>
+<li>
+<p><strong>Proxy configuration</strong>: Scraper uses DataImpulse residential proxy (<code>gw.dataimpulse.com:823</code>) with Canadian geo (<code>cr.ca</code>).</p>
+</li>
+<li>
+<p><strong>Pydantic schema stripping</strong>: Pydantic v2 strips undeclared fields from request bodies. If a new field is added to the frontend but not the Pydantic schema, it silently disappears.</p>
+</li>
+<li>
+<p><strong>Email templates are code + DB overrides</strong>: Default templates live in Python code (<code>email_templates/templates.py</code>). Admins can override subject/body via the admin panel, stored in <code>email_template_overrides</code> table. NULL override = use Python default.</p>
+</li>
+<li>
+<p><strong><code>base.py</code> missing model imports</strong>: <code>backend/app/db/base.py</code> doesn't import all models (missing User, EmailLog, EmailTemplateOverride, StripeEvent, SystemConfig, ScrapeRun, HotelLink, DealPriceHistory). These models work because they're imported elsewhere before Alembic runs, but this could cause Alembic autogenerate to miss migrations if import order changes.</p>
+</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.instant", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "search.suggest", "toc.integrate", "content.code.copy"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

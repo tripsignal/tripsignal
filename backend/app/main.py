@@ -20,6 +20,7 @@ from app.api.routes.clerk_webhook import router as clerk_webhook_router
 from app.api.routes.deal_matches import router as deal_matches_router
 from app.api.routes.deal_public import router as deal_public_router
 from app.api.routes.stats import router as stats_router
+from app.api.routes.hotel_intel import router as hotel_intel_router
 from app.api.routes.scout import router as scout_router
 from app.api.routes.market import router as market_router
 from app.api.routes.resend_webhooks import router as resend_webhook_router
@@ -138,6 +139,7 @@ app.include_router(market_router)
 app.include_router(scout_router)
 app.include_router(deal_public_router)
 app.include_router(stats_router)
+app.include_router(hotel_intel_router)
 
 @app.post("/api/system/next-scan", dependencies=[Depends(verify_admin)])
 def set_next_scan(payload: dict, db: Session = Depends(get_db)):
