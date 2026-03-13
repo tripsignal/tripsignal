@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.rate_limit import limiter
 from app.db.models.deal import Deal
 from app.db.session import get_db
+from app.services.formatting import normalize_destination_display
 from app.services.market_intel import (
     MarketBucket,
     compute_market_stats,
@@ -93,7 +94,7 @@ async def get_public_deal(request: Request, deal_id: UUID, db: Session = Depends
         "currency": deal.currency,
         "star_rating": deal.star_rating,
         "deeplink_url": deal.deeplink_url,
-        "destination_str": deal.destination_str,
+        "destination_str": normalize_destination_display(deal.destination_str, deal.destination),
         "provider": deal.provider,
         "value_score": value_score,
         "price_delta_cents": price_delta_cents,

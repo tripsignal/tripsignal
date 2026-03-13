@@ -1,7 +1,7 @@
 """Deal match endpoints."""
 
 from uuid import UUID
-from typing import List, Optional
+from typing import List, NamedTuple, Optional
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -21,32 +21,9 @@ from app.db.models.hotel_link import HotelLink
 from app.db.models.notification_outbox import NotificationOutbox
 from app.schemas.deal_matches import DealMatchOut, DealOut
 from app.schemas.deals import DealMatchCreate
-from app.services.market_intel import DESTINATION_LABELS
-from app.workers.shared.regions import PARENT_REGION_MAP
+from app.services.formatting import normalize_destination_display
 
 router = APIRouter(prefix="/signals", tags=["matches"])
-
-# Parent regions that are real countries (append to sub-region labels)
-_PARENT_COUNTRY_NAMES = {
-    "mexico": "Mexico", "dominican_republic": "Dominican Republic",
-    "jamaica": "Jamaica", "cuba": "Cuba",
-}
-
-
-def _normalize_destination_display(destination_str: str | None, region_key: str | None) -> str | None:
-    """Ensure destination display always includes the country (e.g. 'Cancún, Mexico')."""
-    if not region_key:
-        return destination_str
-    # If the raw string already contains a comma (has country), use it as-is
-    if destination_str and "," in destination_str:
-        return destination_str
-    # Only append country for sub-regions within real countries
-    label = DESTINATION_LABELS.get(region_key)
-    parent = PARENT_REGION_MAP.get(region_key)
-    country = _PARENT_COUNTRY_NAMES.get(parent, "") if parent else ""
-    if label and country:
-        return f"{label}, {country}"
-    return destination_str
 
 
 def _verify_signal_owner(signal_id: UUID, clerk_user_id: str, db: Session) -> tuple[Signal, User]:
@@ -93,7 +70,7 @@ def _build_deal_out(
         hotel_name=deal.hotel_name,
         hotel_id=deal.hotel_id,
         discount_pct=deal.discount_pct,
-        destination_str=_normalize_destination_display(deal.destination_str, deal.destination),
+        destination_str=normalize_destination_display(deal.destination_str, deal.destination),
         star_rating=deal.star_rating,
         tripadvisor_url=ta_url,
         found_at=deal.found_at,
@@ -103,11 +80,22 @@ def _build_deal_out(
     )
 
 
-def _batch_price_trends(db: Session, deal_ids: list[UUID]) -> dict[UUID, tuple]:
-    """Batch-fetch price trends for multiple deals in a single query.
+class PriceTrend(NamedTuple):
+    trend: Optional[str]
+    previous_price: Optional[int]
+    delta_cents: Optional[int]
+    first_price: Optional[int]
+    hist_rows: Optional[list]
 
-    Returns {deal_id: (trend, previous_price_cents, abs_delta_cents, first_price_cents, history_rows)}.
-    """
+
+_EMPTY_TREND = PriceTrend(None, None, None, None, None)
+
+# Cap price history rows sent to the frontend to keep payloads bounded
+_MAX_HISTORY_ROWS = 30
+
+
+def _batch_price_trends(db: Session, deal_ids: list[UUID]) -> dict[UUID, PriceTrend]:
+    """Batch-fetch price trends for multiple deals in a single query."""
     if not deal_ids:
         return {}
 
@@ -123,22 +111,24 @@ def _batch_price_trends(db: Session, deal_ids: list[UUID]) -> dict[UUID, tuple]:
     for row in rows:
         by_deal.setdefault(row.deal_id, []).append(row)
 
-    result = {}
+    result: dict[UUID, PriceTrend] = {}
     for did, history in by_deal.items():
         first_price = history[0].price_cents
-        hist_rows = [{"price_cents": h.price_cents, "recorded_at": h.recorded_at} for h in history]
+        # Keep only the most recent entries for the response payload
+        capped = history[-_MAX_HISTORY_ROWS:]
+        hist_rows = [{"price_cents": h.price_cents, "recorded_at": h.recorded_at} for h in capped]
         if len(history) < 2:
-            result[did] = (None, None, None, first_price, hist_rows)
+            result[did] = PriceTrend(None, None, None, first_price, hist_rows)
             continue
         previous_price = history[-2].price_cents
         current_price = history[-1].price_cents
         delta = current_price - previous_price
         if delta < 0:
-            result[did] = ("down", previous_price, abs(delta), first_price, hist_rows)
+            result[did] = PriceTrend("down", previous_price, abs(delta), first_price, hist_rows)
         elif delta > 0:
-            result[did] = ("up", previous_price, delta, first_price, hist_rows)
+            result[did] = PriceTrend("up", previous_price, delta, first_price, hist_rows)
         else:
-            result[did] = ("stable", previous_price, 0, first_price, hist_rows)
+            result[did] = PriceTrend("stable", previous_price, 0, first_price, hist_rows)
 
     return result
 
@@ -180,14 +170,14 @@ def list_signal_matches(
 
     result = []
     for match in matches:
-        trend, previous_price, delta_cents, first_price, hist_rows = price_trends.get(match.deal.id, (None, None, None, None, None))
+        pt = price_trends.get(match.deal.id, _EMPTY_TREND)
         deal_out = _build_deal_out(
             match.deal,
-            trend=trend,
-            previous_price=previous_price,
-            delta_cents=delta_cents,
-            first_price=first_price,
-            hist_rows=hist_rows,
+            trend=pt.trend,
+            previous_price=pt.previous_price,
+            delta_cents=pt.delta_cents,
+            first_price=pt.first_price,
+            hist_rows=pt.hist_rows,
             ta_url=ta_urls.get(match.deal.hotel_id),
         )
         result.append(DealMatchOut(
@@ -225,8 +215,7 @@ def toggle_favourite(
     db.commit()
     db.refresh(match)
 
-    price_trends = _batch_price_trends(db, [match.deal.id])
-    trend, previous_price, delta_cents, first_price, hist_rows = price_trends.get(match.deal.id, (None, None, None, None, None))
+    pt = _batch_price_trends(db, [match.deal.id]).get(match.deal.id, _EMPTY_TREND)
 
     ta_url = None
     if match.deal.hotel_id:
@@ -236,11 +225,11 @@ def toggle_favourite(
 
     deal_out = _build_deal_out(
         match.deal,
-        trend=trend,
-        previous_price=previous_price,
-        delta_cents=delta_cents,
-        first_price=first_price,
-        hist_rows=hist_rows,
+        trend=pt.trend,
+        previous_price=pt.previous_price,
+        delta_cents=pt.delta_cents,
+        first_price=pt.first_price,
+        hist_rows=pt.hist_rows,
         ta_url=ta_url,
     )
 
@@ -285,11 +274,13 @@ def create_signal_match(
 
         created_new = True
 
+        # Use savepoint so IntegrityError rollback doesn't destroy the SignalRun
+        savepoint = db.begin_nested()
         try:
-            db.flush()
+            savepoint.commit()
             db.refresh(match)
         except IntegrityError:
-            db.rollback()
+            savepoint.rollback()
             created_new = False
 
             match = (
@@ -346,11 +337,12 @@ def create_signal_match(
         db.add(run)
         db.commit()
 
+        deal_out = _build_deal_out(match.deal)
         return DealMatchOut(
             id=match.id,
             matched_at=match.matched_at,
             is_favourite=match.is_favourite,
-            deal=match.deal,
+            deal=deal_out,
         )
 
     except Exception as e:
