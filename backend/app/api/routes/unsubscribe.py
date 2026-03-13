@@ -54,6 +54,7 @@ def get_preferences(token: str, db: Session = Depends(get_db)):
         "email_enabled": user.email_enabled,
         "plan_type": user.plan_type,
         "notification_delivery_frequency": user.notification_delivery_frequency,
+        "notification_weekly_summary": user.notification_weekly_summary,
         "timezone": user.timezone,
     }
 
@@ -68,6 +69,7 @@ class UnsubscribeRequest(BaseModel):
     action: str  # "opt_out" | "resubscribe" | "change_frequency" | "update_prefs"
     email_enabled: Optional[bool] = None
     notification_delivery_frequency: Optional[str] = None
+    notification_weekly_summary: Optional[bool] = None
 
 
 @router.post("")
@@ -82,6 +84,7 @@ def update_preferences(body: UnsubscribeRequest, db: Session = Depends(get_db)):
 
     elif body.action == "resubscribe":
         user.email_opt_out = False
+        user.email_enabled = True
         db.commit()
         return {"ok": True, "message": "Deal alert emails re-enabled."}
 
@@ -103,6 +106,8 @@ def update_preferences(body: UnsubscribeRequest, db: Session = Depends(get_db)):
             if "all" in windows and len(windows) > 1:
                 raise HTTPException(status_code=400, detail="'all' cannot be combined with other windows")
             user.notification_delivery_frequency = body.notification_delivery_frequency
+        if body.notification_weekly_summary is not None:
+            user.notification_weekly_summary = body.notification_weekly_summary
         db.commit()
         return {"ok": True, "message": "Preferences saved."}
 
