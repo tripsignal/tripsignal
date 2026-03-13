@@ -66,9 +66,25 @@ def _get_optional_clerk_id(authorization: str | None) -> str | None:
 
 @router.get("")
 @limiter.limit("10/minute")
-def get_preferences(request: Request, token: str, db: Session = Depends(get_db)):
-    """Return masked email, opt-out status, and preference settings."""
+def get_preferences(
+    request: Request,
+    token: str,
+    db: Session = Depends(get_db),
+    authorization: str | None = Header(None),
+):
+    """Return masked email, opt-out status, and preference settings.
+
+    If an Authorization header is present, verifies the Clerk JWT and
+    returns whether the signed-in user owns this token (is_own_account).
+    No user identifiers are exposed in the response.
+    """
     user = _get_user_from_token(token, db)
+
+    # Determine account ownership without exposing any identifiers
+    is_own_account = None
+    caller_clerk_id = _get_optional_clerk_id(authorization)
+    if caller_clerk_id is not None:
+        is_own_account = caller_clerk_id == user.clerk_id
 
     return {
         "email": _mask_email(user.email),
@@ -77,7 +93,7 @@ def get_preferences(request: Request, token: str, db: Session = Depends(get_db))
         "plan_type": user.plan_type,
         "notification_delivery_frequency": user.notification_delivery_frequency,
         "notification_weekly_summary": user.notification_weekly_summary,
-        "clerk_id": user.clerk_id,
+        "is_own_account": is_own_account,
     }
 
 
