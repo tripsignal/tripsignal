@@ -128,8 +128,14 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     if evt:
         evt.processed_at = datetime.now(timezone.utc)
         evt.processing_error = processing_error
-    db.commit()
 
+    if processing_error:
+        # Rollback dedup record + any partial state so Stripe retries cleanly
+        db.rollback()
+        logger.warning("Stripe event %s failed, rolled back for retry", event_id)
+        raise HTTPException(status_code=500, detail="Event processing failed")
+
+    db.commit()
     return {"status": "ok"}
 
 

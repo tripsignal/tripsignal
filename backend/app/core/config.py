@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # Clerk
     CLERK_SECRET_KEY: str = ""
     CLERK_JWKS_URL: str = ""
+    CLERK_AUTHORIZED_PARTIES: str = ""  # comma-separated azp values (publishable keys / frontend URLs)
 
     # Email feature flags
     EMAIL_V2_ENABLED: bool = True  # V2 is now the only email path

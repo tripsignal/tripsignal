@@ -27,6 +27,7 @@ def _get_jwks_client() -> PyJWKClient:
 def verify_clerk_token(token: str) -> str:
     """Verify a Clerk JWT and return the user ID (sub claim).
 
+    Verifies RS256 signature via JWKS, expiration, and authorized party (azp).
     Raises ValueError on any verification failure.
     """
     client = _get_jwks_client()
@@ -38,6 +39,18 @@ def verify_clerk_token(token: str) -> str:
         algorithms=["RS256"],
         options={"verify_exp": True, "verify_aud": False},
     )
+
+    # Verify authorized party (azp) — Clerk's equivalent of audience
+    azp = payload.get("azp")
+    authorized_parties = settings.CLERK_AUTHORIZED_PARTIES
+    if authorized_parties:
+        allowed = {p.strip() for p in authorized_parties.split(",") if p.strip()}
+        if allowed and azp not in allowed:
+            logger.warning(
+                "SECURITY | jwt_azp_mismatch | azp=%s | allowed=%s",
+                azp, allowed,
+            )
+            raise ValueError(f"JWT azp '{azp}' not in authorized parties")
 
     sub = payload.get("sub")
     if not sub:

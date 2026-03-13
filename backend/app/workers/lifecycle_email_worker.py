@@ -144,7 +144,7 @@ def _run_trial_auto_extension(db: Session, now: datetime) -> int:
             User.trial_ends_at > now,  # trial hasn't expired yet
             User.trial_auto_extended_at.is_(None),
             User.deleted_at.is_(None),
-        )
+        ).with_for_update(skip_locked=True)
     ).scalars().all()
 
     extended = 0

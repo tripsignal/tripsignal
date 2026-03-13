@@ -237,6 +237,8 @@ def update_prefs(
     if body.email_enabled is not None:
         user.email_enabled = body.email_enabled
     if body.sms_enabled is not None:
+        if body.sms_enabled and user.plan_type != "pro":
+            raise HTTPException(status_code=400, detail="SMS alerts are only available for Pro users")
         user.sms_enabled = body.sms_enabled
     if body.notification_weekly_summary is not None:
         if body.notification_weekly_summary and user.plan_type != "pro":
@@ -245,7 +247,7 @@ def update_prefs(
     if body.timezone is not None:
         user.timezone = body.timezone
 
-    if body.complete_activation and user.pro_activation_completed_at is None:
+    if body.complete_activation and user.plan_type == "pro" and user.pro_activation_completed_at is None:
         user.pro_activation_completed_at = datetime.now(timezone.utc)
 
     db.commit()

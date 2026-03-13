@@ -1,14 +1,14 @@
-"""Unsubscribe / email-preferences endpoints (token-based, no auth required).
+"""Unsubscribe / email-preferences endpoints (token-based).
 
 Security notes:
-- opt_out, update_prefs, submit_feedback, pause: token-only (CASL/CAN-SPAM compliant)
-- resubscribe: requires Clerk auth matching the token's user (prevents abuse of leaked tokens)
+- opt_out, submit_feedback: token-only (CASL/CAN-SPAM compliant one-click)
+- update_prefs, pause, resubscribe: require Clerk auth matching the token's user
 """
 from __future__ import annotations
 
 import logging
 import uuid
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
@@ -48,7 +48,7 @@ def _get_user_from_token(token: str, db: Session) -> User:
         raise HTTPException(status_code=403, detail="Invalid or expired link")
     user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=403, detail="Invalid or expired link")
     return user
 
 
@@ -60,6 +60,20 @@ def _get_optional_clerk_id(authorization: str | None) -> str | None:
         return verify_clerk_token(authorization[7:])
     except Exception:
         return None
+
+
+def _require_owner(user: User, authorization: str | None, action: str) -> None:
+    """Require Clerk auth matching the token's user. Raises 401/403 on failure."""
+    caller_clerk_id = _get_optional_clerk_id(authorization)
+    if not caller_clerk_id:
+        logger.warning("unsub_action=%s_denied | user=%s | reason=no_auth", action, user.id)
+        raise HTTPException(status_code=401, detail="Sign in to manage preferences.")
+    if caller_clerk_id != user.clerk_id:
+        logger.warning(
+            "unsub_action=%s_denied | user=%s | reason=clerk_mismatch | caller=%s",
+            action, user.id, caller_clerk_id,
+        )
+        raise HTTPException(status_code=403, detail="You can only manage your own account.")
 
 
 # ── GET /api/unsubscribe?token=xxx ──────────────────────────────────────────
@@ -102,9 +116,15 @@ def get_preferences(
 _VALID_FREQUENCIES = {"all", "morning", "noon", "evening"}
 
 
+_VALID_ACTIONS = Literal[
+    "opt_out", "submit_feedback", "resubscribe",
+    "update_prefs", "pause", "change_speed", "change_frequency",
+]
+
+
 class UnsubscribeRequest(BaseModel):
     token: str
-    action: str  # "opt_out" | "submit_feedback" | "resubscribe" | "update_prefs" | "pause"
+    action: _VALID_ACTIONS
     email_enabled: Optional[bool] = None
     notification_delivery_frequency: Optional[str] = None
     notification_weekly_summary: Optional[bool] = None
@@ -137,6 +157,7 @@ def update_preferences(
         return {"ok": True, "message": "Thank you for your feedback."}
 
     elif body.action == "pause":
+        _require_owner(user, authorization, "pause")
         user.email_enabled = False
         user.notification_weekly_summary = False
         db.commit()
@@ -144,29 +165,7 @@ def update_preferences(
         return {"ok": True, "message": "Deal emails paused."}
 
     elif body.action == "resubscribe":
-        # Resubscribe requires Clerk auth matching the token's user.
-        # This prevents leaked tokens from being used to re-enable
-        # emails for users who explicitly opted out.
-        caller_clerk_id = _get_optional_clerk_id(authorization)
-        if not caller_clerk_id:
-            logger.warning(
-                "unsub_action=resubscribe_denied | user=%s | reason=no_auth",
-                user.id,
-            )
-            raise HTTPException(
-                status_code=401,
-                detail="Sign in to re-enable deal alerts.",
-            )
-        if caller_clerk_id != user.clerk_id:
-            logger.warning(
-                "unsub_action=resubscribe_denied | user=%s | reason=clerk_mismatch | caller=%s",
-                user.id,
-                caller_clerk_id,
-            )
-            raise HTTPException(
-                status_code=403,
-                detail="You can only re-enable alerts for your own account.",
-            )
+        _require_owner(user, authorization, "resubscribe")
         user.email_opt_out = False
         user.email_enabled = True
         db.commit()
@@ -174,12 +173,14 @@ def update_preferences(
         return {"ok": True, "message": "Deal alert emails re-enabled."}
 
     elif body.action in ("change_speed", "change_frequency"):
+        _require_owner(user, authorization, "change_frequency")
         user.notification_delivery_frequency = "morning"
         db.commit()
         logger.info("unsub_action=change_frequency | user=%s", user.id)
         return {"ok": True, "message": "Delivery changed to morning digest."}
 
     elif body.action == "update_prefs":
+        _require_owner(user, authorization, "update_prefs")
         changes = []
         if body.email_enabled is not None:
             user.email_enabled = body.email_enabled
@@ -202,5 +203,5 @@ def update_preferences(
         logger.info("unsub_action=update_prefs | user=%s | changes=%s", user.id, ",".join(changes))
         return {"ok": True, "message": "Preferences saved."}
 
-    else:
-        raise HTTPException(status_code=400, detail=f"Unknown action: {body.action}")
+    # Unreachable — Pydantic validates action against _VALID_ACTIONS
+    raise HTTPException(status_code=400, detail=f"Unknown action: {body.action}")  # pragma: no cover
