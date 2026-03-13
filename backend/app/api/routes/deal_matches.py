@@ -86,7 +86,7 @@ def get_price_trend(db: Session, deal_id: UUID):
 def _batch_price_trends(db: Session, deal_ids: list[UUID]) -> dict[UUID, tuple]:
     """Batch-fetch price trends for multiple deals in a single query.
 
-    Returns {deal_id: (trend, previous_price_cents, abs_delta_cents, first_price_cents)}.
+    Returns {deal_id: (trend, previous_price_cents, abs_delta_cents, first_price_cents, history_rows)}.
     """
     if not deal_ids:
         return {}
@@ -106,18 +106,19 @@ def _batch_price_trends(db: Session, deal_ids: list[UUID]) -> dict[UUID, tuple]:
     result = {}
     for did, history in by_deal.items():
         first_price = history[0].price_cents
+        hist_rows = [{"price_cents": h.price_cents, "recorded_at": h.recorded_at} for h in history]
         if len(history) < 2:
-            result[did] = (None, None, None, first_price)
+            result[did] = (None, None, None, first_price, hist_rows)
             continue
         previous_price = history[-2].price_cents
         current_price = history[-1].price_cents
         delta = current_price - previous_price
         if delta < 0:
-            result[did] = ("down", previous_price, abs(delta), first_price)
+            result[did] = ("down", previous_price, abs(delta), first_price, hist_rows)
         elif delta > 0:
-            result[did] = ("up", previous_price, delta, first_price)
+            result[did] = ("up", previous_price, delta, first_price, hist_rows)
         else:
-            result[did] = ("stable", previous_price, 0, first_price)
+            result[did] = ("stable", previous_price, 0, first_price, hist_rows)
 
     return result
 
@@ -158,7 +159,7 @@ def list_signal_matches(
 
     result = []
     for match in matches:
-        trend, previous_price, delta_cents, first_price = price_trends.get(match.deal.id, (None, None, None, None))
+        trend, previous_price, delta_cents, first_price, hist_rows = price_trends.get(match.deal.id, (None, None, None, None, None))
         deal_out = DealOut(
             id=match.deal.id,
             provider=match.deal.provider,
@@ -187,6 +188,7 @@ def list_signal_matches(
             found_at=match.deal.found_at,
             first_price_cents=first_price,
             reactivated_at=match.deal.reactivated_at,
+            price_history=hist_rows if hist_rows and len(hist_rows) > 1 else None,
         )
         result.append(DealMatchOut(
             id=match.id,

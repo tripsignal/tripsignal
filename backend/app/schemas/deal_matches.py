@@ -7,6 +7,11 @@ from uuid import UUID
 from pydantic import BaseModel
 
 
+class PriceHistoryEntry(BaseModel):
+    price_cents: int
+    recorded_at: datetime
+
+
 class DealOut(BaseModel):
     id: UUID
     provider: Optional[str] = None
@@ -35,6 +40,7 @@ class DealOut(BaseModel):
     found_at: Optional[datetime] = None
     first_price_cents: Optional[int] = None
     reactivated_at: Optional[datetime] = None
+    price_history: Optional[list[PriceHistoryEntry]] = None
 
     class Config:
         from_attributes = True
