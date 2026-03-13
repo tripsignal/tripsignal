@@ -890,7 +890,7 @@ def _run_scraper_inner(once: bool, defer_alerts: bool = False) -> dict | None:
                                     drop = getattr(deal, "_price_delta", None)
                                     match = _create_deal_match(
                                         db, signal, deal, duration_days,
-                                        -drop if drop else None,
+                                        -drop if drop is not None else None,
                                         stats_cache=scrape_value_stats_cache,
                                     )
                                     total_matches += 1
