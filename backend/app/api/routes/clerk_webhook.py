@@ -105,15 +105,13 @@ async def clerk_webhook(
                         db.commit()
                         # Fall through to create a fresh user below
                     else:
+                        # Active account with this email exists under a different clerk_id.
+                        # Do NOT relink — this could be an account takeover attempt.
                         logger.warning(
-                            "SECURITY | webhook_relink | old_clerk=%s new_clerk=%s email=%s",
+                            "SECURITY | webhook_relink_blocked | old_clerk=%s new_clerk=%s email=%s",
                             existing.clerk_id, clerk_id, email,
                         )
-                        existing.clerk_id = clerk_id
-                        if first_name and first_name != existing.first_name:
-                            existing.first_name = first_name
-                        db.commit()
-                        return {"ok": True, "action": "relinked"}
+                        email = ""  # clear so new user creation doesn't hit unique constraint
 
             # user.created — create the user row if it doesn't exist yet
             if event_type == "user.created":
