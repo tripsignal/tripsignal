@@ -641,7 +641,18 @@ def _acquire_scrape_lock(db: Session) -> bool:
     return bool(result)
 
 
-def run_scraper(once: bool = True) -> None:
+def run_scraper(once: bool = True, defer_alerts: bool = False) -> dict | None:
+    """Run the SellOff scraper.
+
+    Args:
+        once: If True, run a single cycle and return.
+        defer_alerts: If True, skip sending match alert emails and return
+            the v2_signal_deals dict for the caller to consolidate.
+
+    Returns:
+        When defer_alerts=True, returns the v2_signal_deals dict.
+        Otherwise returns None.
+    """
     logger.info("SellOff scraper starting")
 
     # Acquire advisory lock — prevents concurrent scrape cycles.
@@ -654,11 +665,11 @@ def run_scraper(once: bool = True) -> None:
             "SCRAPE BLOCKED: another scraper is already running (advisory lock held). Exiting."
         )
         _lock_gen.close()
-        return
+        return {} if defer_alerts else None
     logger.info("Advisory lock acquired — this is the only running scraper")
 
     try:
-        _run_scraper_inner(once)
+        return _run_scraper_inner(once, defer_alerts=defer_alerts)
     finally:
         # Release the advisory lock by closing the generator (which closes the session)
         try:
@@ -668,7 +679,19 @@ def run_scraper(once: bool = True) -> None:
             pass
 
 
-def _run_scraper_inner(once: bool) -> None:
+def _run_scraper_inner(once: bool, defer_alerts: bool = False) -> dict | None:
+    """Run scrape cycles.
+
+    Args:
+        once: If True, run a single cycle and return.
+        defer_alerts: If True, skip sending match alert emails and return
+            the v2_signal_deals dict so the caller can consolidate alerts
+            across multiple scrapers.
+
+    Returns:
+        When defer_alerts=True and once=True, returns the v2_signal_deals dict.
+        Otherwise returns None.
+    """
     while True:
         cycle_errors: list = []
         total_deals = 0
@@ -679,6 +702,7 @@ def _run_scraper_inner(once: bool) -> None:
         scrape_value_stats_cache: dict = {}
         started_at = datetime.now(timezone.utc)
         run_id = None
+        _deferred_signal_deals: dict = {}
 
         try:
             # Browser profile + curl_cffi session for this cycle
@@ -954,12 +978,19 @@ def _run_scraper_inner(once: bool) -> None:
                 logger.error("Expired deal cleanup failed: %s", e)
                 cycle_errors.append({"error": str(e), "type": "expired_cleanup"})
 
-            # Send match alert emails after full cycle
-            try:
-                _send_cycle_alerts(v2_signal_deals, user_digest)
-            except Exception as e:
-                logger.error("Match alert sending failed: %s", e)
-                cycle_errors.append({"error": str(e), "type": "alert_send"})
+            # Send match alert emails after full cycle (unless deferred to orchestrator)
+            if defer_alerts:
+                _deferred_signal_deals = dict(v2_signal_deals)
+                logger.info(
+                    "Alert sending deferred to orchestrator (%d signals with deals)",
+                    len(_deferred_signal_deals),
+                )
+            else:
+                try:
+                    _send_cycle_alerts(v2_signal_deals, user_digest)
+                except Exception as e:
+                    logger.error("Match alert sending failed: %s", e)
+                    cycle_errors.append({"error": str(e), "type": "alert_send"})
 
             # Refresh signal + route intelligence caches after each scrape cycle
             try:
@@ -1025,7 +1056,9 @@ def _run_scraper_inner(once: bool) -> None:
         if once or _shutdown_requested:
             if _shutdown_requested:
                 logger.info("Shutting down gracefully after completed cycle")
-            return
+            if defer_alerts:
+                return _deferred_signal_deals
+            return None
 
 
 if __name__ == "__main__":

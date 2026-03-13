@@ -318,20 +318,30 @@ def run_orchestrated_cycle() -> dict:
         REDTAG_HARD_TIMEOUT, REDTAG_HARD_TIMEOUT // 3600,
     )
 
+    # Accumulate deals from all scrapers for a single consolidated alert email
+    combined_signal_deals: dict = {}
+
     # --- SellOff ---
     if _shutdown_requested:
         logger.info("Shutdown requested before SellOff, skipping")
     else:
         logger.info("=== Starting SellOff scraper ===")
         from app.workers.selloff_scraper import run_scraper as run_selloff
-        outcome = _run_with_timeout(
-            lambda: run_selloff(once=True),
-            "SellOff",
-            SELLOFF_HARD_TIMEOUT,
-        )
+
+        selloff_result_holder: dict = {"v2_signal_deals": None}
+
+        def _run_selloff():
+            selloff_result_holder["v2_signal_deals"] = run_selloff(
+                once=True, defer_alerts=True,
+            )
+
+        outcome = _run_with_timeout(_run_selloff, "SellOff", SELLOFF_HARD_TIMEOUT)
         if outcome["status"] == "completed":
             logger.info("=== SellOff scraper complete ===")
             results.append({"provider": "selloff", "status": "completed"})
+            selloff_deals = selloff_result_holder["v2_signal_deals"] or {}
+            for sig_id, deals in selloff_deals.items():
+                combined_signal_deals.setdefault(sig_id, []).extend(deals)
         elif outcome["status"] == "timeout":
             logger.error("=== SellOff scraper TIMED OUT ===")
             results.append({"provider": "selloff", "status": "timeout", "error": outcome["error"]})
@@ -348,7 +358,6 @@ def run_orchestrated_cycle() -> dict:
     else:
         logger.info("=== Starting RedTag scraper ===")
         from app.workers.redtag_scraper import run_once as run_redtag_once
-        from collections import defaultdict
 
         redtag_result_holder = {"result": None}
 
@@ -366,19 +375,34 @@ def run_orchestrated_cycle() -> dict:
                 "total_matches": redtag_result.get("total_matches", 0),
             })
             logger.info("=== RedTag scraper complete ===")
-
-            # Send RedTag match alerts
-            if redtag_result.get("v2_signal_deals"):
-                try:
-                    from app.workers.selloff_scraper import _send_cycle_alerts
-                    _send_cycle_alerts(redtag_result["v2_signal_deals"], defaultdict(dict))
-                except Exception as e:
-                    logger.error("RedTag match alert sending failed: %s", e)
+            redtag_deals = redtag_result.get("v2_signal_deals", {})
+            for sig_id, deals in redtag_deals.items():
+                combined_signal_deals.setdefault(sig_id, []).extend(deals)
         elif outcome["status"] == "timeout":
             logger.error("=== RedTag scraper TIMED OUT ===")
             results.append({"provider": "redtag", "status": "timeout", "error": outcome["error"]})
         else:
             results.append({"provider": "redtag", "status": "failed", "error": outcome.get("error", "unknown")})
+
+    # --- Send consolidated match alerts (one email per user across all scrapers) ---
+    if combined_signal_deals:
+        try:
+            from collections import defaultdict
+            from app.workers.selloff_scraper import _send_cycle_alerts
+            signal_count = len(combined_signal_deals)
+            deal_count = sum(len(d) for d in combined_signal_deals.values())
+            logger.info(
+                "Sending consolidated alerts: %d signals, %d total deals across all scrapers",
+                signal_count, deal_count,
+            )
+            _send_cycle_alerts(combined_signal_deals, defaultdict(dict))
+            logger.info("Consolidated alerts sent successfully")
+        except Exception as e:
+            logger.error(
+                "Consolidated match alert sending failed: %s. "
+                "Affected signals: %s",
+                e, list(combined_signal_deals.keys()),
+            )
 
     # --- TripAdvisor enrichment disabled (DDG snippets unreliable) ---
     # if not _shutdown_requested:
