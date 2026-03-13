@@ -1,6 +1,7 @@
 """Unsubscribe / email-preferences endpoints (token-based, no auth required)."""
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Optional
 
@@ -8,10 +9,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.requests import Request
 
+from app.core.rate_limit import limiter
 from app.core.tokens import validate_unsub_token
 from app.db.models.user import User
 from app.db.session import get_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/unsubscribe", tags=["unsubscribe"])
 
@@ -44,7 +49,8 @@ def _get_user_from_token(token: str, db: Session) -> User:
 # ── GET /api/unsubscribe?token=xxx ──────────────────────────────────────────
 
 @router.get("")
-def get_preferences(token: str, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def get_preferences(request: Request, token: str, db: Session = Depends(get_db)):
     """Return masked email, opt-out status, and preference settings."""
     user = _get_user_from_token(token, db)
 
@@ -66,21 +72,32 @@ _VALID_FREQUENCIES = {"all", "morning", "noon", "evening"}
 
 class UnsubscribeRequest(BaseModel):
     token: str
-    action: str  # "opt_out" | "resubscribe" | "change_frequency" | "update_prefs"
+    action: str  # "opt_out" | "resubscribe" | "change_frequency" | "update_prefs" | "pause"
     email_enabled: Optional[bool] = None
     notification_delivery_frequency: Optional[str] = None
     notification_weekly_summary: Optional[bool] = None
+    reason: Optional[str] = None  # feedback reason on opt_out (informational)
 
 
 @router.post("")
-def update_preferences(body: UnsubscribeRequest, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def update_preferences(request: Request, body: UnsubscribeRequest, db: Session = Depends(get_db)):
     """Update email preferences based on the chosen action."""
     user = _get_user_from_token(body.token, db)
 
     if body.action == "opt_out":
+        if body.reason:
+            safe_reason = body.reason[:200].replace("\n", " ").replace("\r", "")
+            logger.info("Unsubscribe reason for user %s: %s", user.id, safe_reason)
         user.email_opt_out = True
         db.commit()
         return {"ok": True, "message": "You have been unsubscribed from deal alert emails."}
+
+    elif body.action == "pause":
+        user.email_enabled = False
+        user.notification_weekly_summary = False
+        db.commit()
+        return {"ok": True, "message": "Deal emails paused."}
 
     elif body.action == "resubscribe":
         user.email_opt_out = False
