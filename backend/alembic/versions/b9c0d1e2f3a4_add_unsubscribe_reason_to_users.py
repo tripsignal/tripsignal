@@ -1,6 +1,6 @@
 """add unsubscribe_reason column to users
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: b9c0d1e2f3a4
 Revises: z7p8q9r0s1t2
 Create Date: 2026-03-12
 
@@ -10,7 +10,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "a1b2c3d4e5f6"
+revision = "b9c0d1e2f3a4"
 down_revision = "a8q9r0s1t2u3"
 branch_labels = None
 depends_on = None
