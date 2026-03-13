@@ -56,8 +56,11 @@ def _handle_sigterm(signum, frame):
     logger.info("SIGTERM received — will finish current cycle then exit")
 
 
-_signal.signal(_signal.SIGTERM, _handle_sigterm)
-_signal.signal(_signal.SIGINT, _handle_sigterm)
+# Only register signal handlers when running as the main process.
+# When imported by the orchestrator, it manages shutdown via the module flag directly.
+if __name__ == "__main__":
+    _signal.signal(_signal.SIGTERM, _handle_sigterm)
+    _signal.signal(_signal.SIGINT, _handle_sigterm)
 
 
 def _interruptible_sleep(seconds: float) -> None:
@@ -799,7 +802,12 @@ def _run_scraper_inner(once: bool, defer_alerts: bool = False) -> dict | None:
 
             elapsed = 0
             for slug in cycle_destinations:
+                if _shutdown_requested:
+                    logger.info("Shutdown requested — breaking out of destination loop")
+                    break
                 for gateway_code, city_slug in cycle_gateways:
+                    if _shutdown_requested:
+                        break
                     # Randomly skip ~5% of remaining pages for additional unpredictability
                     if random.random() < 0.05:
                         logger.debug("Random skip: %s from %s", slug, city_slug)
@@ -931,9 +939,10 @@ def _run_scraper_inner(once: bool, defer_alerts: bool = False) -> dict | None:
                         _interruptible_sleep(random.uniform(3, 8))
 
             # Graduated staleness: increment missed_cycles, only deactivate after 3+ misses
+            # Skip if shutdown was requested — incomplete cycle would incorrectly penalize unseen deals
             DEACTIVATION_THRESHOLD = 3
             try:
-                if seen_dedupe_keys:
+                if seen_dedupe_keys and not _shutdown_requested:
                     with next(get_db()) as db:
                         unseen = db.query(Deal).filter(
                             Deal.is_active,

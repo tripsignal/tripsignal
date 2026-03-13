@@ -126,6 +126,7 @@ services:
     networks:
       - tripsignal-network
     restart: unless-stopped
+    stop_grace_period: 300s
     healthcheck:
       disable: true
 

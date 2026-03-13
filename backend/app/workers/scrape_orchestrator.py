@@ -45,6 +45,12 @@ def _handle_signal(signum, frame):
     global _shutdown_requested
     _shutdown_requested = True
     logger.info("Shutdown signal received, will finish after current scraper")
+    # Propagate shutdown to scraper modules so they exit their loops promptly
+    import sys
+    for mod_name in ("app.workers.selloff_scraper", "app.workers.redtag_scraper"):
+        mod = sys.modules.get(mod_name)
+        if mod and hasattr(mod, "_shutdown_requested"):
+            mod._shutdown_requested = True
 
 
 _signal.signal(_signal.SIGTERM, _handle_signal)

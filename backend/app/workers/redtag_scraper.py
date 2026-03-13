@@ -122,8 +122,11 @@ def _handle_signal(signum, frame):
     logger.info("Shutdown signal received, will finish current cycle")
 
 
-_signal.signal(_signal.SIGTERM, _handle_signal)
-_signal.signal(_signal.SIGINT, _handle_signal)
+# Only register signal handlers when running as the main process.
+# When imported by the orchestrator, it manages shutdown via the module flag directly.
+if __name__ == "__main__":
+    _signal.signal(_signal.SIGTERM, _handle_signal)
+    _signal.signal(_signal.SIGINT, _handle_signal)
 
 
 # ---------------------------------------------------------------------------
