@@ -985,6 +985,126 @@ def update_hotel_link(
     return {"ok": True, "hotel_id": hotel_id, "tripadvisor_url": hotel.tripadvisor_url}
 
 
+# ── TripAdvisor URL Finder ───────────────────────────────────────────────────
+
+import re as _re
+import threading
+import time
+import random
+
+_ta_url_finder_lock = threading.Lock()
+_ta_url_finder_status: dict = {"running": False, "found": 0, "not_found": 0, "total": 0, "processed": 0}
+
+_TA_URL_RE = _re.compile(
+    r'(https?://(?:www\.)?tripadvisor\.(?:com|ca)/Hotel_Review-[^\s"\'<>&?#]+)',
+    _re.IGNORECASE,
+)
+
+
+def _search_startpage(query: str, use_proxy: bool = True) -> str | None:
+    """Search Startpage for a TripAdvisor Hotel_Review URL."""
+    import requests as _requests
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+    }
+    proxies = None
+    if use_proxy:
+        pu = os.environ.get("PROXY_USER", "")
+        pp = os.environ.get("PROXY_PASS", "")
+        if pu and pp:
+            proxy_url = f"http://{pu}__cr.ca:{pp}@gw.dataimpulse.com:823"
+            proxies = {"http": proxy_url, "https": proxy_url}
+
+    try:
+        resp = _requests.post(
+            "https://www.startpage.com/sp/search",
+            data={"query": query},
+            headers=headers,
+            proxies=proxies,
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            return None
+        matches = _TA_URL_RE.findall(resp.text)
+        if matches:
+            url = matches[0]
+            url = _re.sub(r"tripadvisor\.ca", "tripadvisor.com", url)
+            return url
+    except Exception:
+        pass
+    return None
+
+
+def _run_url_finder():
+    """Background task: find TripAdvisor URLs for all hotels missing them."""
+    global _ta_url_finder_status
+    from app.db.session import SessionLocal
+
+    db = SessionLocal()
+    try:
+        hotels = db.execute(
+            select(HotelLink)
+            .where(HotelLink.tripadvisor_url.is_(None))
+            .order_by(HotelLink.hotel_name)
+        ).scalars().all()
+
+        _ta_url_finder_status["total"] = len(hotels)
+        _ta_url_finder_status["processed"] = 0
+        _ta_url_finder_status["found"] = 0
+        _ta_url_finder_status["not_found"] = 0
+
+        for hotel in hotels:
+            query = f"tripadvisor {hotel.hotel_name} {hotel.destination or ''} hotel".strip()
+            url = _search_startpage(query)
+
+            if url:
+                hotel.tripadvisor_url = url
+                hotel.updated_at = datetime.now(timezone.utc)
+                db.commit()
+                _ta_url_finder_status["found"] += 1
+            else:
+                _ta_url_finder_status["not_found"] += 1
+
+            _ta_url_finder_status["processed"] += 1
+            time.sleep(2 + random.random() * 2)
+
+    except Exception as e:
+        logger.error(f"URL finder error: {e}")
+        db.rollback()
+    finally:
+        db.close()
+        _ta_url_finder_status["running"] = False
+
+
+@router.post("/hotels/find-urls")
+def start_url_finder():
+    """Start background task to find TripAdvisor URLs for hotels missing them."""
+    global _ta_url_finder_status
+
+    if _ta_url_finder_status["running"]:
+        return _ta_url_finder_status
+
+    with _ta_url_finder_lock:
+        if _ta_url_finder_status["running"]:
+            return _ta_url_finder_status
+        _ta_url_finder_status = {"running": True, "found": 0, "not_found": 0, "total": 0, "processed": 0}
+        thread = threading.Thread(target=_run_url_finder, daemon=True)
+        thread.start()
+
+    return _ta_url_finder_status
+
+
+@router.get("/hotels/find-urls/status")
+def url_finder_status():
+    """Get the current status of the URL finder background task."""
+    return _ta_url_finder_status
+
+
 # ── Email Testing ────────────────────────────────────────────────────────────
 
 class SendTestEmailIn(BaseModel):
