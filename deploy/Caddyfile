@@ -11,7 +11,8 @@ tripsignal.ca {
     X-Content-Type-Options "nosniff"
     X-Frame-Options "DENY"
     Referrer-Policy "no-referrer"
-    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.clerk.com https://img.clerk.com; font-src 'self' data:; connect-src 'self' https://*.clerk.accounts.dev https://api.stripe.com; frame-src https://*.clerk.accounts.dev https://js.stripe.com https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'"
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://challenges.cloudflare.com https://us.i.posthog.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.clerk.com https://img.clerk.com; font-src 'self' data:; connect-src 'self' https://*.clerk.accounts.dev https://clerk.tripsignal.ca https://api.stripe.com https://us.i.posthog.com https://us-assets.i.posthog.com; frame-src https://*.clerk.accounts.dev https://js.stripe.com https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'"
   }
 
   handle /api/* {
@@ -38,7 +39,8 @@ staging.tripsignal.ca {
     X-Content-Type-Options "nosniff"
     X-Frame-Options "DENY"
     Referrer-Policy "no-referrer"
-    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.clerk.com https://img.clerk.com; font-src 'self' data:; connect-src 'self' https://*.clerk.accounts.dev https://api.stripe.com; frame-src https://*.clerk.accounts.dev https://js.stripe.com https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'"
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://challenges.cloudflare.com https://us.i.posthog.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.clerk.com https://img.clerk.com; font-src 'self' data:; connect-src 'self' https://*.clerk.accounts.dev https://clerk.tripsignal.ca https://api.stripe.com https://us.i.posthog.com https://us-assets.i.posthog.com; frame-src https://*.clerk.accounts.dev https://js.stripe.com https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'"
   }
 
   handle /api/* {

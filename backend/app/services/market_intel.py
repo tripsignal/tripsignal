@@ -79,6 +79,7 @@ class MarketBucket:
     destination: str  # region code
     duration_bucket: str  # key from DURATION_BUCKETS
     star_bucket: Optional[str] = None  # key from STAR_BUCKETS, None = any
+    min_star_rating: Optional[float] = None  # >= filter (used by signals with min_star pref)
 
 
 @dataclass
@@ -244,13 +245,13 @@ def build_market_bucket_from_signal(signal) -> Optional[MarketBucket]:
     dur_bucket = duration_to_bucket(mid_nights) or "one_week"
 
     star_rating = prefs.get("min_star_rating")
-    star_bkt = star_to_bucket(float(star_rating)) if star_rating else None
+    min_star = float(star_rating) if star_rating else None
 
     return MarketBucket(
         origin=origin,
         destination=destination,
         duration_bucket=dur_bucket,
-        star_bucket=star_bkt,
+        min_star_rating=min_star,
     )
 
 
@@ -274,13 +275,13 @@ def build_market_bucket_from_draft(draft: dict) -> Optional[MarketBucket]:
     dur_bucket = duration_to_bucket(mid_nights) or "one_week"
 
     star_rating = prefs.get("min_star_rating")
-    star_bkt = star_to_bucket(float(star_rating)) if star_rating else None
+    min_star = float(star_rating) if star_rating else None
 
     return MarketBucket(
         origin=origin,
         destination=dest,
         duration_bucket=dur_bucket,
-        star_bucket=star_bkt,
+        min_star_rating=min_star,
     )
 
 
@@ -316,12 +317,17 @@ def _deals_in_bucket(db: Session, bucket: MarketBucket, ignore_star: bool = Fals
         )
 
     # Star filter (optional)
-    if bucket.star_bucket and not ignore_star:
-        star_range = STAR_BUCKETS.get(bucket.star_bucket)
-        if star_range:
-            lo, hi = star_range
+    if not ignore_star:
+        if bucket.min_star_rating is not None:
+            # Signal-style: include all deals >= the minimum star rating
             stmt = stmt.where(Deal.star_rating.isnot(None))
-            stmt = stmt.where(Deal.star_rating.between(lo, hi))
+            stmt = stmt.where(Deal.star_rating >= bucket.min_star_rating)
+        elif bucket.star_bucket:
+            star_range = STAR_BUCKETS.get(bucket.star_bucket)
+            if star_range:
+                lo, hi = star_range
+                stmt = stmt.where(Deal.star_rating.isnot(None))
+                stmt = stmt.where(Deal.star_rating.between(lo, hi))
 
     return db.execute(stmt).scalars().all()
 

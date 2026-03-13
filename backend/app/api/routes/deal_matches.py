@@ -21,8 +21,32 @@ from app.db.models.hotel_link import HotelLink
 from app.db.models.notification_outbox import NotificationOutbox
 from app.schemas.deal_matches import DealMatchOut, DealOut
 from app.schemas.deals import DealMatchCreate
+from app.services.market_intel import DESTINATION_LABELS
+from app.workers.shared.regions import PARENT_REGION_MAP
 
 router = APIRouter(prefix="/signals", tags=["matches"])
+
+# Parent regions that are real countries (append to sub-region labels)
+_PARENT_COUNTRY_NAMES = {
+    "mexico": "Mexico", "dominican_republic": "Dominican Republic",
+    "jamaica": "Jamaica", "cuba": "Cuba",
+}
+
+
+def _normalize_destination_display(destination_str: str | None, region_key: str | None) -> str | None:
+    """Ensure destination display always includes the country (e.g. 'Cancún, Mexico')."""
+    if not region_key:
+        return destination_str
+    # If the raw string already contains a comma (has country), use it as-is
+    if destination_str and "," in destination_str:
+        return destination_str
+    # Only append country for sub-regions within real countries
+    label = DESTINATION_LABELS.get(region_key)
+    parent = PARENT_REGION_MAP.get(region_key)
+    country = _PARENT_COUNTRY_NAMES.get(parent, "") if parent else ""
+    if label and country:
+        return f"{label}, {country}"
+    return destination_str
 
 
 def _verify_signal_owner(signal_id: UUID, clerk_user_id: str, db: Session) -> tuple[Signal, User]:
@@ -157,7 +181,7 @@ def list_signal_matches(
             hotel_name=match.deal.hotel_name,
             hotel_id=match.deal.hotel_id,
             discount_pct=match.deal.discount_pct,
-            destination_str=match.deal.destination_str,
+            destination_str=_normalize_destination_display(match.deal.destination_str, match.deal.destination),
             star_rating=match.deal.star_rating,
             tripadvisor_url=ta_urls.get(match.deal.hotel_id),
             found_at=match.deal.found_at,

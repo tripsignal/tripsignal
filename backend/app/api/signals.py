@@ -328,7 +328,7 @@ async def list_signals(
             intel_kwargs["spectrum_median"] = stats.median_price
             intel_kwargs["spectrum_p75"] = stats.p75_price
             intel_kwargs["spectrum_max"] = stats.max_price
-            intel_kwargs["spectrum_sample_size"] = stats.sample_size
+            intel_kwargs["spectrum_sample_size"] = stats.unique_package_count
 
         # Compute live market intelligence from active deal prices
         prices = price_map.get(signal.id, [])
