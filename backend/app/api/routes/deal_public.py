@@ -2,6 +2,7 @@
 import json as json_mod
 import logging
 from datetime import timedelta
+from urllib.parse import urlparse
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -9,9 +10,11 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_clerk_user_id
 from app.core.rate_limit import limiter
 from app.db.models.deal import Deal
 from app.db.models.deal_price_history import DealPriceHistory
+from app.db.models.user import User
 from app.db.session import get_db
 from app.services.formatting import dest_label, normalize_destination_display
 from app.services.market_intel import (
@@ -27,6 +30,14 @@ from app.workers.selloff_scraper import AIRPORT_CITY_MAP
 logger = logging.getLogger("deal_public")
 
 router = APIRouter(prefix="/api/deals", tags=["deals_public"])
+
+# Allowed redirect hosts for the /go endpoint (defense-in-depth)
+_ALLOWED_REDIRECT_HOSTS = {
+    "www.selloffvacations.com",
+    "selloffvacations.com",
+    "www.redtag.ca",
+    "redtag.ca",
+}
 
 
 def _get_nearby_airport_saving(db: Session, deal: Deal) -> dict | None:
@@ -149,25 +160,29 @@ def _get_price_history_points(db: Session, deal_id) -> dict:
 
 def _get_hotel_intel(db: Session, hotel_name: str) -> dict | None:
     """Look up hotel intelligence by name."""
-    row = db.execute(text("""
-        SELECT hotel_name, destination, star_rating, resort_size, adults_only,
-               kids_club, kids_club_ages, teen_club, waterpark, waterpark_notes,
-               num_restaurants, restaurant_names, transfer_time_minutes,
-               nearest_airport_code, airport_transfer_included,
-               sargassum_risk, sargassum_notes, vibe, total_rooms,
-               accommodates_5, room_fit_for_5_type, room_types_for_5,
-               connecting_rooms_available, max_occupancy_standard_room,
-               beach_access, beach_type, beach_description,
-               pool_count, pool_types,
-               tripadvisor_rating, tripadvisor_review_count,
-               top_complaints, top_praise, red_flags,
-               primary_demographics, resort_layout, best_time_to_visit,
-               official_website, resort_chain,
-               babysitting_available, kids_pool, cribs_available
-        FROM hotel_intel
-        WHERE LOWER(hotel_name) = LOWER(:name)
-        LIMIT 1
-    """), {"name": hotel_name}).fetchone()
+    try:
+        row = db.execute(text("""
+            SELECT hotel_name, destination, star_rating, resort_size, adults_only,
+                   kids_club, kids_club_ages, teen_club, waterpark, waterpark_notes,
+                   num_restaurants, restaurant_names, transfer_time_minutes,
+                   nearest_airport_code, airport_transfer_included,
+                   sargassum_risk, sargassum_notes, vibe, total_rooms,
+                   accommodates_5, room_fit_for_5_type, room_types_for_5,
+                   connecting_rooms_available, max_occupancy_standard_room,
+                   beach_access, beach_type, beach_description,
+                   pool_count, pool_types,
+                   tripadvisor_rating, tripadvisor_review_count,
+                   top_complaints, top_praise, red_flags,
+                   primary_demographics, resort_layout, best_time_to_visit,
+                   official_website, resort_chain,
+                   babysitting_available, kids_pool, cribs_available
+            FROM hotel_intel
+            WHERE LOWER(hotel_name) = LOWER(:name)
+            LIMIT 1
+        """), {"name": hotel_name}).fetchone()
+    except Exception:
+        logger.exception("hotel_intel query failed for %s", hotel_name)
+        return None
 
     if not row:
         return None
@@ -267,10 +282,6 @@ def get_public_deal(request: Request, deal_id: UUID, db: Session = Depends(get_d
                 cheaper_count = sum(1 for p in stats.prices if p > deal.price_cents)
                 value_score["percentile"] = round(cheaper_count / len(stats.prices) * 100)
 
-    # Smart insights
-    nearby_airport = _get_nearby_airport_saving(db, deal)
-    date_shift = _get_date_shift_saving(db, deal)
-    budget_alternatives = _get_budget_alternatives(db, deal)
     price_history = _get_price_history_points(db, deal.id)
 
     # Derive price delta from history (avoids a separate query)
@@ -309,11 +320,36 @@ def get_public_deal(request: Request, deal_id: UUID, db: Session = Depends(get_d
         "provider": deal.provider,
         "value_score": value_score,
         "price_delta_cents": price_delta_cents,
-        "nearby_airport": nearby_airport,
-        "date_shift": date_shift,
-        "budget_alternatives": budget_alternatives,
+        # Insights are served via the auth-gated /insights endpoint
+        "nearby_airport": None,
+        "date_shift": None,
+        "budget_alternatives": [],
         "price_history": price_history,
         "hotel_intel": hotel_intel,
+    }
+
+
+@router.get("/{deal_id}/insights")
+@limiter.limit("20/minute")
+def get_deal_insights(
+    request: Request,
+    deal_id: UUID,
+    clerk_id: str = Depends(get_clerk_user_id),
+    db: Session = Depends(get_db),
+):
+    """Pro-gated smart insights for a deal. Requires authentication."""
+    user = db.query(User).filter(User.clerk_id == clerk_id).first()
+    if not user or user.plan_type != "pro":
+        raise HTTPException(status_code=403, detail="Pro plan required")
+
+    deal = db.query(Deal).filter(Deal.id == deal_id).first()
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+
+    return {
+        "nearby_airport": _get_nearby_airport_saving(db, deal),
+        "date_shift": _get_date_shift_saving(db, deal),
+        "budget_alternatives": _get_budget_alternatives(db, deal),
     }
 
 
@@ -324,4 +360,11 @@ def redirect_to_deal(request: Request, deal_id: UUID, db: Session = Depends(get_
     deal = db.query(Deal).filter(Deal.id == deal_id, Deal.is_active == True).first()  # noqa: E712
     if not deal or not deal.deeplink_url:
         raise HTTPException(status_code=404, detail="Deal not found")
+
+    # Defense-in-depth: validate redirect target hostname
+    parsed = urlparse(deal.deeplink_url)
+    if parsed.hostname not in _ALLOWED_REDIRECT_HOSTS:
+        logger.warning("blocked redirect to %s for deal %s", parsed.hostname, deal_id)
+        raise HTTPException(status_code=400, detail="Invalid redirect target")
+
     return RedirectResponse(url=deal.deeplink_url, status_code=302)
