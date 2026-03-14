@@ -125,7 +125,10 @@ def _run_deferred_drain(db: Session) -> int:
 # ── Job 1: Automatic 7-day trial extension (48h before expiry) ───────────────
 
 def _run_trial_auto_extension(db: Session, now: datetime) -> int:
-    """Extend trial by 7 days for users within 48h of expiry (one-time only).
+    """Conditionally extend trial by 7 days for users whose signal is weak.
+
+    Only extends if the user's signal has fewer than 3 active deal matches.
+    This gives users on niche routes more time to see the product's value.
 
     Guard: trial_auto_extended_at IS NULL ensures this fires exactly once.
     After extension, clears trial_expiring_email_sent_at so the warning
@@ -147,17 +150,52 @@ def _run_trial_auto_extension(db: Session, now: datetime) -> int:
         ).with_for_update(skip_locked=True)
     ).scalars().all()
 
+    from app.db.models.deal import Deal
+
     extended = 0
     for user in users:
+        # Count active deal matches across the user's signals
+        active_match_count = db.execute(
+            select(func.count(DealMatch.id))
+            .join(Signal, DealMatch.signal_id == Signal.id)
+            .join(Deal, DealMatch.deal_id == Deal.id)
+            .where(
+                Signal.user_id == user.id,
+                Signal.status == "active",
+                Deal.is_active == True,  # noqa: E712
+            )
+        ).scalar() or 0
+
+        if active_match_count >= 3:
+            # Signal is healthy — no extension needed
+            logger.info(
+                "trial_auto_extension: skipped %s (has %d active matches)",
+                user.email, active_match_count,
+            )
+            continue
+
+        # Weak signal — extend trial
         user.trial_ends_at = user.trial_ends_at + timedelta(days=7)
         user.trial_auto_extended_at = now
         # Clear so trial_expiring_soon re-fires for new date
         user.trial_expiring_email_sent_at = None
         extended += 1
+
         logger.info(
-            "trial_auto_extension: extended %s to %s",
-            user.email, user.trial_ends_at.isoformat(),
+            "trial_auto_extension: extended %s to %s (had %d matches)",
+            user.email, user.trial_ends_at.isoformat(), active_match_count,
         )
+
+        # Send extension email
+        try:
+            email_trigger(
+                db=db,
+                email_type=EmailType.TRIAL_EXTENDED,
+                user_id=str(user.id),
+                context={"active_match_count": active_match_count},
+            )
+        except Exception:
+            logger.exception("trial_extended email failed for %s", user.email)
 
     if extended:
         db.commit()

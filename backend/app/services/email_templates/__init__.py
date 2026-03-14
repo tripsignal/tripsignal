@@ -41,6 +41,7 @@ from app.services.email_templates.templates import (
     no_match_update,
     inactive_reengagement,
     weekly_digest,
+    trial_extended,
 )
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,7 @@ _REGISTRY: dict[EmailType, callable] = {
     EmailType.NO_MATCH_UPDATE: no_match_update,
     EmailType.INACTIVE_REENGAGEMENT: inactive_reengagement,
     EmailType.WEEKLY_DIGEST: weekly_digest,
+    EmailType.TRIAL_EXTENDED: trial_extended,
 }
 
 # Variables available per email type (for admin UI hints + interpolation)
@@ -101,6 +103,7 @@ TEMPLATE_VARIABLES: dict[EmailType, list[str]] = {
         "best_value_nights", "best_value_pct_saving", "total_matches",
         "days_monitoring", "signal_name", "route", "destination", "best_price_cents",
     ],
+    EmailType.TRIAL_EXTENDED: ["active_match_count"],
 }
 
 
@@ -295,5 +298,6 @@ def _sample_context_for_type(email_type: EmailType) -> dict:
             "total_matches": 42, "days_monitoring": 30, "route": "YQR → Cancun",
             "best_price_cents": 87900,
         },
+        EmailType.TRIAL_EXTENDED: {"active_match_count": 1},
     }
     return samples.get(email_type, {})

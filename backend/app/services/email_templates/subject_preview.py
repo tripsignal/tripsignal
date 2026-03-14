@@ -202,6 +202,7 @@ def build_subject(email_type: "EmailType", context: dict) -> str:
         ET.ACCOUNT_DELETED_FREE: "Your Trip Signal account has been deleted",
         ET.ACCOUNT_DELETED_PRO: "Account deleted \u2014 subscription canceled",
         ET.INACTIVE_REENGAGEMENT: "Your Trip Signal signals are still running",
+        ET.TRIAL_EXTENDED: "We’ve extended your trial",
     }
     if email_type in _STATIC:
         return _STATIC[email_type]

@@ -491,13 +491,13 @@ def reset_trial(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    user.trial_ends_at = datetime.now(timezone.utc) + timedelta(days=14)
+    user.trial_ends_at = datetime.now(timezone.utc) + timedelta(days=7)
     if user.plan_status in ("expired", "deleted"):
         user.plan_status = "active"
     db.commit()
     db.refresh(user)
 
-    logger.info("[ADMIN] reset_trial: %s → 14 days (ends %s)", user.email, user.trial_ends_at)
+    logger.info("[ADMIN] reset_trial: %s → 7 days (ends %s)", user.email, user.trial_ends_at)
     return {
         "id": str(user.id),
         "email": user.email,

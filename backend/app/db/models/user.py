@@ -22,6 +22,8 @@ class User(Base):
     )
     clerk_id: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
     email: Mapped[str] = mapped_column(Text, nullable=False)
+    signup_email_normalized: Mapped[str | None] = mapped_column(Text, nullable=True)
+    trial_flagged_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     first_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     display_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     name_prompt_dismissed: Mapped[bool] = mapped_column(

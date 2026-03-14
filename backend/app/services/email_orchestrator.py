@@ -57,12 +57,14 @@ class EmailType(str, Enum):
     NO_MATCH_UPDATE = "NO_MATCH_UPDATE"
     INACTIVE_REENGAGEMENT = "INACTIVE_REENGAGEMENT"
     WEEKLY_DIGEST = "WEEKLY_DIGEST"
+    TRIAL_EXTENDED = "TRIAL_EXTENDED"
 
 
 # Map each email type to its category
 EMAIL_TYPE_CATEGORY: dict[str, EmailCategory] = {
     EmailType.WELCOME: EmailCategory.TRANSACTIONAL,
     EmailType.FIRST_SIGNAL: EmailCategory.TRANSACTIONAL,
+    EmailType.TRIAL_EXTENDED: EmailCategory.TRANSACTIONAL,
     EmailType.ACCOUNT_DELETED_FREE: EmailCategory.TRANSACTIONAL,
     EmailType.ACCOUNT_DELETED_PRO: EmailCategory.TRANSACTIONAL,
     EmailType.PRO_ACTIVATED: EmailCategory.BILLING,
@@ -401,6 +403,9 @@ def _build_idempotency_key(email_type: EmailType, user_id: str, context: dict) -
     if email_type == EmailType.INACTIVE_REENGAGEMENT:
         window_start = context.get("window_start", context.get("period", "unknown"))
         return f"inactive:{uid}:{window_start}"
+
+    if email_type == EmailType.TRIAL_EXTENDED:
+        return f"trial_extended:{uid}"
 
     if email_type == EmailType.WEEKLY_DIGEST:
         week_iso = context.get("week_iso", datetime.now(timezone.utc).strftime("%Y-W%W"))

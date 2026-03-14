@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -31,6 +31,22 @@ def _get_user_by_clerk(clerk_id: str, db: Session) -> User:
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+
+def _normalize_email(email: str) -> str:
+    """Normalize email for dedup: strip Gmail dots, strip +aliases from all providers."""
+    if not email:
+        return ""
+    email = email.lower().strip()
+    local, _, domain = email.partition("@")
+    if not domain:
+        return email
+    # Strip +alias
+    local = local.split("+")[0]
+    # Gmail-specific: dots don't matter
+    if domain in ("gmail.com", "googlemail.com"):
+        local = local.replace(".", "")
+    return f"{local}@{domain}"
 
 
 # ── GET /users/by-clerk-id/{clerk_id} ───────────────────────────────────────
@@ -122,19 +138,19 @@ def sync_user(
     # No row for this clerk_id — check if same email exists
     # (handles re-created Clerk accounts with the same email)
     if email:
-        existing = db.execute(
+        existing_by_email = db.execute(
             select(User).where(User.email == email)
         ).scalar_one_or_none()
-        if existing:
+        if existing_by_email:
             # Deleted account with same email — free the email so a new
             # account can be created.  The deleted row is audit/tombstone
             # data; anonymising the email is the right thing to do anyway.
-            if existing.deleted_at is not None:
+            if existing_by_email.deleted_at is not None:
                 logger.warning(
                     "SECURITY | sync_clear_deleted_email | old_clerk=%s new_clerk=%s email=%s",
-                    existing.clerk_id, clerk_user_id, email,
+                    existing_by_email.clerk_id, clerk_user_id, email,
                 )
-                existing.email = f"deleted-{existing.id}@deleted.tripsignal.ca"
+                existing_by_email.email = f"deleted-{existing_by_email.id}@deleted.tripsignal.ca"
                 db.commit()
                 # Fall through to create a fresh user below
             else:
@@ -143,27 +159,63 @@ def sync_user(
                 # Create a fresh user below without the email to avoid conflicts.
                 logger.warning(
                     "SECURITY | sync_relink_blocked | old_clerk=%s new_clerk=%s email=%s ip=%s",
-                    existing.clerk_id, clerk_user_id, email, client_ip,
+                    existing_by_email.clerk_id, clerk_user_id, email, client_ip,
                 )
                 email = ""  # clear so new user creation doesn't hit unique constraint
 
-    # New user — create with defaults
-    try:
-        new_user = User(
-            clerk_id=clerk_user_id,
-            email=email,
-            login_count=1,
-            last_login_ip=client_ip,
-            last_login_user_agent=user_agent,
-            timezone=x_timezone,
-        )
-        db.add(new_user)
-        db.commit()
-        db.refresh(new_user)
-        return {"id": str(new_user.id), "synced": True, "created": True}
-    except Exception:
-        db.rollback()
-        raise
+    # User doesn't exist — create with defaults
+    normalized = _normalize_email(email)
+
+    # Check for existing account with same normalized email (active or deleted)
+    skip_trial = False
+    if normalized:
+        existing = db.execute(
+            select(User).where(User.signup_email_normalized == normalized)
+        ).scalar_one_or_none()
+        if existing:
+            skip_trial = True
+            logger.info(
+                "SECURITY | trial_denied_duplicate_email | normalized=%s | clerk_id=%s | existing_user=%s",
+                normalized, clerk_user_id, existing.clerk_id,
+            )
+
+    # Check for same-IP signup within 90 days (soft flag only)
+    trial_flag = None
+    if client_ip and not skip_trial:
+        ninety_days_ago = datetime.now(timezone.utc) - timedelta(days=90)
+        same_ip_user = db.execute(
+            select(User).where(
+                User.last_login_ip == client_ip,
+                User.created_at >= ninety_days_ago,
+                User.clerk_id != clerk_user_id,
+                User.deleted_at.is_(None),
+            )
+        ).first()
+        if same_ip_user:
+            trial_flag = f"same_ip:{client_ip}"
+            logger.info(
+                "SECURITY | trial_flagged_same_ip | ip=%s | clerk_id=%s",
+                client_ip, clerk_user_id,
+            )
+
+    now = datetime.now(timezone.utc)
+    new_user = User(
+        clerk_id=clerk_user_id,
+        email=email,
+        signup_email_normalized=normalized if normalized else None,
+        login_count=1,
+        last_login_ip=client_ip,
+        last_login_user_agent=user_agent,
+        timezone=x_timezone,
+        trial_ends_at=None if skip_trial else now + timedelta(days=7),
+        plan_status="expired" if skip_trial else "active",
+        trial_flagged_reason=trial_flag,
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return {"id": str(new_user.id), "synced": True, "created": True}
+
 
 
 # ── GET /users/prefs ────────────────────────────────────────────────────────
