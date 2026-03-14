@@ -370,16 +370,16 @@ def get_match_price_history(
     """Return daily-best price history for a specific deal match."""
     _verify_signal_owner(signal_id, clerk_user_id, db)
 
-    match = db.query(DealMatch).filter(
-        DealMatch.id == match_id,
-        DealMatch.signal_id == signal_id,
-    ).first()
+    match = (
+        db.query(DealMatch)
+        .options(joinedload(DealMatch.deal))
+        .filter(DealMatch.id == match_id, DealMatch.signal_id == signal_id)
+        .first()
+    )
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
 
-    deal = db.query(Deal).filter(Deal.id == match.deal_id).first()
-    if not deal:
-        raise HTTPException(status_code=404, detail="Deal not found")
+    deal = match.deal
 
     # Aggregate: one row per day, best (min) price each day
     rows = (
@@ -394,7 +394,7 @@ def get_match_price_history(
     )
 
     history = [
-        {"date": row.day.strftime("%b %-d"), "price_cents": row.best_price}
+        {"date": row.day.strftime("%b %d").replace(" 0", " "), "price_cents": row.best_price}
         for row in rows
     ]
 
@@ -405,5 +405,4 @@ def get_match_price_history(
         history=history,
         first_price_cents=first_price,
         current_price_cents=current_price,
-        retail_price_cents=None,
     )

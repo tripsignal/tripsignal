@@ -66,4 +66,3 @@ class PriceHistoryDetail(BaseModel):
     history: list[DailyPricePoint]
     first_price_cents: int
     current_price_cents: int
-    retail_price_cents: Optional[int] = None
