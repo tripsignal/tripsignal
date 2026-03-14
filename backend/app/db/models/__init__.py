@@ -5,3 +5,4 @@ from .route_intel_cache import RouteIntelCache  # noqa: F401
 from .signal import Signal  # noqa: F401
 from .signal_intel_cache import SignalIntelCache  # noqa: F401
 from .system_config import SystemConfig  # noqa: F401
+from .hotel_intel import HotelIntel  # noqa: F401

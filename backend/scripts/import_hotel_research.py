@@ -13,7 +13,7 @@ from sqlalchemy import create_engine, text
 
 # Add parent to path so we can import enrichment module
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from app.enrichment.normalize import normalize_destination, normalize_hotel_name
+from app.enrichment.normalize import normalize_destination
 
 
 POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "postgres")
@@ -39,7 +39,9 @@ def make_record_id(hotel_name: str, destination: str) -> str:
     return slug
 
 
-# Fields that map directly from JSON key -> DB column
+# Fields that map directly from JSON key -> DB column.
+# IMPORTANT: Keys here are used as SQL column names. Only add trusted,
+# hardcoded values — never populate from external/user input.
 FIELD_MAP = {
     "hotel_name": "hotel_name",
     "destination": "destination",
@@ -179,6 +181,20 @@ def coerce_value(col_name, value):
     return value
 
 
+def _build_upsert_params(col_values):
+    """Build the column lists and params for an ON CONFLICT upsert."""
+    cols = list(col_values.keys())
+    insert_placeholders = [f":p_{c}" for c in cols]
+    # On conflict, update all columns except hotel_id and hotel_name
+    update_clauses = [
+        f"{c} = EXCLUDED.{c}" for c in cols
+        if c not in ("hotel_id", "hotel_name")
+    ]
+    update_clauses.append("updated_at = NOW()")
+    params = {f"p_{c}": v for c, v in col_values.items()}
+    return cols, insert_placeholders, update_clauses, params
+
+
 def main():
     print(f"Loading {JSON_PATH}...")
     with open(JSON_PATH) as f:
@@ -192,43 +208,38 @@ def main():
     errors = 0
     link_matches = 0
 
-    with engine.connect() as conn:
-        for i, rec in enumerate(records):
-            hotel_name = rec.get("hotel_name", "").strip()
-            destination = rec.get("destination", "").strip()
+    for i, rec in enumerate(records):
+        hotel_name = rec.get("hotel_name", "").strip()
+        destination = rec.get("destination", "").strip()
 
-            if not hotel_name:
-                print(f"  [{i}] SKIP: no hotel_name")
-                skipped += 1
-                continue
+        if not hotel_name:
+            print(f"  [{i}] SKIP: no hotel_name")
+            skipped += 1
+            continue
 
-            # Normalize destination
-            norm_dest = normalize_destination(destination) if destination else destination
-            record_id = make_record_id(hotel_name, norm_dest or destination)
+        # Normalize destination for record_id generation only
+        norm_dest = normalize_destination(destination) if destination else destination
+        record_id = make_record_id(hotel_name, norm_dest or destination)
 
-            # Build column values
-            col_values = {}
-            for json_key, db_col in FIELD_MAP.items():
-                raw = rec.get(json_key)
-                col_values[db_col] = coerce_value(db_col, raw)
+        # Build column values
+        col_values = {}
+        for json_key, db_col in FIELD_MAP.items():
+            raw = rec.get(json_key)
+            col_values[db_col] = coerce_value(db_col, raw)
 
-            # Normalize destination for storage
-            if norm_dest and norm_dest != destination.lower().strip():
-                col_values["destination"] = norm_dest.title()
+        # Keep original destination string — don't overwrite user-facing data
+        col_values["record_id"] = record_id
+        col_values["full_data"] = json.dumps(rec)
+        col_values["source"] = "gemini"
 
-            col_values["record_id"] = record_id
-            col_values["full_data"] = json.dumps(rec)
-            col_values["source"] = "gemini"
+        # Set researched_at from the JSON if available
+        researched_at = rec.get("_researched_at")
+        if researched_at:
+            col_values["researched_at"] = researched_at
 
-            # Set researched_at from the JSON if available
-            researched_at = rec.get("_researched_at")
-            if researched_at:
-                col_values["researched_at"] = researched_at
-
+        # Use per-record transaction for safety
+        with engine.begin() as conn:
             try:
-                # Use a savepoint so one failure doesn't abort the whole batch
-                nested = conn.begin_nested()
-
                 # Check for existing row by hotel_name (case-insensitive)
                 existing = conn.execute(
                     text("SELECT hotel_id FROM hotel_intel WHERE LOWER(hotel_name) = LOWER(:name) LIMIT 1"),
@@ -253,15 +264,16 @@ def main():
                     updated += 1
                     action = "UPD"
                 else:
-                    # INSERT new row - use record_id as hotel_id
-                    hotel_id = record_id
-                    col_values["hotel_id"] = hotel_id
+                    # INSERT new row — use record_id as hotel_id
+                    col_values["hotel_id"] = record_id
 
-                    cols = list(col_values.keys())
-                    param_names = [f":p_{c}" for c in cols]
-                    params = {f"p_{c}": v for c, v in col_values.items()}
+                    cols, insert_placeholders, update_clauses, params = _build_upsert_params(col_values)
 
-                    sql = f"INSERT INTO hotel_intel ({', '.join(cols)}) VALUES ({', '.join(param_names)})"
+                    sql = (
+                        f"INSERT INTO hotel_intel ({', '.join(cols)}) "
+                        f"VALUES ({', '.join(insert_placeholders)}) "
+                        f"ON CONFLICT (hotel_id) DO UPDATE SET {', '.join(update_clauses)}"
+                    )
                     conn.execute(text(sql), params)
                     inserted += 1
                     action = "INS"
@@ -276,18 +288,12 @@ def main():
                     link_matches += 1
                     link_str = f" [LINK:{link_match[0]}]"
 
-                nested.commit()
-
                 if (i + 1) % 25 == 0 or i < 3:
                     print(f"  [{i+1}/{len(records)}] {action} {hotel_name[:40]}{link_str}")
 
             except Exception as e:
-                nested.rollback()
                 print(f"  [{i+1}] ERROR {hotel_name[:40]}: {e}")
                 errors += 1
-
-        # Commit the overall transaction
-        conn.commit()
 
     print(f"\n=== Import Complete ===")
     print(f"  Inserted: {inserted}")

@@ -18,3 +18,4 @@ import app.db.models.route_intel_cache  # noqa: F401
 import app.db.models.signal_intel_cache  # noqa: F401
 import app.db.models.market_snapshot  # noqa: F401
 import app.db.models.email_queue  # noqa: F401
+import app.db.models.hotel_intel  # noqa: F401
