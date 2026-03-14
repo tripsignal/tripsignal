@@ -21,49 +21,12 @@ from app.services.market_intel import (
     score_deal,
     star_to_bucket,
 )
+from app.services.signal_intel import NEARBY_AIRPORTS
 from app.workers.selloff_scraper import AIRPORT_CITY_MAP
 
 logger = logging.getLogger("deal_public")
 
-# Nearby airports for airport arbitrage (copied from signal_intel.py)
-NEARBY_AIRPORTS: dict[str, list[str]] = {
-    "YYZ": ["YHM", "YKF"],
-    "YHM": ["YYZ", "YKF"],
-    "YKF": ["YYZ", "YHM"],
-    "YVR": ["YXX", "YYJ"],
-    "YXX": ["YVR"],
-    "YYJ": ["YVR"],
-    "YOW": ["YUL"],
-    "YUL": ["YOW"],
-    "YYC": ["YEG"],
-    "YEG": ["YYC"],
-    "YWG": [],
-    "YQR": ["YXE"],
-    "YXE": ["YQR"],
-}
-
 router = APIRouter(prefix="/api/deals", tags=["deals_public"])
-
-
-def _get_price_delta(db: Session, deal_id: UUID) -> int | None:
-    """Get the most recent price drop for a single deal (positive = drop).
-
-    Fetches only the last 2 price history rows instead of scanning the full
-    partition with window functions.
-    """
-    rows = db.execute(text("""
-        SELECT price_cents
-        FROM deal_price_history
-        WHERE deal_id = :deal_id
-        ORDER BY recorded_at DESC
-        LIMIT 2
-    """), {"deal_id": str(deal_id)}).all()
-    if len(rows) < 2:
-        return None
-    current, previous = rows[0][0], rows[1][0]
-    if previous > current:
-        return previous - current
-    return None
 
 
 def _get_nearby_airport_saving(db: Session, deal: Deal) -> dict | None:
@@ -92,7 +55,8 @@ def _get_nearby_airport_saving(db: Session, deal: Deal) -> dict | None:
         "airport_name": AIRPORT_CITY_MAP.get(cheaper.origin, cheaper.origin),
         "price_cents": cheaper.price_cents,
         "saving_cents": saving,
-        "deeplink_url": cheaper.deeplink_url is not None,
+        "has_deeplink": cheaper.deeplink_url is not None,
+        "deal_id": str(cheaper.id),
     }
 
 
@@ -266,7 +230,7 @@ def _get_hotel_intel(db: Session, hotel_name: str) -> dict | None:
 
 @router.get("/{deal_id}/public")
 @limiter.limit("30/minute")
-async def get_public_deal(request: Request, deal_id: UUID, db: Session = Depends(get_db)):
+def get_public_deal(request: Request, deal_id: UUID, db: Session = Depends(get_db)):
     """Public deal page data. No auth required."""
     deal = db.query(Deal).filter(Deal.id == deal_id).first()
     if not deal:
@@ -303,14 +267,19 @@ async def get_public_deal(request: Request, deal_id: UUID, db: Session = Depends
                 cheaper_count = sum(1 for p in stats.prices if p > deal.price_cents)
                 value_score["percentile"] = round(cheaper_count / len(stats.prices) * 100)
 
-    # Price delta from history
-    price_delta_cents = _get_price_delta(db, deal.id)
-
     # Smart insights
     nearby_airport = _get_nearby_airport_saving(db, deal)
     date_shift = _get_date_shift_saving(db, deal)
     budget_alternatives = _get_budget_alternatives(db, deal)
     price_history = _get_price_history_points(db, deal.id)
+
+    # Derive price delta from history (avoids a separate query)
+    price_delta_cents = None
+    if len(price_history["points"]) >= 2:
+        current = price_history["points"][-1]["price_cents"]
+        previous = price_history["points"][-2]["price_cents"]
+        if previous > current:
+            price_delta_cents = previous - current
 
     # Hotel intelligence
     hotel_intel = None
@@ -350,7 +319,7 @@ async def get_public_deal(request: Request, deal_id: UUID, db: Session = Depends
 
 @router.get("/{deal_id}/go")
 @limiter.limit("10/minute")
-async def redirect_to_deal(request: Request, deal_id: UUID, db: Session = Depends(get_db)):
+def redirect_to_deal(request: Request, deal_id: UUID, db: Session = Depends(get_db)):
     """Redirect to the deal provider's booking page. Prevents raw affiliate URL exposure."""
     deal = db.query(Deal).filter(Deal.id == deal_id, Deal.is_active == True).first()  # noqa: E712
     if not deal or not deal.deeplink_url:
