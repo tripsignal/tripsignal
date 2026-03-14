@@ -1,10 +1,12 @@
 """Hotel intelligence endpoints."""
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from typing import Optional
 
+from app.api.deps import get_clerk_user_id
+from app.core.rate_limit import limiter
 from app.db.models.hotel_intel import HotelIntel
 from app.db.session import get_db
 
@@ -107,8 +109,11 @@ def _row_to_response(row: HotelIntel) -> HotelIntelResponse:
 
 
 @router.get("/intel", response_model=HotelIntelResponse)
+@limiter.limit("30/minute")
 def get_hotel_intel(
-    hotel_name: str = Query(..., description="Hotel name to look up"),
+    request: Request,
+    hotel_name: str = Query(..., min_length=1, max_length=300, description="Hotel name to look up"),
+    clerk_id: str = Depends(get_clerk_user_id),
     db: Session = Depends(get_db),
 ):
     row = db.execute(
@@ -126,14 +131,22 @@ def get_hotel_intel(
 class HotelIntelBatchRequest(BaseModel):
     hotel_names: list[str]
 
+    @field_validator("hotel_names")
+    @classmethod
+    def validate_names(cls, v: list[str]) -> list[str]:
+        return [n[:300] for n in v if len(n) > 0][:50]
+
 
 @router.post("/intel/batch", response_model=dict[str, HotelIntelResponse])
+@limiter.limit("10/minute")
 def get_hotel_intel_batch(
+    request: Request,
     body: HotelIntelBatchRequest,
+    clerk_id: str = Depends(get_clerk_user_id),
     db: Session = Depends(get_db),
 ):
     """Look up hotel intel for multiple hotels in a single request."""
-    names = list(set(body.hotel_names))[:50]  # dedupe + cap at 50
+    names = list(set(body.hotel_names))
     if not names:
         return {}
 
