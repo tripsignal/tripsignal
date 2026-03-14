@@ -2,8 +2,29 @@
 
 from typing import Optional
 
-from app.services.market_intel import DESTINATION_LABELS
 from app.workers.shared.regions import PARENT_REGION_MAP
+
+# Destination key → display label mapping (server-side, canonical source)
+DESTINATION_LABELS: dict[str, str] = {
+    "mexico": "Mexico", "riviera_maya": "Riviera Maya", "cancun": "Cancún",
+    "puerto_vallarta": "Puerto Vallarta", "los_cabos": "Los Cabos",
+    "mazatlan": "Mazatlán", "huatulco": "Huatulco", "ixtapa": "Ixtapa",
+    "dominican_republic": "Dominican Republic", "punta_cana": "Punta Cana",
+    "puerto_plata": "Puerto Plata", "la_romana": "La Romana", "samana": "Samaná",
+    "jamaica": "Jamaica", "montego_bay": "Montego Bay", "negril": "Negril",
+    "cuba": "Cuba", "varadero": "Varadero", "holguin": "Holguín", "havana": "Havana",
+    "cayo_coco": "Cayo Coco", "caribbean": "Caribbean", "aruba": "Aruba",
+    "barbados": "Barbados", "curacao": "Curaçao", "saint_lucia": "Saint Lucia",
+    "turks_caicos": "Turks & Caicos", "bahamas": "Bahamas", "antigua": "Antigua",
+    "costa_rica": "Costa Rica", "panama": "Panama", "belize": "Belize",
+    "roatan": "Roatán",
+}
+
+
+def dest_label(key: str) -> str:
+    """Return a human-readable label for a destination region key."""
+    return DESTINATION_LABELS.get(key, key.replace("_", " ").title())
+
 
 # Parent regions that are real countries (append to sub-region labels)
 _PARENT_COUNTRY_NAMES = {
