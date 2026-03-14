@@ -202,11 +202,7 @@ async def create_signal(
     if active_count >= cap:
         raise HTTPException(
             status_code=403,
-            detail={
-                "error": "SIGNAL_LIMIT_REACHED",
-                "message": f"You've reached your limit of {cap} signal{'s' if cap > 1 else ''}.",
-                "cap": cap,
-            },
+            detail=f"You've reached your limit of {cap} active signal{'s' if cap > 1 else ''}. Upgrade your plan to create more.",
         )
 
     # Convert Pydantic models to dict for JSONB storage

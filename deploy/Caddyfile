@@ -3,17 +3,22 @@
   email hello@tripsignal.ca
 }
 
-tripsignal.ca {
-  encode zstd gzip
-
+# Shared security headers — used by both prod and staging.
+# worker-src blob: is required by Clerk's web worker implementation.
+(security_headers) {
   header {
     Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
     X-Content-Type-Options "nosniff"
     X-Frame-Options "DENY"
     Referrer-Policy "no-referrer"
     Permissions-Policy "camera=(), microphone=(), geolocation=()"
-    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://challenges.cloudflare.com https://us.i.posthog.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.clerk.com https://img.clerk.com; font-src 'self' data:; connect-src 'self' https://*.clerk.accounts.dev https://clerk.tripsignal.ca https://api.stripe.com https://us.i.posthog.com https://us-assets.i.posthog.com; frame-src https://*.clerk.accounts.dev https://js.stripe.com https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'"
+    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://challenges.cloudflare.com https://us.i.posthog.com https://www.googletagmanager.com https://www.google-analytics.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.clerk.com https://img.clerk.com https://www.googletagmanager.com; font-src 'self' data:; connect-src 'self' https://*.clerk.accounts.dev https://clerk.tripsignal.ca https://api.stripe.com https://us.i.posthog.com https://us-assets.i.posthog.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; frame-src https://*.clerk.accounts.dev https://js.stripe.com https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'"
   }
+}
+
+tripsignal.ca {
+  encode zstd gzip
+  import security_headers
 
   handle /api/* {
     request_body {
@@ -33,15 +38,7 @@ www.tripsignal.ca {
 
 staging.tripsignal.ca {
   encode zstd gzip
-
-  header {
-    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-    X-Content-Type-Options "nosniff"
-    X-Frame-Options "DENY"
-    Referrer-Policy "no-referrer"
-    Permissions-Policy "camera=(), microphone=(), geolocation=()"
-    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://challenges.cloudflare.com https://us.i.posthog.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.clerk.com https://img.clerk.com; font-src 'self' data:; connect-src 'self' https://*.clerk.accounts.dev https://clerk.tripsignal.ca https://api.stripe.com https://us.i.posthog.com https://us-assets.i.posthog.com; frame-src https://*.clerk.accounts.dev https://js.stripe.com https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'"
-  }
+  import security_headers
 
   handle /api/* {
     request_body {
