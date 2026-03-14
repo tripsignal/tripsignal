@@ -294,6 +294,14 @@ async def get_public_deal(request: Request, deal_id: UUID, db: Session = Depends
         if stats.sample_size > 0:
             score = score_deal(deal.price_cents, stats)
             value_score = score.to_dict()
+            # Add market stats for price spectrum bar
+            value_score["market_min"] = stats.min_price
+            value_score["market_median"] = stats.median_price
+            value_score["market_max"] = stats.max_price
+            # Compute percentile: % of deals this price is cheaper than
+            if stats.prices:
+                cheaper_count = sum(1 for p in stats.prices if p > deal.price_cents)
+                value_score["percentile"] = round(cheaper_count / len(stats.prices) * 100)
 
     # Price delta from history
     price_delta_cents = _get_price_delta(db, deal.id)
