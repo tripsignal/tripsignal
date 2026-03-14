@@ -329,7 +329,13 @@ def update_display_name(
     clerk_user_id: str = Depends(get_clerk_user_id),
 ):
     user = _get_user_by_clerk(clerk_user_id, db)
-    name = body.display_name.strip()[:100]
+    # Strip control characters and zero-width Unicode (homoglyph/injection defense)
+    import unicodedata
+    name = "".join(
+        ch for ch in body.display_name
+        if unicodedata.category(ch)[0] not in ("C",)  # control/format/surrogate/private-use
+        and ch not in "\u200b\u200c\u200d\u200e\u200f\ufeff"  # zero-width chars
+    ).strip()[:100]
     if not name:
         raise HTTPException(status_code=400, detail="Display name cannot be empty")
 
