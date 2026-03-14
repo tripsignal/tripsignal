@@ -90,6 +90,7 @@ def get_user_by_clerk_id(
 
 class SyncRequest(BaseModel):
     email: str = ""
+    is_signup: bool = False
 
 
 @router.post("/sync")
@@ -135,7 +136,22 @@ def sync_user(
         db.commit()
         return {"id": str(user.id), "synced": True, "created": False}
 
-    # No row for this clerk_id — check if same email exists
+    # No row for this clerk_id — only create if this is a sign-up flow.
+    # Sign-in with an unrecognized clerk_id means the user picked the wrong
+    # OAuth account; creating a new user here is the root cause of duplicate
+    # accounts.
+    is_signup = body.is_signup if body else False
+    if not is_signup:
+        logger.warning(
+            "SECURITY | sync_no_user_sign_in | clerk_id=%s email=%s ip=%s",
+            clerk_user_id, email, client_ip,
+        )
+        raise HTTPException(
+            status_code=404,
+            detail="No account found. Please sign up first.",
+        )
+
+    # Check if same email exists
     # (handles re-created Clerk accounts with the same email)
     if email:
         existing_by_email = db.execute(

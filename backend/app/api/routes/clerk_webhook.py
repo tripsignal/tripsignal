@@ -113,18 +113,15 @@ async def clerk_webhook(
                         )
                         email = ""  # clear so new user creation doesn't hit unique constraint
 
-            # user.created — create the user row if it doesn't exist yet
-            if event_type == "user.created":
-                try:
-                    new_user = User(clerk_id=clerk_id, email=email, first_name=first_name)
-                    db.add(new_user)
-                    db.commit()
-                    logger.info("Clerk webhook: created user %s with email %s", clerk_id, email)
-                    return {"ok": True, "action": "created"}
-                except Exception:
-                    db.rollback()
-                    raise
-            return {"ok": True, "skipped": "user not found"}
+            # Do NOT create user rows from the webhook — user creation is
+            # handled exclusively by POST /users/sync with is_signup=True.
+            # This prevents duplicate accounts when Clerk auto-creates a user
+            # from a sign-in with an unrecognized OAuth identity.
+            logger.info(
+                "Clerk webhook: skipping user creation for %s (email=%s) — waiting for sync",
+                clerk_id, email,
+            )
+            return {"ok": True, "skipped": "user creation deferred to sync"}
 
     # Ignore other event types
     return {"ok": True, "skipped": event_type}
