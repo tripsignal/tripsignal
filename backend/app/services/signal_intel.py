@@ -28,6 +28,23 @@ from app.db.models.signal_intel_cache import SignalIntelCache
 
 logger = logging.getLogger(__name__)
 
+# Nearby airport groups — suggest airports within driving distance
+NEARBY_AIRPORTS: dict[str, list[str]] = {
+    "YYZ": ["YHM", "YKF"],
+    "YHM": ["YYZ", "YKF"],
+    "YKF": ["YYZ", "YHM"],
+    "YVR": ["YXX", "YYJ"],
+    "YXX": ["YVR"],
+    "YYJ": ["YVR"],
+    "YOW": ["YUL"],
+    "YUL": ["YOW"],
+    "YYC": ["YEG"],
+    "YEG": ["YYC"],
+    "YWG": [],
+    "YQR": ["YXE"],
+    "YXE": ["YQR"],
+}
+
 
 def refresh_intel_cache(db: Session, signal_id) -> dict | None:
     """Recompute and upsert intelligence cache for a single signal.
@@ -511,23 +528,6 @@ def get_airport_arbitrage(
     """
     if not hotel_id or not depart_date:
         return None
-
-    # Nearby airport groups — suggest airports within driving distance
-    NEARBY_AIRPORTS: dict[str, list[str]] = {
-        "YYZ": ["YHM", "YKF"],
-        "YHM": ["YYZ", "YKF"],
-        "YKF": ["YYZ", "YHM"],
-        "YVR": ["YXX", "YYJ"],
-        "YXX": ["YVR"],
-        "YYJ": ["YVR"],
-        "YOW": ["YUL"],
-        "YUL": ["YOW"],
-        "YYC": ["YEG"],
-        "YEG": ["YYC"],
-        "YWG": [],
-        "YQR": ["YXE"],
-        "YXE": ["YQR"],
-    }
 
     nearby = NEARBY_AIRPORTS.get(current_origin, [])
     if not nearby:
