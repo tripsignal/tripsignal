@@ -30,8 +30,8 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 MODEL = "gemini-2.5-flash"
 INPUT_CSV = Path(__file__).parent / "hotels_input.csv"
 OUTPUT_FILE = Path(__file__).parent / "hotel_research_results.json"
-REQUESTS_PER_MINUTE = 10  # stay under 15 RPM paid limit
-DELAY_SECONDS = 60 / REQUESTS_PER_MINUTE  # 6 seconds between requests
+REQUESTS_PER_MINUTE = 30  # paid tier supports much higher, 30 is safe
+DELAY_SECONDS = 60 / REQUESTS_PER_MINUTE  # 2 seconds between requests
 
 
 def build_prompt(hotel_name: str, destination: str, star_rating: str) -> str:
@@ -238,6 +238,7 @@ def research_hotel(client, hotel_name: str, destination: str, star_rating: str) 
             config=types.GenerateContentConfig(
                 tools=[types.Tool(google_search=types.GoogleSearch())],
                 temperature=0.2,
+                http_options=types.HttpOptions(timeout=120_000),
             ),
         )
 
