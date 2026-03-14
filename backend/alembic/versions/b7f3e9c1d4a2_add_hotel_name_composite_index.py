@@ -11,8 +11,8 @@ on hotel_name + origin/destination + depart_date + is_active.
 from alembic import op
 
 
-revision = "a1b2c3d4e5f6"
-down_revision = "a1h1b2c3d4e5"
+revision = "b7f3e9c1d4a2"
+down_revision = "a1b2c3d4e5f6"
 branch_labels = None
 depends_on = None
 
