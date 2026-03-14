@@ -5,6 +5,7 @@ from typing import List, NamedTuple, Optional
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import Date, cast, func
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
 
@@ -19,7 +20,7 @@ from app.db.models.deal import Deal
 from app.db.models.deal_price_history import DealPriceHistory
 from app.db.models.hotel_link import HotelLink
 from app.db.models.notification_outbox import NotificationOutbox
-from app.schemas.deal_matches import DealMatchOut, DealOut
+from app.schemas.deal_matches import DealMatchOut, DealOut, PriceHistoryDetail
 from app.schemas.deals import DealMatchCreate
 from app.services.formatting import normalize_destination_display
 
@@ -352,3 +353,57 @@ def create_signal_match(
         db.add(run)
         db.commit()
         raise
+
+
+@router.get(
+    "/{signal_id}/matches/{match_id}/price-history",
+    response_model=PriceHistoryDetail,
+)
+@limiter.limit("30/minute")
+def get_match_price_history(
+    request: Request,
+    signal_id: UUID,
+    match_id: UUID,
+    db: Session = Depends(get_db),
+    clerk_user_id: str = Depends(get_clerk_user_id),
+):
+    """Return daily-best price history for a specific deal match."""
+    _verify_signal_owner(signal_id, clerk_user_id, db)
+
+    match = db.query(DealMatch).filter(
+        DealMatch.id == match_id,
+        DealMatch.signal_id == signal_id,
+    ).first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    deal = db.query(Deal).filter(Deal.id == match.deal_id).first()
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+
+    # Aggregate: one row per day, best (min) price each day
+    rows = (
+        db.query(
+            cast(DealPriceHistory.recorded_at, Date).label("day"),
+            func.min(DealPriceHistory.price_cents).label("best_price"),
+        )
+        .filter(DealPriceHistory.deal_id == deal.id)
+        .group_by("day")
+        .order_by("day")
+        .all()
+    )
+
+    history = [
+        {"date": row.day.strftime("%b %-d"), "price_cents": row.best_price}
+        for row in rows
+    ]
+
+    first_price = rows[0].best_price if rows else (deal.price_cents or 0)
+    current_price = deal.price_cents or 0
+
+    return PriceHistoryDetail(
+        history=history,
+        first_price_cents=first_price,
+        current_price_cents=current_price,
+        retail_price_cents=None,
+    )

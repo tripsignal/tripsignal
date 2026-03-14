@@ -55,3 +55,15 @@ class DealMatchOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class DailyPricePoint(BaseModel):
+    date: str
+    price_cents: int
+
+
+class PriceHistoryDetail(BaseModel):
+    history: list[DailyPricePoint]
+    first_price_cents: int
+    current_price_cents: int
+    retail_price_cents: Optional[int] = None
