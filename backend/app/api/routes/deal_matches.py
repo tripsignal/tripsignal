@@ -1,8 +1,9 @@
 """Deal match endpoints."""
 
+import logging
 from uuid import UUID
 from typing import List, NamedTuple, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import Date, cast, func
@@ -151,6 +152,7 @@ def list_signal_matches(
         .options(joinedload(DealMatch.deal))
         .filter(DealMatch.signal_id == signal_id)
         .order_by(Deal.is_active.desc(), DealMatch.is_favourite.desc(), DealMatch.matched_at.desc())
+        .limit(200)
         .all()
     )
 
@@ -346,13 +348,20 @@ def create_signal_match(
             deal=deal_out,
         )
 
+    except HTTPException:
+        run.status = "failed"
+        run.completed_at = datetime.now(timezone.utc)
+        db.add(run)
+        db.commit()
+        raise
     except Exception as e:
+        logging.getLogger("tripsignal.api").exception("create_signal_match failed")
         run.status = "failed"
         run.completed_at = datetime.now(timezone.utc)
         run.error_message = str(e)
         db.add(run)
         db.commit()
-        raise
+        raise HTTPException(status_code=500, detail="Failed to create match")
 
 
 @router.get(
@@ -381,13 +390,14 @@ def get_match_price_history(
 
     deal = match.deal
 
-    # Aggregate: one row per day, best (min) price each day
+    # Aggregate: one row per day, best (min) price each day, capped to 90 days
+    cutoff = datetime.now(timezone.utc) - timedelta(days=90)
     rows = (
         db.query(
             cast(DealPriceHistory.recorded_at, Date).label("day"),
             func.min(DealPriceHistory.price_cents).label("best_price"),
         )
-        .filter(DealPriceHistory.deal_id == deal.id)
+        .filter(DealPriceHistory.deal_id == deal.id, DealPriceHistory.recorded_at >= cutoff)
         .group_by("day")
         .order_by("day")
         .all()
