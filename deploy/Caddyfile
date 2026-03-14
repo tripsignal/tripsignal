@@ -27,6 +27,21 @@ tripsignal.ca {
     reverse_proxy api:8000
   }
 
+  handle /clerk-proxy-api/* {
+    uri strip_prefix /clerk-proxy-api
+    reverse_proxy https://clerk.tripsignal.ca {
+      header_up Host clerk.tripsignal.ca
+      header_up Clerk-Proxy-Url https://tripsignal.ca/clerk-proxy-api
+      header_up Clerk-Secret-Key {$CLERK_SECRET_KEY}
+      header_down Set-Cookie "domain=.clerk.tripsignal.ca" "domain=.tripsignal.ca"
+      header_down Set-Cookie "domain=clerk.tripsignal.ca" "domain=.tripsignal.ca"
+      header_down Location "https://clerk.tripsignal.ca" "https://tripsignal.ca/clerk-proxy-api"
+      transport http {
+        tls
+      }
+    }
+  }
+
   handle {
     reverse_proxy tripsignal-frontend:3000
   }
