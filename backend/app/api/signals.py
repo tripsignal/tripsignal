@@ -197,7 +197,7 @@ async def create_signal(
     SIGNAL_CAPS = {"free": 1, "pro": 10}
     cap = SIGNAL_CAPS.get(user.plan_type, 1)
     active_count = db.query(func.count(Signal.id)).filter(
-        Signal.user_id == user.id, Signal.status != "deleted"
+        Signal.user_id == user.id, Signal.status.in_(["active", "paused"])
     ).scalar() or 0
     if active_count >= cap:
         raise HTTPException(
